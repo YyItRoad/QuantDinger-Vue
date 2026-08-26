@@ -28,6 +28,12 @@ export const asyncRouterMap = [
         component: () => import('@/views/strategy-center'),
         meta: { title: 'menu.dashboard.strategyCenter', keepAlive: true, icon: 'cluster', permission: ['dashboard'] }
       },
+      {
+        path: '/position-manager',
+        name: 'PositionManager',
+        component: () => import('@/views/position-manager'),
+        meta: { title: 'menu.dashboard.positionManager', keepAlive: true, icon: 'safety', permission: ['dashboard'] }
+      },
       // Indicator marketplace.
       {
         path: '/indicator-community',
