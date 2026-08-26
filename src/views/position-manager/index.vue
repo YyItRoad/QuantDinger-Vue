@@ -1,5 +1,5 @@
 <template>
-  <div class="position-manager-page">
+  <div class="position-manager-page" :class="{ 'theme-dark': isDarkTheme }">
     <section class="pm-header">
       <div>
         <h1><a-icon type="safety" /> {{ $t('positionManager.title') }}</h1>
@@ -60,6 +60,21 @@
           <a-tag :color="text === 'long' ? 'green' : 'red'">{{ sideText(text) }}</a-tag>
         </template>
         <template slot="decimal" slot-scope="text"><span class="pm-decimal">{{ text }}</span></template>
+        <template slot="management" slot-scope="text, record">
+          <a-button
+            v-if="record.managementState === 'managed'"
+            type="link"
+            size="small"
+            class="pm-strategy-link"
+            @click="openStrategy(record.managingStrategies[0])"
+          >
+            {{ record.managingStrategies[0].name }}
+          </a-button>
+          <span v-else-if="record.managementState === 'conflict'" class="pm-conflict">
+            {{ $t('positionManager.managementConflict', { count: record.managingStrategies.length }) }}
+          </span>
+          <span v-else class="pm-unmanaged">{{ $t('positionManager.unmanaged') }}</span>
+        </template>
       </a-table>
       <div v-if="fetchedAt" class="pm-sync-time">
         {{ $t('positionManager.lastSynced') }}：{{ fetchedAt }}
@@ -69,10 +84,11 @@
 </template>
 
 <script>
+import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
-import { getAccountSnapshot } from '@/api/strategy'
+import { getAccountSnapshot, getManagedAccountPositions } from '@/api/strategy'
 import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
-import { requireCompleteAccountSnapshot, selectableSnapshotCredentials } from '@/utils/positionManager'
+import { mergeManagedPositionRows, requireCompleteAccountSnapshot, selectableSnapshotCredentials } from '@/utils/positionManager'
 
 function responseData (response) {
   return response && response.data && typeof response.data === 'object' ? response.data : {}
@@ -92,6 +108,10 @@ export default {
     }
   },
   computed: {
+    ...mapState({ navTheme: state => state.app.theme }),
+    isDarkTheme () {
+      return this.navTheme === 'dark' || this.navTheme === 'realdark'
+    },
     selectableCredentials () {
       return selectableSnapshotCredentials(this.credentials)
     },
@@ -103,7 +123,8 @@ export default {
         { title: this.$t('positionManager.quantity'), dataIndex: 'sizeDisplay', scopedSlots: { customRender: 'decimal' } },
         { title: this.$t('positionManager.entryPrice'), dataIndex: 'entryPriceDisplay', scopedSlots: { customRender: 'decimal' } },
         { title: this.$t('positionManager.markPrice'), dataIndex: 'markPriceDisplay', scopedSlots: { customRender: 'decimal' } },
-        { title: this.$t('positionManager.leverage'), dataIndex: 'leverageDisplay' }
+        { title: this.$t('positionManager.leverage'), dataIndex: 'leverageDisplay' },
+        { title: this.$t('positionManager.management'), key: 'management', scopedSlots: { customRender: 'management' } }
       ]
     }
   },
@@ -127,6 +148,10 @@ export default {
     notifyError (error, fallback) {
       this.errorMessage = (error && (error.backendMessage || error.message)) || fallback
     },
+    openStrategy (strategy) {
+      if (!strategy || !strategy.id) return
+      this.$router.push({ path: '/strategy-center', query: { strategyId: strategy.id } }).catch(() => {})
+    },
     async loadCredentials () {
       this.loadingCredentials = true
       try {
@@ -149,10 +174,20 @@ export default {
       this.syncing = true
       this.errorMessage = ''
       try {
-        const response = await getAccountSnapshot({ credential_id: this.selectedCredentialId })
-        if (!response || response.code !== 1) throw new Error((response && response.msg) || this.$t('positionManager.syncFailed'))
-        const snapshot = responseData(response)
-        this.positions = requireCompleteAccountSnapshot(snapshot)
+        const params = { credential_id: this.selectedCredentialId }
+        const [snapshotResponse, managedResponse] = await Promise.all([
+          getAccountSnapshot(params),
+          getManagedAccountPositions(params)
+        ])
+        if (!snapshotResponse || snapshotResponse.code !== 1) {
+          throw new Error((snapshotResponse && snapshotResponse.msg) || this.$t('positionManager.syncFailed'))
+        }
+        if (!managedResponse || managedResponse.code !== 1) {
+          throw new Error((managedResponse && managedResponse.msg) || this.$t('positionManager.managementFailed'))
+        }
+        const snapshot = responseData(snapshotResponse)
+        const positions = requireCompleteAccountSnapshot(snapshot)
+        this.positions = mergeManagedPositionRows(positions, responseData(managedResponse).items || [])
         this.fetchedAt = snapshot.fetched_at ? new Date(snapshot.fetched_at * 1000).toLocaleString() : ''
         this.$message.success(this.positions.length ? this.$t('positionManager.syncSuccess') : this.$t('positionManager.syncEmpty'))
       } catch (error) {
@@ -166,7 +201,15 @@ export default {
 </script>
 
 <style scoped>
-.position-manager-page { min-height: calc(100vh - 64px); padding: 20px; background: #f4f6f8; }
+.position-manager-page {
+  min-height: calc(100vh - 64px);
+  padding: 18px 20px 24px !important;
+  background: #f6f7f9;
+  color: #18202c;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
 .pm-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .pm-header h1 { margin: 0 0 6px; color: #1f2933; font-size: 24px; }
 .pm-header p { max-width: 760px; margin: 0; color: #667085; }
@@ -174,23 +217,26 @@ export default {
 .pm-credential-select { min-width: 280px; }
 .pm-alert, .pm-card { margin-bottom: 16px; }
 .pm-decimal { font-family: SFMono-Regular, Consolas, 'Liberation Mono', monospace; font-variant-numeric: tabular-nums; }
+.pm-strategy-link { height: auto; padding: 0; }
+.pm-conflict { color: #d46b08; }
+.pm-unmanaged { color: #8c8c8c; }
 .pm-sync-time { margin-top: 12px; color: #8c8c8c; font-size: 12px; text-align: right; }
+.position-manager-page.theme-dark { background: #080808; color: #e7e9ed; }
+.theme-dark .pm-header h1 { color: #f3f4f6; }
+.theme-dark .pm-header p,
+.theme-dark .pm-sync-time,
+.theme-dark .pm-unmanaged { color: #7f8793; }
+.theme-dark .pm-conflict { color: #ffc53d; }
+.theme-dark ::v-deep .ant-card { color: rgba(255, 255, 255, 0.82); background: #111; border-color: rgba(255, 255, 255, 0.1); }
+.theme-dark ::v-deep .ant-card-head { color: #f3f4f6; border-color: rgba(255, 255, 255, 0.1); }
+.theme-dark ::v-deep .ant-table { color: rgba(255, 255, 255, 0.72); background: #111; }
+.theme-dark ::v-deep .ant-table-thead > tr > th { color: rgba(255, 255, 255, 0.68); background: #0d0d0d; border-color: rgba(255, 255, 255, 0.1); }
+.theme-dark ::v-deep .ant-table-tbody > tr > td { color: rgba(255, 255, 255, 0.72); background: #111; border-color: rgba(255, 255, 255, 0.08); }
+.theme-dark ::v-deep .ant-table-tbody > tr:hover > td { background: #181818 !important; }
+.theme-dark ::v-deep .ant-table-placeholder { color: rgba(255, 255, 255, 0.45); background: #111; border-color: rgba(255, 255, 255, 0.1); }
 @media (max-width: 900px) {
   .pm-header { flex-direction: column; }
   .pm-header-actions { width: 100%; flex-wrap: wrap; }
   .pm-credential-select { min-width: 0; flex: 1; }
 }
-</style>
-
-<style>
-body.dark .position-manager-page { background: #111827; }
-body.dark .position-manager-page .pm-header h1 { color: #f3f4f6; }
-body.dark .position-manager-page .pm-header p,
-body.dark .position-manager-page .pm-sync-time { color: #9ca3af; }
-body.dark .position-manager-page .ant-card { color: #e5e7eb; background: #1f2937; border-color: #374151; }
-body.dark .position-manager-page .ant-card-head { color: #f3f4f6; border-color: #374151; }
-body.dark .position-manager-page .ant-table { color: #e5e7eb; background: #1f2937; }
-body.dark .position-manager-page .ant-table-thead > tr > th { color: #e5e7eb; background: #273449; border-color: #374151; }
-body.dark .position-manager-page .ant-table-tbody > tr > td { border-color: #374151; }
-body.dark .position-manager-page .ant-table-tbody > tr:hover > td { background: #273449; }
 </style>

@@ -71,6 +71,24 @@ function normalizePositionRows (rows, fallbackMarketType) {
     .filter(row => row.symbol && isNonZeroDecimal(row.size))
 }
 
+function canonicalPositionSymbol (value) {
+  const raw = String(value || '').trim().toUpperCase().split(':')[0]
+  if (!raw) return ''
+  const separated = raw.replace(/-/g, '/')
+  if (separated.includes('/')) return separated
+  for (const quote of ['USDT', 'USDC', 'BUSD', 'USD', 'EUR']) {
+    if (separated.endsWith(quote) && separated.length > quote.length) {
+      return `${separated.slice(0, -quote.length)}/${quote}`
+    }
+  }
+  return separated
+}
+
+function normalizedMarketType (value) {
+  const marketType = String(value || '').trim().toLowerCase()
+  return ['future', 'futures', 'perp', 'perpetual'].includes(marketType) ? 'swap' : marketType
+}
+
 /** 将现有账户快照整理为持仓管理页需要的只读仓位。 */
 export function normalizeAccountSnapshotPositions (snapshot = {}) {
   const swapRows = Array.isArray(snapshot.swap_positions) ? snapshot.swap_positions : []
@@ -79,6 +97,38 @@ export function normalizeAccountSnapshotPositions (snapshot = {}) {
     ...normalizePositionRows(swapRows, 'swap'),
     ...normalizePositionRows(spotRows, 'spot')
   ]
+}
+
+/** 将交易所快照与现有策略仓位记录做只读匹配。 */
+export function mergeManagedPositionRows (positions, managedRows) {
+  const managed = Array.isArray(managedRows) ? managedRows : []
+  return (Array.isArray(positions) ? positions : []).map(position => {
+    const symbol = canonicalPositionSymbol(position.symbol)
+    const side = String(position.side || '').trim().toLowerCase()
+    const marketType = normalizedMarketType(position.marketType)
+    const strategies = new Map()
+    managed.forEach(row => {
+      if (!row || typeof row !== 'object') return
+      if (canonicalPositionSymbol(row.symbol) !== symbol) return
+      if (String(row.side || '').trim().toLowerCase() !== side) return
+      if (normalizedMarketType(row.market_type) !== marketType) return
+      const id = Number(row.strategy_id || 0)
+      if (!Number.isInteger(id) || id <= 0 || strategies.has(id)) return
+      strategies.set(id, {
+        id,
+        name: String(row.strategy_name || '').trim() || `#${id}`,
+        status: String(row.strategy_status || '').trim(),
+        executionMode: String(row.execution_mode || '').trim(),
+        size: decimalString(row.size)
+      })
+    })
+    const managingStrategies = Array.from(strategies.values())
+    return {
+      ...position,
+      managementState: managingStrategies.length > 1 ? 'conflict' : managingStrategies.length === 1 ? 'managed' : 'unmanaged',
+      managingStrategies
+    }
+  })
 }
 
 /** partial 结果不得伪装成零仓位成功。 */

@@ -20,6 +20,10 @@ const locale = {
   'positionManager.entryPrice': '开仓价',
   'positionManager.markPrice': '最新价格',
   'positionManager.leverage': '杠杆倍数',
+  'positionManager.management': '管理策略',
+  'positionManager.unmanaged': '未管理',
+  'positionManager.managementConflict': '已有 {count} 个策略记录',
+  'positionManager.managementFailed': '加载持仓策略归属失败',
   'positionManager.long': '多头',
   'positionManager.short': '空头',
   'positionManager.lastSynced': '最近同步时间'

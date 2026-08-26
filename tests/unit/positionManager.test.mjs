@@ -3,10 +3,60 @@ import assert from 'node:assert/strict'
 
 import {
   formatDecimalDisplay,
+  mergeManagedPositionRows,
   normalizeAccountSnapshotPositions,
   requireCompleteAccountSnapshot,
   selectableSnapshotCredentials
 } from '../../src/utils/positionManager.js'
+
+test('交易所仓位只与现有策略仓位记录做只读匹配', () => {
+  const positions = normalizeAccountSnapshotPositions({
+    swap_positions: [
+      { symbol: 'KAITO/USDC:USDC', side: 'long', size: '422.5' },
+      { symbol: 'BTC/USDT', side: 'short', size: '0.1' }
+    ]
+  })
+  const rows = mergeManagedPositionRows(positions, [{
+    strategy_id: 12,
+    strategy_name: 'ATR 趋势管理',
+    strategy_status: 'running',
+    execution_mode: 'live',
+    symbol: 'KAITO/USDC',
+    side: 'long',
+    size: '422.5',
+    market_type: 'swap'
+  }])
+
+  assert.equal(rows[0].managementState, 'managed')
+  assert.deepEqual(rows[0].managingStrategies, [{
+    id: 12,
+    name: 'ATR 趋势管理',
+    status: 'running',
+    executionMode: 'live',
+    size: '422.5'
+  }])
+  assert.equal(rows[1].managementState, 'unmanaged')
+  assert.deepEqual(rows[1].managingStrategies, [])
+})
+
+test('同一仓位存在多个策略记录时显示冲突而不是未管理', () => {
+  const positions = normalizeAccountSnapshotPositions({
+    spot_positions: [{ symbol: 'ETH/USDT', side: 'long', size: '2' }]
+  })
+  const managedRows = [11, 12].map(id => ({
+    strategy_id: id,
+    strategy_name: `策略 ${id}`,
+    symbol: 'ETH/USDT',
+    side: 'long',
+    size: '1',
+    market_type: 'spot'
+  }))
+
+  const rows = mergeManagedPositionRows(positions, managedRows)
+
+  assert.equal(rows[0].managementState, 'conflict')
+  assert.deepEqual(rows[0].managingStrategies.map(item => item.id), [11, 12])
+})
 
 test('仓位同步凭证不按交易所进行前端过滤', () => {
   const credentials = selectableSnapshotCredentials([
