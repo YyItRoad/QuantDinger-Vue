@@ -4,10 +4,22 @@ import assert from 'node:assert/strict'
 import {
   formatDecimalDisplay,
   normalizeAccountSnapshotPositions,
-  requireCompleteSwapSnapshot
+  requireCompleteAccountSnapshot,
+  selectableSnapshotCredentials
 } from '../../src/utils/positionManager.js'
 
-test('账户快照只映射交易所合约仓位并保留关键字段', () => {
+test('仓位同步凭证不按交易所进行前端过滤', () => {
+  const credentials = selectableSnapshotCredentials([
+    { id: 1, exchange_id: 'binance' },
+    { id: 2, exchange_id: 'okx' },
+    { id: 3, exchange_id: 'custom-exchange' },
+    null
+  ])
+
+  assert.deepEqual(credentials.map(item => item.id), [1, 2, 3])
+})
+
+test('账户快照同时映射合约和现货仓位并标明市场类型', () => {
   const rows = normalizeAccountSnapshotPositions({
     swap_positions: [
       {
@@ -24,13 +36,21 @@ test('账户快照只映射交易所合约仓位并保留关键字段', () => {
         size: '0'
       }
     ],
-    spot_positions: [{ symbol: 'ETH/USDT', size: '1' }]
+    spot_positions: [{
+      symbol: 'ETH/USDT',
+      side: 'long',
+      size: '1.25',
+      entry_price: '2055.12',
+      market_type: 'spot',
+      inst_id: 'ETH-USDT'
+    }]
   })
 
   assert.deepEqual(rows, [
     {
-      key: 'KAITO/USDC:USDC:long',
+      key: 'swap:KAITO/USDC:USDC:long',
       symbol: 'KAITO/USDC:USDC',
+      marketType: 'swap',
       side: 'long',
       size: '422.5',
       sizeDisplay: '422.5',
@@ -40,6 +60,20 @@ test('账户快照只映射交易所合约仓位并保留关键字段', () => {
       markPriceDisplay: '0.3397',
       leverage: '5',
       leverageDisplay: '5x'
+    },
+    {
+      key: 'spot:ETH-USDT:long',
+      symbol: 'ETH/USDT',
+      marketType: 'spot',
+      side: 'long',
+      size: '1.25',
+      sizeDisplay: '1.25',
+      entryPrice: '2055.12',
+      entryPriceDisplay: '2,055.12',
+      markPrice: '',
+      markPriceDisplay: '--',
+      leverage: '',
+      leverageDisplay: '--'
     }
   ])
 })
@@ -82,8 +116,8 @@ test('科学计数法形式的非零数量不会被误删', () => {
   assert.equal(rows[0].sizeDisplay, '1e-8')
 })
 
-test('部分账户快照不能作为完整合约仓位同步结果', () => {
-  assert.throws(() => requireCompleteSwapSnapshot({
+test('部分账户快照不能作为完整仓位同步结果', () => {
+  assert.throws(() => requireCompleteAccountSnapshot({
     swap_positions: [],
     spot_positions: [{ symbol: 'USDC/USDT', size: 1 }],
     warnings: ['币安合约仓位读取失败'],

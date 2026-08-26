@@ -14,7 +14,7 @@
           :placeholder="$t('positionManager.credentialPlaceholder')"
           @change="syncPositions"
         >
-          <a-select-option v-for="credential in binanceCredentials" :key="credential.id" :value="credential.id">
+          <a-select-option v-for="credential in selectableCredentials" :key="credential.id" :value="credential.id">
             {{ credentialLabel(credential) }}
           </a-select-option>
         </a-select>
@@ -31,7 +31,7 @@
     </section>
 
     <a-alert
-      v-if="!binanceCredentials.length && !loadingCredentials"
+      v-if="!selectableCredentials.length && !loadingCredentials"
       type="warning"
       show-icon
       :message="$t('positionManager.credentialEmpty')"
@@ -44,14 +44,6 @@
       :message="errorMessage"
       class="pm-alert"
     />
-    <a-alert
-      type="info"
-      show-icon
-      :message="$t('positionManager.pendingTitle')"
-      :description="$t('positionManager.pendingDescription')"
-      class="pm-alert"
-    />
-
     <a-card :title="$t('positionManager.positionsTitle')" :loading="syncing" class="pm-card">
       <a-table
         :columns="columns"
@@ -61,6 +53,9 @@
         :locale="{ emptyText: $t('positionManager.positionsEmpty') }"
         :scroll="{ x: 820 }"
       >
+        <template slot="marketType" slot-scope="text">
+          <span>{{ marketTypeText(text) }}</span>
+        </template>
         <template slot="side" slot-scope="text">
           <a-tag :color="text === 'long' ? 'green' : 'red'">{{ sideText(text) }}</a-tag>
         </template>
@@ -77,7 +72,7 @@
 import { listExchangeCredentials } from '@/api/credentials'
 import { getAccountSnapshot } from '@/api/strategy'
 import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
-import { requireCompleteSwapSnapshot } from '@/utils/positionManager'
+import { requireCompleteAccountSnapshot, selectableSnapshotCredentials } from '@/utils/positionManager'
 
 function responseData (response) {
   return response && response.data && typeof response.data === 'object' ? response.data : {}
@@ -97,13 +92,13 @@ export default {
     }
   },
   computed: {
-    binanceCredentials () {
-      return this.credentials.filter(item =>
-        ['binance', 'binanceusdm', 'binancefutures'].includes(String(item.exchange_id || '').toLowerCase()))
+    selectableCredentials () {
+      return selectableSnapshotCredentials(this.credentials)
     },
     columns () {
       return [
         { title: this.$t('positionManager.symbol'), dataIndex: 'symbol' },
+        { title: this.$t('positionManager.marketType'), dataIndex: 'marketType', scopedSlots: { customRender: 'marketType' } },
         { title: this.$t('positionManager.side'), dataIndex: 'side', scopedSlots: { customRender: 'side' } },
         { title: this.$t('positionManager.quantity'), dataIndex: 'sizeDisplay', scopedSlots: { customRender: 'decimal' } },
         { title: this.$t('positionManager.entryPrice'), dataIndex: 'entryPriceDisplay', scopedSlots: { customRender: 'decimal' } },
@@ -124,6 +119,11 @@ export default {
       if (side === 'short') return this.$t('positionManager.short')
       return side || '--'
     },
+    marketTypeText (marketType) {
+      if (marketType === 'swap') return this.$t('positionManager.swap')
+      if (marketType === 'spot') return this.$t('positionManager.spot')
+      return marketType || '--'
+    },
     notifyError (error, fallback) {
       this.errorMessage = (error && (error.backendMessage || error.message)) || fallback
     },
@@ -133,8 +133,8 @@ export default {
         const response = await listExchangeCredentials()
         if (!response || response.code !== 1) throw new Error((response && response.msg) || this.$t('positionManager.credentialsFailed'))
         this.credentials = responseData(response).items || []
-        if (!this.selectedCredentialId && this.binanceCredentials.length) {
-          this.selectedCredentialId = this.binanceCredentials[0].id
+        if (!this.selectedCredentialId && this.selectableCredentials.length) {
+          this.selectedCredentialId = this.selectableCredentials[0].id
           await this.syncPositions()
         }
       } catch (error) {
@@ -152,12 +152,10 @@ export default {
         const response = await getAccountSnapshot({ credential_id: this.selectedCredentialId })
         if (!response || response.code !== 1) throw new Error((response && response.msg) || this.$t('positionManager.syncFailed'))
         const snapshot = responseData(response)
-        this.positions = requireCompleteSwapSnapshot(snapshot)
+        this.positions = requireCompleteAccountSnapshot(snapshot)
         this.fetchedAt = snapshot.fetched_at ? new Date(snapshot.fetched_at * 1000).toLocaleString() : ''
         this.$message.success(this.positions.length ? this.$t('positionManager.syncSuccess') : this.$t('positionManager.syncEmpty'))
       } catch (error) {
-        this.positions = []
-        this.fetchedAt = ''
         this.notifyError(error, this.$t('positionManager.syncFailed'))
       } finally {
         this.syncing = false

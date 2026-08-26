@@ -1,5 +1,10 @@
 const DECIMAL_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
 
+/** 账户快照能力以后端返回为准，前端不按交易所白名单过滤凭证。 */
+export function selectableSnapshotCredentials (credentials) {
+  return (Array.isArray(credentials) ? credentials : []).filter(item => item && typeof item === 'object')
+}
+
 function decimalString (value) {
   const candidate = String(value == null ? '' : value).trim()
   return DECIMAL_PATTERN.test(candidate) ? candidate : ''
@@ -36,21 +41,22 @@ export function formatDecimalDisplay (value) {
   return `${sign}${grouped}${parts.fraction ? `.${parts.fraction}` : ''}`
 }
 
-/** 将现有账户快照整理为持仓管理页需要的只读合约仓位。 */
-export function normalizeAccountSnapshotPositions (snapshot = {}) {
-  const rows = Array.isArray(snapshot.swap_positions) ? snapshot.swap_positions : []
+function normalizePositionRows (rows, fallbackMarketType) {
   return rows
     .filter(row => row && typeof row === 'object')
     .map(row => {
       const symbol = String(row.symbol || row.inst_id || '').trim()
+      const marketType = String(row.market_type || fallbackMarketType || '').trim().toLowerCase()
       const side = String(row.side || row.position_side || '').trim().toLowerCase()
       const size = decimalString(row.size != null ? row.size : row.contracts)
       const entryPrice = decimalString(row.entry_price)
       const markPrice = decimalString(row.mark_price)
       const leverage = decimalString(row.leverage)
+      const identity = String(row.inst_id || symbol).trim()
       return {
-        key: `${symbol}:${side}`,
+        key: `${marketType}:${identity}:${side}`,
         symbol,
+        marketType,
         side,
         size,
         sizeDisplay: formatDecimalDisplay(size),
@@ -65,8 +71,18 @@ export function normalizeAccountSnapshotPositions (snapshot = {}) {
     .filter(row => row.symbol && isNonZeroDecimal(row.size))
 }
 
-/** 接管入口只能使用完整快照；partial 结果不得伪装成零仓位成功。 */
-export function requireCompleteSwapSnapshot (snapshot = {}) {
+/** 将现有账户快照整理为持仓管理页需要的只读仓位。 */
+export function normalizeAccountSnapshotPositions (snapshot = {}) {
+  const swapRows = Array.isArray(snapshot.swap_positions) ? snapshot.swap_positions : []
+  const spotRows = Array.isArray(snapshot.spot_positions) ? snapshot.spot_positions : []
+  return [
+    ...normalizePositionRows(swapRows, 'swap'),
+    ...normalizePositionRows(spotRows, 'spot')
+  ]
+}
+
+/** partial 结果不得伪装成零仓位成功。 */
+export function requireCompleteAccountSnapshot (snapshot = {}) {
   const warnings = Array.isArray(snapshot.warnings) ? snapshot.warnings.filter(Boolean) : []
   if (snapshot.partial === true || snapshot.error) {
     throw new Error(warnings[0] || String(snapshot.error || '') || '交易所账户快照不完整')
