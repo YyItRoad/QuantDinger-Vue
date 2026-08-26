@@ -1,4 +1,4 @@
-const DECIMAL_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/
+const DECIMAL_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
 
 function decimalString (value) {
   const candidate = String(value == null ? '' : value).trim()
@@ -16,12 +16,19 @@ function decimalParts (value) {
 }
 
 function isNonZeroDecimal (value) {
+  const normalized = decimalString(value)
+  if (!normalized) return false
+  if (/[eE]/.test(normalized)) {
+    return /[1-9]/.test(normalized.split(/[eE]/)[0])
+  }
   const parts = decimalParts(value)
   return Boolean(parts && (parts.integer !== '0' || /[1-9]/.test(parts.fraction)))
 }
 
 /** Decimal 只作字符串展示，避免 JavaScript 浮点精度丢失。 */
 export function formatDecimalDisplay (value) {
+  const normalized = decimalString(value)
+  if (/[eE]/.test(normalized)) return normalized
   const parts = decimalParts(value)
   if (!parts) return '--'
   const grouped = parts.integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
@@ -56,4 +63,13 @@ export function normalizeAccountSnapshotPositions (snapshot = {}) {
       }
     })
     .filter(row => row.symbol && isNonZeroDecimal(row.size))
+}
+
+/** 接管入口只能使用完整快照；partial 结果不得伪装成零仓位成功。 */
+export function requireCompleteSwapSnapshot (snapshot = {}) {
+  const warnings = Array.isArray(snapshot.warnings) ? snapshot.warnings.filter(Boolean) : []
+  if (snapshot.partial === true || snapshot.error) {
+    throw new Error(warnings[0] || String(snapshot.error || '') || '交易所账户快照不完整')
+  }
+  return normalizeAccountSnapshotPositions(snapshot)
 }

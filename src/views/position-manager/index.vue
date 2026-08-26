@@ -10,6 +10,7 @@
           v-model="selectedCredentialId"
           class="pm-credential-select"
           :loading="loadingCredentials"
+          :disabled="syncing"
           :placeholder="$t('positionManager.credentialPlaceholder')"
           @change="syncPositions"
         >
@@ -44,13 +45,6 @@
       class="pm-alert"
     />
     <a-alert
-      v-else-if="warningMessage"
-      type="warning"
-      show-icon
-      :message="warningMessage"
-      class="pm-alert"
-    />
-    <a-alert
       type="info"
       show-icon
       :message="$t('positionManager.pendingTitle')"
@@ -82,8 +76,8 @@
 <script>
 import { listExchangeCredentials } from '@/api/credentials'
 import { getAccountSnapshot } from '@/api/strategy'
-import { formatExchangeCredentialLabel, isCryptoExchangeCredential } from '@/utils/exchangeCredential'
-import { normalizeAccountSnapshotPositions } from '@/utils/positionManager'
+import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
+import { requireCompleteSwapSnapshot } from '@/utils/positionManager'
 
 function responseData (response) {
   return response && response.data && typeof response.data === 'object' ? response.data : {}
@@ -99,13 +93,12 @@ export default {
       loadingCredentials: false,
       syncing: false,
       errorMessage: '',
-      warningMessage: '',
       fetchedAt: ''
     }
   },
   computed: {
     binanceCredentials () {
-      return this.credentials.filter(item => isCryptoExchangeCredential(item) &&
+      return this.credentials.filter(item =>
         ['binance', 'binanceusdm', 'binancefutures'].includes(String(item.exchange_id || '').toLowerCase()))
     },
     columns () {
@@ -138,7 +131,8 @@ export default {
       this.loadingCredentials = true
       try {
         const response = await listExchangeCredentials()
-        this.credentials = response && response.code === 1 ? (responseData(response).items || []) : []
+        if (!response || response.code !== 1) throw new Error((response && response.msg) || this.$t('positionManager.credentialsFailed'))
+        this.credentials = responseData(response).items || []
         if (!this.selectedCredentialId && this.binanceCredentials.length) {
           this.selectedCredentialId = this.binanceCredentials[0].id
           await this.syncPositions()
@@ -154,13 +148,11 @@ export default {
       if (!this.selectedCredentialId) return
       this.syncing = true
       this.errorMessage = ''
-      this.warningMessage = ''
       try {
         const response = await getAccountSnapshot({ credential_id: this.selectedCredentialId })
+        if (!response || response.code !== 1) throw new Error((response && response.msg) || this.$t('positionManager.syncFailed'))
         const snapshot = responseData(response)
-        if (snapshot.error && !snapshot.partial) throw new Error(snapshot.error)
-        this.positions = normalizeAccountSnapshotPositions(snapshot)
-        this.warningMessage = Array.isArray(snapshot.warnings) ? snapshot.warnings.filter(Boolean).join('；') : ''
+        this.positions = requireCompleteSwapSnapshot(snapshot)
         this.fetchedAt = snapshot.fetched_at ? new Date(snapshot.fetched_at * 1000).toLocaleString() : ''
         this.$message.success(this.positions.length ? this.$t('positionManager.syncSuccess') : this.$t('positionManager.syncEmpty'))
       } catch (error) {

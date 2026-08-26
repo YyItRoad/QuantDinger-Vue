@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 
 import {
   formatDecimalDisplay,
-  normalizeAccountSnapshotPositions
+  normalizeAccountSnapshotPositions,
+  requireCompleteSwapSnapshot
 } from '../../src/utils/positionManager.js'
 
 test('账户快照只映射交易所合约仓位并保留关键字段', () => {
@@ -62,4 +63,31 @@ test('异常或缺失字段使用安全展示值，不进行浮点精度转换',
   assert.equal(rows[0].markPriceDisplay, '--')
   assert.equal(rows[0].leverageDisplay, '--')
   assert.equal(formatDecimalDisplay('invalid'), '--')
+})
+
+test('科学计数法形式的非零数量不会被误删', () => {
+  const rows = normalizeAccountSnapshotPositions({
+    swap_positions: [{
+      symbol: 'BTC/USDT:USDT',
+      side: 'long',
+      size: 1e-8,
+      entry_price: 100000,
+      mark_price: 100001,
+      leverage: 2
+    }]
+  })
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].size, '1e-8')
+  assert.equal(rows[0].sizeDisplay, '1e-8')
+})
+
+test('部分账户快照不能作为完整合约仓位同步结果', () => {
+  assert.throws(() => requireCompleteSwapSnapshot({
+    swap_positions: [],
+    spot_positions: [{ symbol: 'USDC/USDT', size: 1 }],
+    warnings: ['币安合约仓位读取失败'],
+    partial: true,
+    error: ''
+  }), /币安合约仓位读取失败/)
 })
