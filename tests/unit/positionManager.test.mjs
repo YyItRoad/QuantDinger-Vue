@@ -2,12 +2,67 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildManagedStrategyInitialConfig,
+  buildManagedStrategyRequest,
   formatDecimalDisplay,
   mergeManagedPositionRows,
   normalizeAccountSnapshotPositions,
   requireCompleteAccountSnapshot,
   selectableSnapshotCredentials
 } from '../../src/utils/positionManager.js'
+
+test('持仓管理复用现有创建实盘表单并锁定当前凭证与杠杆', () => {
+  const position = normalizeAccountSnapshotPositions({
+    swap_positions: [{
+      symbol: 'KAITO/USDC:USDC',
+      side: 'long',
+      size: '422.5',
+      entry_price: '0.355',
+      mark_price: '0.3397',
+      leverage: '5',
+      inst_id: 'KAITOUSDC'
+    }]
+  })[0]
+
+  assert.deepEqual(buildManagedStrategyInitialConfig(position, 7), {
+    name: '[持仓] KAITO/USDC',
+    position_summary: 'KAITO/USDC · 多头 · 数量 422.5 · 开仓价 0.355 · 最新价 0.3397 · 杠杆 5x',
+    execution_mode: 'live',
+    credential_id: 7,
+    leverage_enabled: true,
+    leverage: 5,
+    lock_execution_mode: true,
+    lock_credential: true,
+    lock_leverage: true
+  })
+})
+
+test('持仓管理创建请求只补充当前仓位引用并保留标准策略表单参数', () => {
+  const position = {
+    symbol: 'KAITO/USDC:USDC',
+    side: 'long',
+    marketType: 'swap',
+    instId: 'KAITOUSDC',
+    key: 'swap:KAITOUSDC:long'
+  }
+  const payload = {
+    sourceId: 9,
+    name: '[持仓] KAITO/USDC',
+    initialCapital: 1000,
+    params: { atr_period: 14 }
+  }
+
+  assert.deepEqual(buildManagedStrategyRequest(position, 7, payload), {
+    position: {
+      credential_id: 7,
+      symbol: 'KAITO/USDC:USDC',
+      side: 'long',
+      market_type: 'swap',
+      inst_id: 'KAITOUSDC'
+    },
+    strategy: payload
+  })
+})
 
 test('交易所仓位只与现有策略仓位记录做只读匹配', () => {
   const positions = normalizeAccountSnapshotPositions({
@@ -99,6 +154,7 @@ test('账户快照同时映射合约和现货仓位并标明市场类型', () =>
   assert.deepEqual(rows, [
     {
       key: 'swap:KAITO/USDC:USDC:long',
+      instId: '',
       symbol: 'KAITO/USDC:USDC',
       marketType: 'swap',
       side: 'long',
@@ -113,6 +169,7 @@ test('账户快照同时映射合约和现货仓位并标明市场类型', () =>
     },
     {
       key: 'spot:ETH-USDT:long',
+      instId: 'ETH-USDT',
       symbol: 'ETH/USDT',
       marketType: 'spot',
       side: 'long',

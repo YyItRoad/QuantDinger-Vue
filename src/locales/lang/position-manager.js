@@ -1,7 +1,7 @@
 const locale = {
   'menu.dashboard.positionManager': '持仓管理',
   'positionManager.title': '持仓管理',
-  'positionManager.subtitle': '选择已有凭证，同步并查看账户快照接口返回的当前仓位。此页面不创建策略、不写入仓位，也不会下单。',
+  'positionManager.subtitle': '同步交易所当前仓位，并使用现有创建实盘流程为未管理仓位创建独立策略实例。',
   'positionManager.credentialPlaceholder': '请选择账户凭证',
   'positionManager.credentialEmpty': '暂无可用凭证，请先在账户中心添加并测试连接。',
   'positionManager.credentialsFailed': '加载账户凭证失败',
@@ -22,6 +22,8 @@ const locale = {
   'positionManager.leverage': '杠杆倍数',
   'positionManager.management': '管理策略',
   'positionManager.unmanaged': '未管理',
+  'positionManager.createManagement': '创建管理策略',
+  'positionManager.currentPosition': '当前接管仓位',
   'positionManager.managementConflict': '已有 {count} 个策略记录',
   'positionManager.managementFailed': '加载持仓策略归属失败',
   'positionManager.long': '多头',

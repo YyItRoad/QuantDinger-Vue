@@ -14,6 +14,14 @@
       <a-step :title="$t('trading-assistant.form.scriptStepSignalLive')" />
     </a-steps>
 
+    <a-alert
+      v-if="initialConfig.position_summary"
+      show-icon
+      type="info"
+      :message="$t('positionManager.currentPosition')"
+      :description="initialConfig.position_summary"
+      class="managed-position-summary" />
+
     <a-spin :spinning="loading">
       <section v-show="step === 0" class="editor-section">
         <a-alert
@@ -120,11 +128,11 @@
               </div>
             </a-form-item>
             <a-form-item :label="$t('strategyV2.leverageEnabled')">
-              <a-switch v-model="model.leverageEnabled" :disabled="!supportsStrategyV2Leverage" />
+              <a-switch v-model="model.leverageEnabled" :disabled="!supportsStrategyV2Leverage || lockLeverage" />
               <div v-if="!supportsStrategyV2Leverage" class="field-hint">{{ $t('strategyV2.leverageCryptoSwapOnly') }}</div>
             </a-form-item>
             <a-form-item v-if="model.leverageEnabled" :label="$t('strategyV2.leverageMultiplier')" required>
-              <a-input-number v-model="model.leverage" :min="1" :max="Number(strategyManifest.maxLeverage || 1)" :step="1" />
+              <a-input-number v-model="model.leverage" :disabled="lockLeverage" :min="1" :max="Number(strategyManifest.maxLeverage || 1)" :step="1" />
             </a-form-item>
             <div v-if="requiresDirectionMode" class="account-risk-panel">
               <div class="account-risk-panel__head">
@@ -160,7 +168,7 @@
       <section v-show="step === 2" class="editor-section">
         <a-form layout="vertical" class="editor-form">
           <a-form-item :label="$t('trading-assistant.form.executionMode')">
-            <a-radio-group v-model="model.executionMode" button-style="solid">
+            <a-radio-group v-model="model.executionMode" :disabled="lockExecutionMode" button-style="solid">
               <a-radio-button value="signal">{{ $t('trading-assistant.form.executionModeSignal') }}</a-radio-button>
               <a-radio-button value="live" :disabled="!supportsLive">{{ $t('trading-assistant.form.executionModeLive') }}</a-radio-button>
             </a-radio-group>
@@ -178,6 +186,7 @@
             <a-form-item :label="$t('trading-assistant.form.savedCredential')" required>
               <a-select
                 v-model="model.credentialId"
+                :disabled="lockCredential"
                 :loading="loadingCredentials"
                 :placeholder="$t('trading-assistant.placeholders.selectSavedCredential')">
                 <a-select-option v-for="credential in compatibleCredentials" :key="credential.id" :value="credential.id">
@@ -287,7 +296,8 @@ export default {
     visible: { type: Boolean, default: false },
     mode: { type: String, default: 'create' },
     strategyId: { type: Number, default: null },
-    initialConfig: { type: Object, default: () => ({}) }
+    initialConfig: { type: Object, default: () => ({}) },
+    createHandler: { type: Function, default: null }
   },
   data () {
     return {
@@ -314,6 +324,9 @@ export default {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
     },
     isEdit () { return this.mode === 'edit' },
+    lockExecutionMode () { return Boolean(this.initialConfig.lock_execution_mode) },
+    lockCredential () { return Boolean(this.initialConfig.lock_credential) },
+    lockLeverage () { return Boolean(this.initialConfig.lock_leverage) },
     modalTitle () {
       return this.$t(this.isEdit ? 'trading-assistant.editStrategy' : 'trading-assistant.createStrategy')
     },
@@ -444,13 +457,13 @@ export default {
       const config = this.initialConfig || {}
       return {
         scriptSourceId: config.sourceId ? String(config.sourceId) : '',
-        name: '',
+        name: String(config.name || ''),
         timeframe: '1d',
         initialCapital: Number(config.initial_capital) > 0 ? Number(config.initial_capital) : 1000,
         leverageEnabled: Boolean(config.leverage_enabled),
         leverage: Number(config.leverage) > 0 ? Number(config.leverage) : 1,
-        executionMode: 'signal',
-        credentialId: undefined,
+        executionMode: config.execution_mode === 'live' ? 'live' : 'signal',
+        credentialId: config.credential_id || undefined,
         directionMode: '',
         accountRisk: {
           max_gross_notional: 0,
@@ -543,7 +556,7 @@ export default {
         const manifest = this.parseObject(contractResult.response && contractResult.response.data && contractResult.response.data.manifest)
         this.compiledManifest = manifest
         this.sourceContractError = Boolean(contractResult.error) || !Object.keys(manifest).length
-        if (!this.model.name || (applyDefaults && !this.isEdit)) {
+        if (!this.model.name || (applyDefaults && !this.isEdit && !this.initialConfig.name)) {
           this.model.name = this.sourceDetail.name || this.sourceDetail.title || ''
         }
         if (applyDefaults && !this.isEdit) {
@@ -552,6 +565,7 @@ export default {
           this.model.leverageEnabled = false
           this.model.leverage = 1
           this.normalizeExecutionFields()
+          this.applyLockedPositionConfig()
         }
       } catch (error) {
         if (String(this.model.scriptSourceId) === sourceId) this.sourceContractError = true
@@ -598,6 +612,15 @@ export default {
         this.model.leverage = 1
       } else if (this.model.leverage < 1) {
         this.model.leverage = 1
+      }
+    },
+    applyLockedPositionConfig () {
+      const config = this.initialConfig || {}
+      if (this.lockExecutionMode) this.model.executionMode = 'live'
+      if (this.lockCredential) this.model.credentialId = config.credential_id || undefined
+      if (this.lockLeverage) {
+        this.model.leverage = Number(config.leverage) > 0 ? Number(config.leverage) : 1
+        this.model.leverageEnabled = Boolean(config.leverage_enabled)
       }
     },
     credentialLabel (credential) {
@@ -740,10 +763,12 @@ export default {
         }
         const res = this.isEdit
           ? await updateStrategy(this.strategyId, payload)
-          : await createStrategy(payload)
+          : this.createHandler
+            ? await this.createHandler(payload)
+            : await createStrategy(payload)
         if (!res || res.code !== 1) throw new Error((res && res.msg) || '')
         this.$message.success(this.$t(this.isEdit ? 'trading-assistant.messages.updateSuccess' : 'trading-assistant.messages.createSuccess'))
-        this.$emit('saved')
+        this.$emit('saved', res.data)
       } catch (error) {
         this.$message.error(error.backendMessage || error.message || this.$t(this.isEdit ? 'trading-assistant.messages.updateFailed' : 'trading-assistant.messages.createFailed'))
       } finally {
@@ -774,6 +799,7 @@ export default {
   .ant-modal-footer { padding: 14px 26px; border-top-color: #e8ebf0; }
   .ant-modal-footer .ant-btn { min-width: 86px; height: 36px; border-radius: 6px; }
   .editor-steps { margin: 2px 4px 24px; }
+  .managed-position-summary { margin-bottom: 18px; }
   .ant-steps-item-process .ant-steps-item-icon { border-color: var(--primary-color, #1890ff); background: var(--primary-color, #1890ff); }
   .ant-steps-item-finish .ant-steps-item-icon { border-color: var(--primary-color, #1890ff); }
   .ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon,

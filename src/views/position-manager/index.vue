@@ -73,22 +73,41 @@
           <span v-else-if="record.managementState === 'conflict'" class="pm-conflict">
             {{ $t('positionManager.managementConflict', { count: record.managingStrategies.length }) }}
           </span>
-          <span v-else class="pm-unmanaged">{{ $t('positionManager.unmanaged') }}</span>
+          <a-button v-else type="link" size="small" class="pm-strategy-link" @click="openManagedStrategyEditor(record)">
+            {{ $t('positionManager.createManagement') }}
+          </a-button>
         </template>
       </a-table>
       <div v-if="fetchedAt" class="pm-sync-time">
         {{ $t('positionManager.lastSynced') }}：{{ fetchedAt }}
       </div>
     </a-card>
+
+    <live-strategy-editor
+      v-if="managedEditorOpen"
+      :visible="managedEditorOpen"
+      mode="create"
+      :initial-config="managedEditorInitialConfig"
+      :create-handler="submitManagedStrategy"
+      @close="closeManagedStrategyEditor"
+      @saved="handleManagedStrategySaved"
+    />
   </div>
 </template>
 
 <script>
 import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
-import { getAccountSnapshot, getManagedAccountPositions } from '@/api/strategy'
+import { createManagedAccountStrategy, getAccountSnapshot, getManagedAccountPositions } from '@/api/strategy'
 import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
-import { mergeManagedPositionRows, requireCompleteAccountSnapshot, selectableSnapshotCredentials } from '@/utils/positionManager'
+import {
+  buildManagedStrategyInitialConfig,
+  buildManagedStrategyRequest,
+  mergeManagedPositionRows,
+  requireCompleteAccountSnapshot,
+  selectableSnapshotCredentials
+} from '@/utils/positionManager'
+import LiveStrategyEditor from '@/views/strategy-center/components/LiveStrategyEditor.vue'
 
 function responseData (response) {
   return response && response.data && typeof response.data === 'object' ? response.data : {}
@@ -96,6 +115,7 @@ function responseData (response) {
 
 export default {
   name: 'PositionManager',
+  components: { LiveStrategyEditor },
   data () {
     return {
       credentials: [],
@@ -104,7 +124,9 @@ export default {
       loadingCredentials: false,
       syncing: false,
       errorMessage: '',
-      fetchedAt: ''
+      fetchedAt: '',
+      managedEditorOpen: false,
+      managedEditorPosition: null
     }
   },
   computed: {
@@ -114,6 +136,10 @@ export default {
     },
     selectableCredentials () {
       return selectableSnapshotCredentials(this.credentials)
+    },
+    managedEditorInitialConfig () {
+      if (!this.managedEditorPosition || !this.selectedCredentialId) return {}
+      return buildManagedStrategyInitialConfig(this.managedEditorPosition, this.selectedCredentialId)
     },
     columns () {
       return [
@@ -151,6 +177,25 @@ export default {
     openStrategy (strategy) {
       if (!strategy || !strategy.id) return
       this.$router.push({ path: '/strategy-center', query: { strategyId: strategy.id } }).catch(() => {})
+    },
+    openManagedStrategyEditor (position) {
+      this.managedEditorPosition = position
+      this.managedEditorOpen = true
+    },
+    closeManagedStrategyEditor () {
+      this.managedEditorOpen = false
+      this.managedEditorPosition = null
+    },
+    submitManagedStrategy (strategyPayload) {
+      return createManagedAccountStrategy(buildManagedStrategyRequest(
+        this.managedEditorPosition,
+        this.selectedCredentialId,
+        strategyPayload
+      ))
+    },
+    async handleManagedStrategySaved () {
+      this.closeManagedStrategyEditor()
+      await this.syncPositions()
     },
     async loadCredentials () {
       this.loadingCredentials = true

@@ -55,6 +55,7 @@ function normalizePositionRows (rows, fallbackMarketType) {
       const identity = String(row.inst_id || symbol).trim()
       return {
         key: `${marketType}:${identity}:${side}`,
+        instId: String(row.inst_id || '').trim(),
         symbol,
         marketType,
         side,
@@ -69,6 +70,38 @@ function normalizePositionRows (rows, fallbackMarketType) {
       }
     })
     .filter(row => row.symbol && isNonZeroDecimal(row.size))
+}
+
+/** 用交易所当前仓位预填现有创建实盘表单。 */
+export function buildManagedStrategyInitialConfig (position, credentialId) {
+  const leverage = Number(decimalString(position && position.leverage) || 1)
+  const side = String(position && position.side) === 'short' ? '空头' : '多头'
+  const symbol = canonicalPositionSymbol(position && position.symbol)
+  return {
+    name: `[持仓] ${symbol}`,
+    position_summary: `${symbol} · ${side} · 数量 ${formatDecimalDisplay(position && position.size)} · 开仓价 ${formatDecimalDisplay(position && position.entryPrice)} · 最新价 ${formatDecimalDisplay(position && position.markPrice)} · 杠杆 ${formatDecimalDisplay(position && position.leverage)}x`,
+    execution_mode: 'live',
+    credential_id: Number(credentialId),
+    leverage_enabled: leverage > 1,
+    leverage,
+    lock_execution_mode: true,
+    lock_credential: true,
+    lock_leverage: true
+  }
+}
+
+/** 将标准策略表单参数与当前仓位引用组合为薄适配接口请求。 */
+export function buildManagedStrategyRequest (position, credentialId, strategyPayload) {
+  return {
+    position: {
+      credential_id: Number(credentialId),
+      symbol: String((position && position.symbol) || ''),
+      side: String((position && position.side) || ''),
+      market_type: String((position && position.marketType) || ''),
+      inst_id: String((position && position.instId) || '')
+    },
+    strategy: strategyPayload
+  }
 }
 
 function canonicalPositionSymbol (value) {
