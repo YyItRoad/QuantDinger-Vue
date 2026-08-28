@@ -44,6 +44,13 @@
       :message="errorMessage"
       class="pm-alert"
     />
+    <a-alert
+      v-if="warningMessage"
+      type="warning"
+      show-icon
+      :message="warningMessage"
+      class="pm-alert"
+    />
     <a-card :title="$t('positionManager.positionsTitle')" :loading="syncing" class="pm-card">
       <a-table
         :columns="columns"
@@ -124,6 +131,7 @@ export default {
       loadingCredentials: false,
       syncing: false,
       errorMessage: '',
+      warningMessage: '',
       fetchedAt: '',
       managedEditorOpen: false,
       managedEditorPosition: null
@@ -218,6 +226,7 @@ export default {
       if (!this.selectedCredentialId) return
       this.syncing = true
       this.errorMessage = ''
+      this.warningMessage = ''
       try {
         const params = { credential_id: this.selectedCredentialId }
         const [snapshotResponse, managedResponse] = await Promise.all([
@@ -232,6 +241,9 @@ export default {
         }
         const snapshot = responseData(snapshotResponse)
         const positions = requireCompleteAccountSnapshot(snapshot)
+        if (snapshot.partial === true) {
+          this.warningMessage = (Array.isArray(snapshot.warnings) ? snapshot.warnings : []).filter(Boolean).join('；')
+        }
         this.positions = mergeManagedPositionRows(positions, responseData(managedResponse).items || [])
         this.fetchedAt = snapshot.fetched_at ? new Date(snapshot.fetched_at * 1000).toLocaleString() : ''
         this.$message.success(this.positions.length ? this.$t('positionManager.syncSuccess') : this.$t('positionManager.syncEmpty'))

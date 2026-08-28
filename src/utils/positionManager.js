@@ -164,11 +164,12 @@ export function mergeManagedPositionRows (positions, managedRows) {
   })
 }
 
-/** partial 结果不得伪装成零仓位成功。 */
+/** 部分快照可展示成功的数据桶；完全没有可用仓位数据时仍然报错。 */
 export function requireCompleteAccountSnapshot (snapshot = {}) {
   const warnings = Array.isArray(snapshot.warnings) ? snapshot.warnings.filter(Boolean) : []
-  if (snapshot.partial === true || snapshot.error) {
+  const positions = normalizeAccountSnapshotPositions(snapshot)
+  if ((snapshot.partial === true || snapshot.error) && positions.length === 0) {
     throw new Error(warnings[0] || String(snapshot.error || '') || '交易所账户快照不完整')
   }
-  return normalizeAccountSnapshotPositions(snapshot)
+  return positions
 }

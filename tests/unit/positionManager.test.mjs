@@ -223,10 +223,23 @@ test('科学计数法形式的非零数量不会被误删', () => {
   assert.equal(rows[0].sizeDisplay, '1e-8')
 })
 
-test('部分账户快照不能作为完整仓位同步结果', () => {
+test('部分账户快照仍展示成功返回的市场仓位', () => {
+  const rows = requireCompleteAccountSnapshot({
+    swap_positions: [],
+    spot_positions: [{ symbol: 'USDC/USDT', side: 'long', size: 1 }],
+    warnings: ['币安合约仓位读取失败'],
+    partial: true,
+    error: ''
+  })
+
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].marketType, 'spot')
+})
+
+test('部分快照且没有可用仓位数据时仍然报错', () => {
   assert.throws(() => requireCompleteAccountSnapshot({
     swap_positions: [],
-    spot_positions: [{ symbol: 'USDC/USDT', size: 1 }],
+    spot_positions: [],
     warnings: ['币安合约仓位读取失败'],
     partial: true,
     error: ''
