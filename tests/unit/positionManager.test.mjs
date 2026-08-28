@@ -10,6 +10,13 @@ import {
   requireCompleteAccountSnapshot,
   selectableSnapshotCredentials
 } from '../../src/utils/positionManager.js'
+import positionManagerMessages from '../../src/locales/lang/position-manager.js'
+
+test('持仓管理中文界面使用中文，其他语言至少回退到英文', () => {
+  assert.equal(positionManagerMessages['zh-CN']['positionManager.title'], '持仓管理')
+  assert.equal(positionManagerMessages['en-US']['positionManager.title'], 'Position Management')
+  assert.equal(positionManagerMessages['de-DE']['positionManager.syncPositions'], 'Sync Positions')
+})
 
 test('持仓管理复用现有创建实盘表单并锁定当前凭证与杠杆', () => {
   const position = normalizeAccountSnapshotPositions({

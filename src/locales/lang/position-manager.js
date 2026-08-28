@@ -1,4 +1,4 @@
-const locale = {
+const zhCN = {
   'menu.dashboard.positionManager': '持仓管理',
   'positionManager.title': '持仓管理',
   'positionManager.subtitle': '同步交易所当前仓位，并使用现有创建实盘流程为未管理仓位创建独立策略实例。',
@@ -31,9 +31,42 @@ const locale = {
   'positionManager.lastSynced': '最近同步时间'
 }
 
+const enUS = {
+  'menu.dashboard.positionManager': 'Position Management',
+  'positionManager.title': 'Position Management',
+  'positionManager.subtitle': 'Sync current exchange positions and use the existing live-strategy workflow to create an independent strategy instance for an unmanaged position.',
+  'positionManager.credentialPlaceholder': 'Select account credentials',
+  'positionManager.credentialEmpty': 'No available credentials. Add and test a connection in Account Center first.',
+  'positionManager.credentialsFailed': 'Failed to load account credentials',
+  'positionManager.syncPositions': 'Sync Positions',
+  'positionManager.syncSuccess': 'Exchange positions synced',
+  'positionManager.syncEmpty': 'Sync completed. There are no current positions.',
+  'positionManager.syncFailed': 'Failed to sync exchange positions',
+  'positionManager.positionsTitle': 'Current Exchange Positions',
+  'positionManager.positionsEmpty': 'There are no current positions. Select credentials and sync.',
+  'positionManager.symbol': 'Symbol',
+  'positionManager.marketType': 'Market Type',
+  'positionManager.swap': 'Perpetual',
+  'positionManager.spot': 'Spot',
+  'positionManager.side': 'Side',
+  'positionManager.quantity': 'Position Size',
+  'positionManager.entryPrice': 'Entry Price',
+  'positionManager.markPrice': 'Mark Price',
+  'positionManager.leverage': 'Leverage',
+  'positionManager.management': 'Management Strategy',
+  'positionManager.unmanaged': 'Unmanaged',
+  'positionManager.createManagement': 'Create Management Strategy',
+  'positionManager.currentPosition': 'Position Being Adopted',
+  'positionManager.managementConflict': '{count} strategy records found',
+  'positionManager.managementFailed': 'Failed to load position strategy ownership',
+  'positionManager.long': 'Long',
+  'positionManager.short': 'Short',
+  'positionManager.lastSynced': 'Last synced'
+}
+
 const localeNames = ['ar-SA', 'de-DE', 'en-US', 'fr-FR', 'ja-JP', 'ko-KR', 'ru-RU', 'th-TH', 'vi-VN', 'zh-CN', 'zh-TW']
 
 export default localeNames.reduce((messages, localeName) => {
-  messages[localeName] = { ...locale }
+  messages[localeName] = { ...(localeName.startsWith('zh-') ? zhCN : enUS) }
   return messages
 }, {})
