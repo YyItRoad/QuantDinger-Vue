@@ -2,8 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  accountPositionSnapshotCacheKey,
   buildManagedStrategyInitialConfig,
   buildManagedStrategyRequest,
+  cacheableAccountPositionSnapshot,
   formatDecimalDisplay,
   mergeManagedPositionRows,
   normalizeAccountSnapshotPositions,
@@ -16,6 +18,29 @@ test('持仓管理中文界面使用中文，其他语言至少回退到英文',
   assert.equal(positionManagerMessages['zh-CN']['positionManager.title'], '持仓管理')
   assert.equal(positionManagerMessages['en-US']['positionManager.title'], 'Position Management')
   assert.equal(positionManagerMessages['de-DE']['positionManager.syncPositions'], 'Sync Positions')
+})
+
+test('交易所仓位缓存按用户和凭证隔离且不包含管理归属', () => {
+  assert.equal(accountPositionSnapshotCacheKey(3, 7), 'position-manager:account-snapshot:3:7')
+  assert.equal(accountPositionSnapshotCacheKey(4, 7), 'position-manager:account-snapshot:4:7')
+  assert.equal(accountPositionSnapshotCacheKey(3, 0), '')
+
+  assert.deepEqual(cacheableAccountPositionSnapshot({
+    swap_positions: [{ symbol: 'BTC/USDT', side: 'long', size: '1' }],
+    spot_positions: [],
+    managed_positions: [{ strategy_id: 12 }],
+    open_orders: [{ id: 'order-1' }],
+    warnings: ['现货读取失败'],
+    partial: true,
+    fetched_at: 123
+  }), {
+    swap_positions: [{ symbol: 'BTC/USDT', side: 'long', size: '1' }],
+    spot_positions: [],
+    partial: true,
+    error: '',
+    warnings: ['现货读取失败'],
+    fetched_at: 123
+  })
 })
 
 test('持仓管理复用现有创建实盘表单并锁定当前凭证与杠杆', () => {

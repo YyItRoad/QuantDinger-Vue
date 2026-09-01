@@ -106,6 +106,26 @@ export function buildManagedStrategyRequest (position, credentialId, strategyPay
   }
 }
 
+/** 交易所仓位快照按当前用户和凭证隔离，管理归属不进入该缓存。 */
+export function accountPositionSnapshotCacheKey (userId, credentialId) {
+  const uid = Number(userId)
+  const cid = Number(credentialId)
+  if (!Number.isInteger(uid) || uid <= 0 || !Number.isInteger(cid) || cid <= 0) return ''
+  return `position-manager:account-snapshot:${uid}:${cid}`
+}
+
+/** 只保留持仓管理页面需要的交易所字段，避免缓存订单等无关账户数据。 */
+export function cacheableAccountPositionSnapshot (snapshot = {}) {
+  return {
+    swap_positions: Array.isArray(snapshot.swap_positions) ? snapshot.swap_positions : [],
+    spot_positions: Array.isArray(snapshot.spot_positions) ? snapshot.spot_positions : [],
+    partial: snapshot.partial === true,
+    error: String(snapshot.error || ''),
+    warnings: Array.isArray(snapshot.warnings) ? snapshot.warnings.filter(Boolean) : [],
+    fetched_at: Number(snapshot.fetched_at || 0)
+  }
+}
+
 function canonicalPositionSymbol (value) {
   const raw = String(value || '').trim().toUpperCase().split(':')[0]
   if (!raw) return ''

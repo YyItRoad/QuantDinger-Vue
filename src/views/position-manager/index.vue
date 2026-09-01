@@ -12,7 +12,7 @@
           :loading="loadingCredentials"
           :disabled="syncing"
           :placeholder="$t('positionManager.credentialPlaceholder')"
-          @change="syncPositions"
+          @change="loadPositions"
         >
           <a-select-option v-for="credential in selectableCredentials" :key="credential.id" :value="credential.id">
             {{ credentialLabel(credential) }}
@@ -107,14 +107,19 @@ import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
 import { createManagedAccountStrategy, getAccountSnapshot, getManagedAccountPositions } from '@/api/strategy'
 import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
+import sessionCache from '@/utils/sessionCache'
 import {
+  accountPositionSnapshotCacheKey,
   buildManagedStrategyInitialConfig,
   buildManagedStrategyRequest,
+  cacheableAccountPositionSnapshot,
   mergeManagedPositionRows,
   requireCompleteAccountSnapshot,
   selectableSnapshotCredentials
 } from '@/utils/positionManager'
 import LiveStrategyEditor from '@/views/strategy-center/components/LiveStrategyEditor.vue'
+
+const POSITION_SNAPSHOT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
 function responseData (response) {
   return response && response.data && typeof response.data === 'object' ? response.data : {}
@@ -138,7 +143,10 @@ export default {
     }
   },
   computed: {
-    ...mapState({ navTheme: state => state.app.theme }),
+    ...mapState({
+      navTheme: state => state.app.theme,
+      currentUser: state => state.user.info
+    }),
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
     },
@@ -213,7 +221,7 @@ export default {
         this.credentials = responseData(response).items || []
         if (!this.selectedCredentialId && this.selectableCredentials.length) {
           this.selectedCredentialId = this.selectableCredentials[0].id
-          await this.syncPositions()
+          await this.loadPositions()
         }
       } catch (error) {
         this.credentials = []
@@ -222,31 +230,54 @@ export default {
         this.loadingCredentials = false
       }
     },
+    snapshotCacheKey () {
+      const user = this.currentUser || {}
+      return accountPositionSnapshotCacheKey(
+        user.id || user.userId,
+        this.selectedCredentialId
+      )
+    },
+    applyPositionData (snapshot, managedRows) {
+      const positions = requireCompleteAccountSnapshot(snapshot)
+      this.warningMessage = snapshot.partial === true
+        ? (Array.isArray(snapshot.warnings) ? snapshot.warnings : []).filter(Boolean).join('；')
+        : ''
+      this.positions = mergeManagedPositionRows(positions, managedRows)
+      this.fetchedAt = snapshot.fetched_at ? new Date(snapshot.fetched_at * 1000).toLocaleString() : ''
+    },
+    async loadPositions () {
+      return this.loadPositionData(false)
+    },
     async syncPositions () {
+      return this.loadPositionData(true)
+    },
+    async loadPositionData (forceExchange) {
       if (!this.selectedCredentialId) return
       this.syncing = true
       this.errorMessage = ''
       this.warningMessage = ''
       try {
         const params = { credential_id: this.selectedCredentialId }
-        const [snapshotResponse, managedResponse] = await Promise.all([
-          getAccountSnapshot(params),
-          getManagedAccountPositions(params)
-        ])
-        if (!snapshotResponse || snapshotResponse.code !== 1) {
-          throw new Error((snapshotResponse && snapshotResponse.msg) || this.$t('positionManager.syncFailed'))
-        }
+        const cacheKey = this.snapshotCacheKey()
+        let snapshot = !forceExchange && cacheKey ? sessionCache.read(cacheKey) : null
+        const requests = [getManagedAccountPositions(params)]
+        if (!snapshot) requests.push(getAccountSnapshot(params))
+        const [managedResponse, snapshotResponse] = await Promise.all(requests)
         if (!managedResponse || managedResponse.code !== 1) {
           throw new Error((managedResponse && managedResponse.msg) || this.$t('positionManager.managementFailed'))
         }
-        const snapshot = responseData(snapshotResponse)
-        const positions = requireCompleteAccountSnapshot(snapshot)
-        if (snapshot.partial === true) {
-          this.warningMessage = (Array.isArray(snapshot.warnings) ? snapshot.warnings : []).filter(Boolean).join('；')
+        if (!snapshot) {
+          if (!snapshotResponse || snapshotResponse.code !== 1) {
+            throw new Error((snapshotResponse && snapshotResponse.msg) || this.$t('positionManager.syncFailed'))
+          }
+          snapshot = cacheableAccountPositionSnapshot(responseData(snapshotResponse))
+          requireCompleteAccountSnapshot(snapshot)
+          if (cacheKey) sessionCache.write(cacheKey, snapshot, POSITION_SNAPSHOT_CACHE_TTL_MS)
         }
-        this.positions = mergeManagedPositionRows(positions, responseData(managedResponse).items || [])
-        this.fetchedAt = snapshot.fetched_at ? new Date(snapshot.fetched_at * 1000).toLocaleString() : ''
-        this.$message.success(this.positions.length ? this.$t('positionManager.syncSuccess') : this.$t('positionManager.syncEmpty'))
+        this.applyPositionData(snapshot, responseData(managedResponse).items || [])
+        if (forceExchange || snapshotResponse) {
+          this.$message.success(this.positions.length ? this.$t('positionManager.syncSuccess') : this.$t('positionManager.syncEmpty'))
+        }
       } catch (error) {
         this.notifyError(error, this.$t('positionManager.syncFailed'))
       } finally {
