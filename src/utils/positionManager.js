@@ -84,6 +84,8 @@ export function buildManagedStrategyInitialConfig (position, credentialId) {
     credential_id: Number(credentialId),
     leverage_enabled: leverage > 1,
     leverage,
+    allow_timeframe_override: true,
+    timeframe_options: ['15m', '1h', '4h', '1d'],
     lock_execution_mode: true,
     lock_credential: true,
     lock_leverage: true

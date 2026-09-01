@@ -76,7 +76,7 @@
                 <strong>{{ $t('trading-assistant.editor.paramsTab') }}</strong>
                 <span>{{ $t('trading-assistant.editor.codeParamsDesc') }}</span>
               </div>
-              <a-tag>{{ parameterDefinitions.length }}</a-tag>
+              <a-tag>{{ $t('strategyV2.backtest.paramCount', { count: parameterDefinitions.length }) }}</a-tag>
             </div>
             <div class="parameter-grid">
               <a-form-item v-for="param in parameterDefinitions" :key="param.name" :label="parameterLabel(param)">
@@ -126,6 +126,14 @@
                   notional: formattedNotionalCapacity
                 }) }}
               </div>
+            </a-form-item>
+            <a-form-item v-if="allowTimeframeOverride" :label="$t('positionManager.executionTimeframe')" required>
+              <a-select v-model="model.timeframe">
+                <a-select-option v-for="timeframe in timeframeOptions" :key="timeframe" :value="timeframe">
+                  {{ timeframe }}
+                </a-select-option>
+              </a-select>
+              <div class="field-hint">{{ $t('positionManager.executionTimeframeHint') }}</div>
             </a-form-item>
             <a-form-item :label="$t('strategyV2.leverageEnabled')">
               <a-switch v-model="model.leverageEnabled" :disabled="!supportsStrategyV2Leverage || lockLeverage" />
@@ -327,6 +335,11 @@ export default {
     lockExecutionMode () { return Boolean(this.initialConfig.lock_execution_mode) },
     lockCredential () { return Boolean(this.initialConfig.lock_credential) },
     lockLeverage () { return Boolean(this.initialConfig.lock_leverage) },
+    allowTimeframeOverride () { return Boolean(this.initialConfig.allow_timeframe_override) },
+    timeframeOptions () {
+      const configured = this.initialConfig.timeframe_options
+      return Array.isArray(configured) && configured.length ? configured : ['15m', '1h', '4h', '1d']
+    },
     modalTitle () {
       return this.$t(this.isEdit ? 'trading-assistant.editStrategy' : 'trading-assistant.createStrategy')
     },
@@ -458,7 +471,7 @@ export default {
       return {
         scriptSourceId: config.sourceId ? String(config.sourceId) : '',
         name: String(config.name || ''),
-        timeframe: '1d',
+        timeframe: String(config.timeframe || '1d'),
         initialCapital: Number(config.initial_capital) > 0 ? Number(config.initial_capital) : 1000,
         leverageEnabled: Boolean(config.leverage_enabled),
         leverage: Number(config.leverage) > 0 ? Number(config.leverage) : 1,
@@ -560,7 +573,9 @@ export default {
           this.model.name = this.sourceDetail.name || this.sourceDetail.title || ''
         }
         if (applyDefaults && !this.isEdit) {
-          this.model.timeframe = this.manifestFrequency
+          this.model.timeframe = this.allowTimeframeOverride && !this.timeframeOptions.includes(this.manifestFrequency)
+            ? '1h'
+            : this.manifestFrequency
           this.model.templateParams = this.buildParameterValues(this.sourceParameterValues)
           this.model.leverageEnabled = false
           this.model.leverage = 1
@@ -758,6 +773,7 @@ export default {
           positionSide: this.requiresDirectionMode ? directionModePositionSide(this.effectiveDirectionMode) : undefined,
           accountRisk: this.requiresDirectionMode ? { ...this.model.accountRisk } : undefined,
           params: { ...this.model.templateParams },
+          timeframe: this.allowTimeframeOverride ? this.model.timeframe : undefined,
           notificationChannels: [...this.model.notifyChannels],
           notificationTargets: notificationTargets(this.notificationSettings)
         }

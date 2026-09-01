@@ -38,6 +38,8 @@ test('持仓管理复用现有创建实盘表单并锁定当前凭证与杠杆',
     credential_id: 7,
     leverage_enabled: true,
     leverage: 5,
+    allow_timeframe_override: true,
+    timeframe_options: ['15m', '1h', '4h', '1d'],
     lock_execution_mode: true,
     lock_credential: true,
     lock_leverage: true
