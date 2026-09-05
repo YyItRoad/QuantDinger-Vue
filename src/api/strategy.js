@@ -8,6 +8,7 @@ const api = {
   positions: '/api/strategies/positions',
   accountPositions: '/api/account/positions',
   accountSnapshot: '/api/account/snapshot',
+  managedPositionSnapshot: '/api/account/position-snapshot',
   managedAccountPositions: '/api/account/managed-positions',
   managedAccountStrategies: '/api/account/managed-strategies',
   positionOwnership: '/api/strategies/position-ownership',
@@ -136,6 +137,14 @@ export function getAccountPositions (params = {}) {
 export function getAccountSnapshot (params = {}) {
   return request({
     url: api.accountSnapshot,
+    method: 'get',
+    params
+  })
+}
+
+export function getManagedPositionSnapshot (params = {}) {
+  return request({
+    url: api.managedPositionSnapshot,
     method: 'get',
     params
   })

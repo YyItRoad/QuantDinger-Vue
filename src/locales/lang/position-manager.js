@@ -1,6 +1,6 @@
 const zhCN = {
-  'menu.dashboard.positionManager': '持仓管理',
-  'positionManager.title': '持仓管理',
+  'menu.dashboard.positionManager': '持仓',
+  'positionManager.title': '持仓',
   'positionManager.subtitle': '同步交易所当前仓位，并使用现有创建实盘流程为未管理仓位创建独立策略实例。',
   'positionManager.credentialPlaceholder': '请选择账户凭证',
   'positionManager.credentialEmpty': '暂无可用凭证，请先在账户中心添加并测试连接。',
@@ -34,8 +34,8 @@ const zhCN = {
 }
 
 const enUS = {
-  'menu.dashboard.positionManager': 'Position Management',
-  'positionManager.title': 'Position Management',
+  'menu.dashboard.positionManager': 'Positions',
+  'positionManager.title': 'Positions',
   'positionManager.subtitle': 'Sync current exchange positions and use the existing live-strategy workflow to create an independent strategy instance for an unmanaged position.',
   'positionManager.credentialPlaceholder': 'Select account credentials',
   'positionManager.credentialEmpty': 'No available credentials. Add and test a connection in Account Center first.',

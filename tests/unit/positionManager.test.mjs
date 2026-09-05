@@ -14,9 +14,9 @@ import {
 } from '../../src/utils/positionManager.js'
 import positionManagerMessages from '../../src/locales/lang/position-manager.js'
 
-test('持仓管理中文界面使用中文，其他语言至少回退到英文', () => {
-  assert.equal(positionManagerMessages['zh-CN']['positionManager.title'], '持仓管理')
-  assert.equal(positionManagerMessages['en-US']['positionManager.title'], 'Position Management')
+test('持仓页面使用简短菜单名称，其他语言至少回退到英文', () => {
+  assert.equal(positionManagerMessages['zh-CN']['positionManager.title'], '持仓')
+  assert.equal(positionManagerMessages['en-US']['positionManager.title'], 'Positions')
   assert.equal(positionManagerMessages['de-DE']['positionManager.syncPositions'], 'Sync Positions')
 })
 

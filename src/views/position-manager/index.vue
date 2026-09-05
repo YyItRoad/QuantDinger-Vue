@@ -105,7 +105,7 @@
 <script>
 import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
-import { createManagedAccountStrategy, getAccountSnapshot, getManagedAccountPositions } from '@/api/strategy'
+import { createManagedAccountStrategy, getManagedAccountPositions, getManagedPositionSnapshot } from '@/api/strategy'
 import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
 import sessionCache from '@/utils/sessionCache'
 import {
@@ -261,7 +261,7 @@ export default {
         const cacheKey = this.snapshotCacheKey()
         let snapshot = !forceExchange && cacheKey ? sessionCache.read(cacheKey) : null
         const requests = [getManagedAccountPositions(params)]
-        if (!snapshot) requests.push(getAccountSnapshot(params))
+        if (!snapshot) requests.push(getManagedPositionSnapshot(params))
         const [managedResponse, snapshotResponse] = await Promise.all(requests)
         if (!managedResponse || managedResponse.code !== 1) {
           throw new Error((managedResponse && managedResponse.msg) || this.$t('positionManager.managementFailed'))

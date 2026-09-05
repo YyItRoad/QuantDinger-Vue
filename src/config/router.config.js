@@ -39,6 +39,7 @@ export const asyncRouterMap = [
         path: '/indicator-community',
         name: 'IndicatorCommunity',
         component: () => import('@/views/indicator-community'),
+        hidden: true,
         meta: { title: 'menu.dashboard.community', keepAlive: false, icon: 'shop', permission: ['dashboard'] }
       },
       // Strategy IDE.
