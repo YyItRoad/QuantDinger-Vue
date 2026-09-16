@@ -11,6 +11,7 @@ const api = {
   managedPositionSnapshot: '/api/account/position-snapshot',
   managedAccountPositions: '/api/account/managed-positions',
   managedAccountStrategies: '/api/account/managed-strategies',
+  positionManagementTradeHistory: '/api/position-management/trade-history',
   positionOwnership: '/api/strategies/position-ownership',
   positionOwnershipRepair: '/api/strategies/position-ownership/repair',
   equityCurve: '/api/strategies/equityCurve',
@@ -113,6 +114,14 @@ export function getStrategyTrades (id, lang) {
   if (lang) params.lang = lang
   return request({
     url: api.trades,
+    method: 'get',
+    params
+  })
+}
+
+export function getPositionManagementTradeHistory (params = {}) {
+  return request({
+    url: api.positionManagementTradeHistory,
     method: 'get',
     params
   })

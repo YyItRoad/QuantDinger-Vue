@@ -195,3 +195,21 @@ export function requireCompleteAccountSnapshot (snapshot = {}) {
   }
   return positions
 }
+
+/** 将历史数值压缩为列表可读格式，详情仍保留接口原值。 */
+export function formatTradeHistoryNumber (value, maximumFractionDigits = 8) {
+  if (value === null || value === undefined || value === '') return '--'
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '--'
+  return number.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits
+  })
+}
+
+/** 后端明确返回 UTC ISO 时间，页面按浏览器当前时区显示。 */
+export function formatTradeHistoryTime (value) {
+  if (!value) return '--'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '--' : date.toLocaleString()
+}

@@ -10,7 +10,9 @@ import {
   mergeManagedPositionRows,
   normalizeAccountSnapshotPositions,
   requireCompleteAccountSnapshot,
-  selectableSnapshotCredentials
+  selectableSnapshotCredentials,
+  formatTradeHistoryNumber,
+  formatTradeHistoryTime
 } from '../../src/utils/positionManager.js'
 import positionManagerMessages from '../../src/locales/lang/position-manager.js'
 
@@ -156,6 +158,14 @@ test('仓位同步凭证不按交易所进行前端过滤', () => {
   ])
 
   assert.deepEqual(credentials.map(item => item.id), [1, 2, 3])
+})
+
+test('交易历史格式化函数处理数值、空值和 UTC 时间', () => {
+  assert.equal(formatTradeHistoryNumber('31.444336', 2), '31.44')
+  assert.equal(formatTradeHistoryNumber(null), '--')
+  assert.equal(formatTradeHistoryNumber('invalid'), '--')
+  assert.notEqual(formatTradeHistoryTime('2026-09-05T20:00:26Z'), '--')
+  assert.equal(formatTradeHistoryTime('invalid'), '--')
 })
 
 test('账户快照同时映射合约和现货仓位并标明市场类型', () => {
