@@ -79,3 +79,10 @@ test('正式数据库模式允许新增且不标成演示数据', async () => {
   assert.equal(page.dataReady, true)
   assert.equal(page.dataMode, 'database')
 })
+
+test('真实分析的全部五维状态都有中文映射', () => {
+  const page = component()
+  const states = 'STRONG_UP UP TURNING_UP SIDEWAYS TURNING_DOWN DOWN STRONG_DOWN NEUTRAL RANGE BREAKOUT BREAKDOWN RETEST PULLBACK REBOUND CONTINUATION REVERSAL FAILED_BREAKOUT FAILED_BREAKDOWN UNCLEAR BEAR_ALIGNED BEAR_CONVERGING BOTTOMING BULL_TRANSITION BULL_ALIGNED BULL_CONVERGING BEAR_TRANSITION MIXED LOW MID HIGH'.split(' ')
+  for (const state of states) assert.match(page.stateLabel(state), /[\u4e00-\u9fff]/u, state)
+  assert.equal(page.stateLabel('FUTURE_STATE'), 'FUTURE_STATE')
+})
