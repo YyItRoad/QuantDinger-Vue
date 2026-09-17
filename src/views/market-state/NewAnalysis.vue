@@ -48,7 +48,7 @@
           <a-select-option value="1h">1 小时</a-select-option><a-select-option value="4h">4 小时</a-select-option><a-select-option value="1d">日线</a-select-option>
         </a-select>
       </a-form-item>
-      <p class="analysis-note">按所选周期持续分析新收盘的 K 线。当前为演示模式，保存后不会执行真实分析。</p>
+      <p class="analysis-note">{{ demo ? '当前为演示模式，保存后不会执行真实分析。' : '任务将保存到数据库；分析执行功能尚未接入，暂不会自动产生结果。' }}</p>
     </a-form>
   </a-modal>
 </template>
@@ -60,7 +60,7 @@ import { loadEnabledMarketOptions, firstMarketValue } from '@/utils/marketModule
 import { createAnalysisTask } from '@/api/market-state'
 
 export default {
-  props: { visible: Boolean },
+  props: { visible: Boolean, demo: Boolean },
   data () {
     return {
       markets: [],
@@ -134,7 +134,7 @@ export default {
           ...this.form, symbol: this.selected.symbol, instrument_id: this.selected.instrument_id || ''
         })
         if (response.code !== 1) throw new Error(response.msg || '保存失败')
-        this.$message.success('分析任务已保存（演示）')
+        this.$message.success(this.demo ? '分析任务已保存（演示）' : '分析任务已保存')
         this.$emit('saved')
       } catch (error) {
         this.$message.error(error.backendMessage || error.message || '保存失败')

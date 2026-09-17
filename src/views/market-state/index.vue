@@ -1,7 +1,7 @@
 <template>
   <div class="analysis-page">
-    <section class="analysis-header"><h1><a-icon type="line-chart" /> 分析</h1><a-button type="primary" :disabled="!demoReady" @click="creating = true"><a-icon type="plus" /> 新增分析</a-button></section>
-    <a-alert v-if="demoReady" class="analysis-alert" type="info" show-icon message="演示数据，仅用于界面验证，不会执行真实分析。" />
+    <section class="analysis-header"><h1><a-icon type="line-chart" /> 分析</h1><a-button type="primary" :disabled="!dataReady" @click="creating = true"><a-icon type="plus" /> 新增分析</a-button></section>
+    <a-alert v-if="dataReady" class="analysis-alert" type="info" show-icon :message="dataMode === 'demo' ? '演示数据，仅用于界面验证，不会执行真实分析。' : '任务与记录已接入数据库；分析执行功能尚未接入。'" />
     <a-alert v-if="error" class="analysis-alert" type="error" show-icon :message="error">
       <a-button slot="description" size="small" @click="load">重试</a-button>
     </a-alert>
@@ -68,7 +68,7 @@
         </template>
       </a-spin>
     </a-drawer>
-    <new-analysis v-if="creating" visible @close="creating = false" @saved="createdTask" />
+    <new-analysis v-if="creating" visible :demo="dataMode === 'demo'" @close="creating = false" @saved="createdTask" />
   </div>
 </template>
 
@@ -87,7 +87,8 @@ export default {
       lists: { records: listState(), tasks: listState() },
       loading: false,
       error: '',
-      demoReady: false,
+      dataReady: false,
+      dataMode: '',
       creating: false,
       busyIds: [],
       listSequence: 0,
@@ -140,12 +141,13 @@ export default {
         if (sequence !== this.listSequence) return
         if (response.code !== 1) throw new Error(response.msg || '加载失败')
         Object.assign(state, { items: response.data.items, symbols: response.data.symbols, total: response.data.total, page: response.data.page })
-        this.demoReady = response.mode === 'demo'
+        this.dataMode = response.mode
+        this.dataReady = ['demo', 'database'].includes(response.mode)
       } catch (error) {
         if (sequence !== this.listSequence) return
         state.items = []
         state.total = 0
-        this.demoReady = false
+        this.dataReady = false
         this.error = this.message(error)
       } finally {
         if (sequence === this.listSequence) this.loading = false

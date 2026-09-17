@@ -47,7 +47,7 @@ test('失败清除旧列表并展示错误，不能创建任务', async () => {
   page.current.items = [{ id: 1 }]
   await page.load()
   assert.equal(page.current.items.length, 0)
-  assert.equal(page.demoReady, false)
+  assert.equal(page.dataReady, false)
   assert.equal(page.error, '演示模式未开启')
 })
 
@@ -71,4 +71,11 @@ test('新增成功跳转任务页并清除旧筛选', () => {
   assert.equal(page.tab, 'tasks')
   assert.equal(page.current.symbol, '')
   assert.equal(page.creating, false)
+})
+
+test('正式数据库模式允许新增且不标成演示数据', async () => {
+  const page = component({ listAnalysisRecords: async () => ({ ...response('BTC/USDT'), mode: 'database' }) })
+  await page.load()
+  assert.equal(page.dataReady, true)
+  assert.equal(page.dataMode, 'database')
 })
