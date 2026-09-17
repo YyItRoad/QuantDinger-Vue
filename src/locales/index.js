@@ -11,6 +11,7 @@ import strategyLiveRiskMessages from './lang/strategy-live-risk'
 import robotBuilderMessages from './lang/robot-builder-overrides'
 import strategyTradeRecordMessages from './lang/strategy-trade-records'
 import positionManagerMessages from './lang/position-manager'
+import marketStateMessages from './lang/market-state'
 import generatedLocaleOverrides from './generated-locale-overrides'
 
 Vue.use(VueI18n)
@@ -28,6 +29,7 @@ const messages = {
     ...(robotBuilderMessages[defaultLang] || {}),
     ...(strategyTradeRecordMessages[defaultLang] || {}),
     ...(positionManagerMessages[defaultLang] || {}),
+    ...marketStateMessages(defaultLang),
     ...(generatedLocaleOverrides[defaultLang] || {})
   }
 }
@@ -104,6 +106,7 @@ function mergeLocaleOverrides (lang) {
     ...(robotBuilderMessages[lang] || {}),
     ...(strategyTradeRecordMessages[lang] || {}),
     ...(positionManagerMessages[lang] || {}),
+    ...marketStateMessages(lang),
     ...(generatedLocaleOverrides[lang] || {})
   }
   i18n.setLocaleMessage(lang, {
@@ -133,6 +136,7 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(robotBuilderMessages[lang] || {}),
       ...(strategyTradeRecordMessages[lang] || {}),
       ...(positionManagerMessages[lang] || {}),
+      ...marketStateMessages(lang),
       ...(generatedLocaleOverrides[lang] || {})
     })
     i18n.setLocaleMessage(lang, locale)

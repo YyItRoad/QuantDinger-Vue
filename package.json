@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:market-state": "node --test tests/unit/marketState.test.mjs",
     "dev": "vite",
     "serve": "vite",
     "build": "vite build",

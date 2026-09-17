@@ -34,6 +34,12 @@ export const asyncRouterMap = [
         component: () => import('@/views/position-manager'),
         meta: { title: 'menu.dashboard.positionManager', keepAlive: true, icon: 'safety', permission: ['dashboard'] }
       },
+      {
+        path: '/market-state',
+        name: 'MarketState',
+        component: () => import('@/views/market-state'),
+        meta: { title: 'menu.dashboard.marketState', keepAlive: false, icon: 'line-chart', permission: ['dashboard'] }
+      },
       // Indicator marketplace.
       {
         path: '/indicator-community',
