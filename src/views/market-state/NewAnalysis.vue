@@ -48,7 +48,7 @@
           <a-select-option value="1h">1 小时</a-select-option><a-select-option value="4h">4 小时</a-select-option><a-select-option value="1d">日线</a-select-option>
         </a-select>
       </a-form-item>
-      <p class="analysis-note">{{ demo ? '当前为演示模式，保存后不会执行真实分析。' : '任务将保存到数据库；分析执行功能尚未接入，暂不会自动产生结果。' }}</p>
+      <p class="analysis-note">{{ demo ? '当前为演示模式，保存后不会执行真实分析。' : '任务将保存到数据库；数字货币任务在后台开启调度后按周期执行。' }}</p>
     </a-form>
   </a-modal>
 </template>

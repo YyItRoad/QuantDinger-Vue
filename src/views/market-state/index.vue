@@ -1,7 +1,7 @@
 <template>
   <div class="analysis-page">
     <section class="analysis-header"><h1><a-icon type="line-chart" /> 分析</h1><a-button type="primary" :disabled="!dataReady" @click="creating = true"><a-icon type="plus" /> 新增分析</a-button></section>
-    <a-alert v-if="dataReady" class="analysis-alert" type="info" show-icon :message="dataMode === 'demo' ? '演示数据，仅用于界面验证，不会执行真实分析。' : '任务与记录已接入数据库；分析执行功能尚未接入。'" />
+    <a-alert v-if="dataReady" class="analysis-alert" type="info" show-icon :message="dataMode === 'demo' ? '演示数据，仅用于界面验证，不会执行真实分析。' : '周期分析需后台开启调度；当前仅支持数字货币，其他市场暂不自动执行。'" />
     <a-alert v-if="error" class="analysis-alert" type="error" show-icon :message="error">
       <a-button slot="description" size="small" @click="load">重试</a-button>
     </a-alert>
