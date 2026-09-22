@@ -40,10 +40,11 @@ FROM ${NGINX_IMAGE}
 
 RUN apk add --no-cache curl
 
-# Pin the envsubst filter so only ${BACKEND_URL} is substituted — otherwise
+# Pin the envsubst filter so only service endpoint variables are substituted — otherwise
 # nginx's own $-variables ($host, $remote_addr, ...) would also be clobbered.
-ENV NGINX_ENVSUBST_FILTER=BACKEND_URL \
-    BACKEND_URL=http://backend:5000
+ENV NGINX_ENVSUBST_FILTER="BACKEND_URL|MCP_URL" \
+    BACKEND_URL=http://backend:5000 \
+    MCP_URL=http://quantdinger-mcp:7800
 
 COPY deploy/nginx-docker.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html

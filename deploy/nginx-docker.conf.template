@@ -7,6 +7,7 @@ server {
     # Re-resolve Docker service names after upstream containers are recreated.
     resolver 127.0.0.11 valid=10s ipv6=off;
     set $backend_upstream ${BACKEND_URL};
+    set $mcp_upstream ${MCP_URL};
 
     # Security headers
     add_header Content-Security-Policy "frame-ancestors 'self';" always;
@@ -29,8 +30,8 @@ server {
     }
 
     # API proxy to backend. ${BACKEND_URL} is substituted at container start by
-    # the official nginx image's envsubst step (NGINX_ENVSUBST_FILTER pins it
-    # to BACKEND_URL so $host/$remote_addr/etc. below stay literal).
+    # the official nginx image's envsubst step (NGINX_ENVSUBST_FILTER limits
+    # substitution to service endpoint variables so Nginx variables stay literal).
     # docker-compose default: http://backend:5000
     # Railway: set BACKEND_URL=http://${{Backend.RAILWAY_PRIVATE_DOMAIN}}:5000
     location /api/ {
@@ -48,6 +49,26 @@ server {
         proxy_send_timeout 600s;  # 10 minutes for sending response
         # Allow large file uploads (e.g. indicator import)
         client_max_body_size 10m;
+    }
+
+    # QuantDinger MCP streamable HTTP endpoint and its OAuth protected-resource
+    # metadata. The MCP container is reachable only through the shared Docker
+    # network; public TLS terminates before the frontend container.
+    location ~ ^/(mcp|\.well-known/oauth-protected-resource)$ {
+        proxy_pass $mcp_upstream$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        add_header X-Accel-Buffering "no" always;
     }
 
     # SPA routing support (all routes fall back to index.html)

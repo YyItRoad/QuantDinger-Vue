@@ -8,8 +8,9 @@ FROM ${NGINX_IMAGE}
 
 RUN apk add --no-cache curl
 
-ENV NGINX_ENVSUBST_FILTER=BACKEND_URL \
-    BACKEND_URL=http://backend:5000
+ENV NGINX_ENVSUBST_FILTER="BACKEND_URL|MCP_URL" \
+    BACKEND_URL=http://backend:5000 \
+    MCP_URL=http://quantdinger-mcp:7800
 
 COPY deploy/nginx-docker.conf.template /etc/nginx/templates/default.conf.template
 COPY dist /usr/share/nginx/html
