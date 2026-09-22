@@ -1,0 +1,115 @@
+// 基础组件和品牌色沿用公共样式；页面留白与持仓页一致。
+// 弹层挂载于 body，因此所有补丁都限定本模块类名，不修改全局组件。
+.analysis-page,
+.analysis-detail,
+.analysis-create,
+.analysis-confirm {
+  --analysis-text: #18202c;
+  --analysis-heading: #1f2933;
+  --analysis-secondary: #667085;
+  --analysis-page-bg: #f6f7f9;
+  --analysis-surface: #fff;
+  --analysis-label-bg: #fafafa;
+  --analysis-border: #e8e8e8;
+  color: var(--analysis-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+body.dark,
+body.realdark {
+  .analysis-page,
+  .analysis-detail,
+  .analysis-create,
+  .analysis-confirm {
+    --analysis-text: rgba(255, 255, 255, 0.85);
+    --analysis-heading: rgba(255, 255, 255, 0.9);
+    --analysis-secondary: #8b949e;
+    --analysis-page-bg: #0f0f10;
+    --analysis-surface: #1c1c1c;
+    --analysis-label-bg: #141414;
+    --analysis-border: #2a2a2a;
+  }
+  // 沿用持仓/策略页的红绿语义；暗色下去掉 Ant Design 默认浅色标签底。
+  .analysis-page,
+  .analysis-detail {
+    .ant-tag { background: transparent; border-color: currentColor; }
+    .ant-tag-green { color: #73d13d; }
+    .ant-tag-red { color: #ff7875; }
+    .ant-tag-blue { color: #69c0ff; }
+    .ant-tag-cyan { color: #5cdbd3; }
+    .ant-tag-orange { color: #ffc069; }
+  }
+  .analysis-create,
+  .analysis-confirm {
+    .ant-btn:not(.ant-btn-primary) {
+      background: var(--analysis-surface);
+      border-color: var(--analysis-border);
+      color: var(--analysis-text);
+    }
+  }
+}
+.analysis-page,
+.analysis-create,
+.analysis-confirm {
+  .ant-btn-primary[disabled] {
+    background: var(--analysis-label-bg) !important;
+    border-color: var(--analysis-border) !important;
+    color: var(--analysis-secondary) !important;
+    opacity: 0.6;
+  }
+}
+.analysis-page {
+  min-height: calc(100vh - 64px);
+  padding: 18px 20px 24px;
+  background: var(--analysis-page-bg);
+}
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  h1 { margin: 0; color: var(--analysis-heading); font-size: 24px; }
+}
+.analysis-alert { margin-bottom: 16px; }
+.analysis-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  .ant-select { width: 180px; }
+}
+.analysis-page,
+.analysis-detail {
+  .analysis-secondary { color: var(--analysis-secondary); font-size: 12px; margin-top: 5px; }
+  .ant-btn-link { padding: 0; }
+  .ant-btn-link + .ant-btn-link { margin-left: 16px; }
+}
+.analysis-detail {
+  .ant-drawer-content,
+  .ant-drawer-header { background: var(--analysis-surface); border-color: var(--analysis-border); }
+  .ant-drawer-title,
+  .ant-drawer-close,
+  h2,
+  h3 { color: var(--analysis-heading); }
+  .ant-drawer-body { color: var(--analysis-text); }
+  .ant-descriptions-bordered {
+    .ant-descriptions-view,
+    .ant-descriptions-row,
+    .ant-descriptions-item-label,
+    .ant-descriptions-item-content { border-color: var(--analysis-border); }
+    .ant-descriptions-item-label { background: var(--analysis-label-bg); color: var(--analysis-secondary); }
+    .ant-descriptions-item-content { color: var(--analysis-text); }
+  }
+  .analysis-section { margin-top: 24px; }
+  ul { list-style: disc; padding-left: 20px; }
+}
+.analysis-create .analysis-note { color: var(--analysis-secondary); margin-bottom: 0; }
+.analysis-confirm {
+  .ant-popover-inner { background: var(--analysis-surface); }
+  .ant-popover-message { color: var(--analysis-text); }
+  .ant-popover-arrow { border-color: var(--analysis-surface); }
+}
+@media (max-width: 600px) {
+  .analysis-page { padding: 16px 12px; }
+  .analysis-filters .ant-select { width: 50%; }
+}

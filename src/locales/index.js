@@ -14,6 +14,7 @@ import billingPaymentMessages from './billing-payment-overrides'
 import adminOrderMessages from './admin-order-overrides'
 import strategyTradeRecordMessages from './lang/strategy-trade-records'
 import positionManagerMessages from './lang/position-manager'
+import marketStateMessages from './lang/market-state'
 import aiDecisionFilterMessages from './ai-decision-filter-overrides'
 import generatedLocaleOverrides from './generated-locale-overrides'
 import uxOverrides from './ux-overrides'
@@ -41,7 +42,8 @@ const messages = {
     ...(billingPaymentMessages[defaultLang] || {}),
     ...(adminOrderMessages[defaultLang] || {}),
     ...(strategyTradeRecordMessages[defaultLang] || {}),
-...(positionManagerMessages[defaultLang] || {}),
+    ...(positionManagerMessages[defaultLang] || {}),
+    ...marketStateMessages(defaultLang),
     ...(aiDecisionFilterMessages[defaultLang] || {}),
     ...(uxOverrides[defaultLang] || {}),
     ...(copilotCallsiteOverrides[defaultLang] || {}),
@@ -128,7 +130,8 @@ function mergeLocaleOverrides (lang) {
     ...(billingPaymentMessages[lang] || {}),
     ...(adminOrderMessages[lang] || {}),
     ...(strategyTradeRecordMessages[lang] || {}),
-...(positionManagerMessages[lang] || {}),
+    ...(positionManagerMessages[lang] || {}),
+    ...marketStateMessages(lang),
     ...(aiDecisionFilterMessages[lang] || {}),
     ...(uxOverrides[lang] || {}),
     ...(copilotCallsiteOverrides[lang] || {}),
@@ -169,7 +172,8 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(billingPaymentMessages[lang] || {}),
       ...(adminOrderMessages[lang] || {}),
       ...(strategyTradeRecordMessages[lang] || {}),
-...(positionManagerMessages[lang] || {}),
+      ...(positionManagerMessages[lang] || {}),
+      ...marketStateMessages(lang),
       ...(aiDecisionFilterMessages[lang] || {}),
       ...(uxOverrides[lang] || {}),
       ...(copilotCallsiteOverrides[lang] || {}),
