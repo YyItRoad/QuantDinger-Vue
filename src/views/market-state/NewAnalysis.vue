@@ -1,6 +1,7 @@
 <template>
   <a-modal
     title="新增分析"
+    width="560px"
     wrap-class-name="analysis-create"
     centered
     :body-style="{ maxHeight: '60vh', overflowY: 'auto' }"
@@ -28,27 +29,35 @@
         </a-form-item></a-col>
       </a-row>
       <a-form-item label="品种">
-        <a-select
-          :value="selectedKey"
-          show-search
-          :filter-option="false"
+        <a-input-search
+          v-model="keyword"
           :loading="searching"
           :disabled="saving"
           placeholder="输入代码搜索并选择品种"
-          :not-found-content="searching ? '搜索中…' : '暂无结果'"
-          @search="search"
-          @change="selectSymbol"
-        >
-          <a-select-option v-for="(item, index) in symbols" :key="String(index)" :value="String(index)">{{ item.symbol }} {{ item.name || '' }}</a-select-option>
-        </a-select>
-        <div v-if="searchError" role="alert">{{ searchError }}</div>
+          size="large"
+          allow-clear
+          @search="search(keyword, true)"
+          @change="search(keyword)"
+        />
+        <a-spin :spinning="searching">
+          <a-list v-if="symbols.length" size="small" :data-source="symbols" class="analysis-symbol-list">
+            <a-list-item slot="renderItem" slot-scope="item">
+              <a-button block :type="selected === item ? 'primary' : 'default'" :disabled="saving" @click="selected = item">
+                <strong>{{ item.symbol }}</strong><span v-if="item.name"> · {{ item.name }}</span>
+                <a-icon v-if="selected === item" type="check-circle" />
+              </a-button>
+            </a-list-item>
+          </a-list>
+          <p v-else-if="searched && !searching && !searchError" class="analysis-note">未找到品种，请检查交易所、品种类型或行情目录是否已同步。</p>
+        </a-spin>
+        <a-alert v-if="searchError" :message="searchError" type="error" show-icon />
       </a-form-item>
       <a-form-item label="分析周期">
         <a-select v-model="form.timeframe" :disabled="saving">
           <a-select-option value="1h">1 小时</a-select-option><a-select-option value="4h">4 小时</a-select-option><a-select-option value="1d">日线</a-select-option>
         </a-select>
       </a-form-item>
-      <p class="analysis-note">{{ demo ? '当前为演示模式，保存后不会执行真实分析。' : '任务将保存到数据库；数字货币任务在后台开启调度后按周期执行。' }}</p>
+      <p class="analysis-note">任务将保存到数据库；数字货币任务在后台开启调度后按周期执行。</p>
     </a-form>
   </a-modal>
 </template>
@@ -60,14 +69,15 @@ import { loadEnabledMarketOptions, firstMarketValue } from '@/utils/marketModule
 import { createAnalysisTask } from '@/api/market-state'
 
 export default {
-  props: { visible: Boolean, demo: Boolean },
+  props: { visible: Boolean },
   data () {
     return {
       markets: [],
       exchanges: CRYPTO_EXCHANGE_IDS,
       symbols: [],
       selected: null,
-      selectedKey: undefined,
+      keyword: '',
+      searched: false,
       searching: false,
       searchError: '',
       saving: false,
@@ -84,6 +94,12 @@ export default {
     clearTimeout(this.searchTimer)
     this.searchSequence++
   },
+  watch: {
+    visible () {
+      this.keyword = ''
+      this.resetSymbol()
+    }
+  },
   methods: {
     marketLabel (market) {
       const text = this.$t(market.i18nKey)
@@ -94,12 +110,19 @@ export default {
       this.searchSequence++
       this.symbols = []
       this.selected = null
-      this.selectedKey = undefined
+      this.searched = false
       this.searching = false
       this.searchError = ''
+      if (this.keyword.trim()) this.search(this.keyword)
     },
-    search (keyword) {
-      this.resetSymbol()
+    search (keyword, immediate = false) {
+      clearTimeout(this.searchTimer)
+      this.searchSequence++
+      this.symbols = []
+      this.selected = null
+      this.searched = false
+      this.searchError = ''
+      this.searching = false
       if (!keyword.trim()) return
       const sequence = this.searchSequence
       this.searching = true
@@ -115,16 +138,13 @@ export default {
           if (sequence !== this.searchSequence) return
           if (response.code !== 1) throw new Error(response.msg || '品种搜索失败')
           this.symbols = (Array.isArray(response.data) ? response.data : []).filter(item => item.symbol)
+          this.searched = true
         } catch (error) {
           if (sequence === this.searchSequence) this.searchError = error.backendMessage || error.message || '品种搜索失败'
         } finally {
           if (sequence === this.searchSequence) this.searching = false
         }
-      }, 300)
-    },
-    selectSymbol (key) {
-      this.selectedKey = key
-      this.selected = this.symbols[Number(key)]
+      }, immediate ? 0 : 400)
     },
     async submit () {
       if (!this.selected || this.saving) return
@@ -134,7 +154,7 @@ export default {
           ...this.form, symbol: this.selected.symbol, instrument_id: this.selected.instrument_id || ''
         })
         if (response.code !== 1) throw new Error(response.msg || '保存失败')
-        this.$message.success(this.demo ? '分析任务已保存（演示）' : '分析任务已保存')
+        this.$message.success('分析任务已保存')
         this.$emit('saved')
       } catch (error) {
         this.$message.error(error.backendMessage || error.message || '保存失败')

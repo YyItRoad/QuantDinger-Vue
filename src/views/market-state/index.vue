@@ -1,7 +1,7 @@
 <template>
   <div class="analysis-page">
     <section class="analysis-header"><h1><a-icon type="line-chart" /> 分析</h1><a-button type="primary" :disabled="!dataReady" @click="creating = true"><a-icon type="plus" /> 新增分析</a-button></section>
-    <a-alert v-if="dataReady" class="analysis-alert" type="info" show-icon :message="dataMode === 'demo' ? '演示数据，仅用于界面验证，不会执行真实分析。' : '周期分析需后台开启调度；当前仅支持数字货币，其他市场暂不自动执行。'" />
+    <a-alert v-if="dataReady" class="analysis-alert" type="info" show-icon message="周期分析需后台开启调度；当前仅支持数字货币，其他市场暂不自动执行。" />
     <a-alert v-if="error" class="analysis-alert" type="error" show-icon :message="error">
       <a-button slot="description" size="small" @click="load">重试</a-button>
     </a-alert>
@@ -35,6 +35,9 @@
         <template slot="action" slot-scope="text, row">
           <a-button v-if="tab === 'records'" type="link" size="small" @click="openDetail(row.id)">查看详情</a-button>
           <template v-else>
+            <a-popconfirm overlay-class-name="analysis-confirm" title="立即分析一次？将调用 AI，不改变周期任务启停状态；已有本周期结果则直接复用。" :disabled="busyIds.includes(row.id) || row.market !== 'Crypto'" @confirm="runOnce(row)">
+              <a-button type="link" size="small" :loading="runningIds.includes(row.id)" :disabled="busyIds.includes(row.id) || row.market !== 'Crypto'">立即分析</a-button>
+            </a-popconfirm>
             <a-button type="link" size="small" :disabled="busyIds.includes(row.id)" @click="toggle(row)">{{ row.enabled ? '停止' : '启动' }}</a-button>
             <a-popconfirm overlay-class-name="analysis-confirm" title="删除此分析任务？已有分析记录将保留。" :disabled="busyIds.includes(row.id)" @confirm="remove(row)">
               <a-button type="link" size="small" :disabled="busyIds.includes(row.id)">删除</a-button>
@@ -68,14 +71,14 @@
         </template>
       </a-spin>
     </a-drawer>
-    <new-analysis v-if="creating" visible :demo="dataMode === 'demo'" @close="creating = false" @saved="createdTask" />
+    <new-analysis v-if="creating" visible @close="creating = false" @saved="createdTask" />
   </div>
 </template>
 
 <script>
 import NewAnalysis from './NewAnalysis.vue'
 import './style.less'
-import { listAnalysisRecords, listAnalysisTasks, getAnalysisRecord, setAnalysisTaskEnabled, deleteAnalysisTask } from '@/api/market-state'
+import { listAnalysisRecords, listAnalysisTasks, getAnalysisRecord, setAnalysisTaskEnabled, deleteAnalysisTask, runAnalysisTask } from '@/api/market-state'
 
 const listState = () => ({ items: [], symbols: [], symbol: '', timeframe: '', page: 1, pageSize: 10, total: 0 })
 export default {
@@ -88,9 +91,9 @@ export default {
       loading: false,
       error: '',
       dataReady: false,
-      dataMode: '',
       creating: false,
       busyIds: [],
+      runningIds: [],
       listSequence: 0,
       detailVisible: false,
       detail: null,
@@ -114,7 +117,7 @@ export default {
           { title: '完成时间', dataIndex: 'created_at', scopedSlots: { customRender: 'date' }, width: 180 }
         )
       }
-      return [...base, { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 140 }]
+      return [...base, { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: this.tab === 'tasks' ? 240 : 140 }]
     },
     pagination () {
       return { current: this.current.page, pageSize: this.current.pageSize, total: this.current.total, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'], hideOnSinglePage: false, showTotal: total => '共 ' + total + ' 条' }
@@ -123,6 +126,26 @@ export default {
   created () { this.load() },
   beforeDestroy () { this.listSequence++; this.detailSequence++ },
   methods: {
+    async runOnce (row) {
+      if (this.busyIds.includes(row.id) || row.market !== 'Crypto') return
+      this.busyIds.push(row.id)
+      this.runningIds.push(row.id)
+      try {
+        const response = await runAnalysisTask(row.id)
+        if (response.code !== 1) throw new Error(response.msg || '分析失败')
+        this.$message.success('分析任务已提交，完成后会出现在分析记录中')
+        this.tab = 'records'
+        this.lists.records.symbol = row.symbol
+        this.lists.records.timeframe = row.timeframe
+        this.lists.records.page = 1
+        await this.load()
+      } catch (error) {
+        this.$message.error(this.message(error))
+      } finally {
+        this.busyIds = this.busyIds.filter(id => id !== row.id)
+        this.runningIds = this.runningIds.filter(id => id !== row.id)
+      }
+    },
     timeframeLabel (value) { return { '1h': '1 小时', '4h': '4 小时', '1d': '日线' }[value] || value },
     phaseLabel (value) { return { BASE: '底部', TRANSITION_UP: '向上过渡', ADVANCE: '上涨', TOP: '顶部', TRANSITION_DOWN: '向下过渡', DECLINE: '下跌' }[value] || value },
     phaseColor (value) { return { ADVANCE: 'green', DECLINE: 'red', TRANSITION_UP: 'cyan', TRANSITION_DOWN: 'orange' }[value] || 'blue' },
@@ -174,8 +197,7 @@ HIGH: '高位'
         if (sequence !== this.listSequence) return
         if (response.code !== 1) throw new Error(response.msg || '加载失败')
         Object.assign(state, { items: response.data.items, symbols: response.data.symbols, total: response.data.total, page: response.data.page })
-        this.dataMode = response.mode
-        this.dataReady = ['demo', 'database'].includes(response.mode)
+        this.dataReady = true
       } catch (error) {
         if (sequence !== this.listSequence) return
         state.items = []
