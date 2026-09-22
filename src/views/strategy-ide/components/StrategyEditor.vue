@@ -3,7 +3,13 @@
     <div v-if="$slots.toolbar" class="editor-top-toolbar">
       <slot name="toolbar"></slot>
     </div>
-    <div class="editor-layout">
+    <div
+      class="editor-layout"
+      :class="{
+        'editor-layout--split': isSplitSideMode,
+        'editor-layout--split-no-params': isSplitSideMode && !hasStrategyConfiguration
+      }"
+    >
       <div class="code-col">
         <div class="code-section">
           <div class="section-header">
@@ -19,6 +25,14 @@
               </a-tag>
             </div>
             <div class="section-actions">
+              <span
+                v-if="lastVerificationState"
+                class="verification-status"
+                :class="`verification-status--${lastVerificationState}`"
+              >
+                <a-icon :type="lastVerificationState === 'passed' ? 'check-circle' : 'exclamation-circle'" />
+                {{ lastVerificationState === 'passed' ? $t('trading-assistant.editor.verifySuccess') : $t('trading-assistant.editor.verifyFailed') }}
+              </span>
               <a-button
                 type="link"
                 size="small"
@@ -30,6 +44,15 @@
                 <a-icon type="check-circle" />
                 {{ $t('trading-assistant.editor.verify') }}
               </a-button>
+              <a
+                class="developer-guide-link"
+                href="https://www.quantdinger.com/doc/trading/STRATEGY_DEV_GUIDE.html"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <a-icon type="book" />
+                {{ $t('dashboard.indicator.editor.guide') }}
+              </a>
             </div>
           </div>
           <div v-if="hiddenSource" class="code-hidden-mask">
@@ -39,21 +62,120 @@
           </div>
           <div v-else ref="editorContainer" class="code-editor-container"></div>
         </div>
+        <div v-if="!isSplitSideMode && $slots['ai-workspace']" class="strategy-ai-workspace-host">
+          <slot name="ai-workspace"></slot>
+        </div>
       </div>
 
-      <div class="side-col">
+      <div v-if="!isSplitSideMode || hasStrategyConfiguration" class="side-col">
         <div v-if="isSplitSideMode" class="side-tabs side-tabs--split">
           <div class="split-param-pane">
             <div class="params-panel">
-              <div class="panel-intro">
-                <div class="panel-intro__title">
-                  {{ activeParamTemplateTitle }}
+              <div v-if="hasRuntimeControls && assetType === 'script'" class="runtime-setup">
+                <div class="runtime-setup__head">
+                  <div class="runtime-setup__copy">
+                    <strong>{{ $t('strategyBuilder.setupTitle') }}</strong>
+                    <span>{{ $t('strategyBuilder.setupDescription') }}</span>
+                  </div>
+                  <span v-if="runtimeCapabilities.hasInstrument" class="runtime-market-badge">
+                    <a-icon type="global" /> {{ runtimeMarketLabel }}
+                  </span>
                 </div>
-                <div class="panel-intro__desc">
-                  {{ activeParamTemplateDesc }}
+                <div class="runtime-setup__grid">
+                  <label v-if="runtimeCapabilities.hasInstrument" class="runtime-field runtime-field--wide">
+                    <span class="runtime-field__label">
+                      <span>{{ $t('strategyBuilder.symbol') }}</span>
+                      <small v-if="runtimeWatchlistCount">
+                        <a-icon type="star" theme="filled" />
+                        {{ $t('universeManager.tabs.watchlist') }} {{ runtimeWatchlistCount }}
+                      </small>
+                    </span>
+                    <a-select
+                      show-search
+                      :filter-option="false"
+                      :value="runtimeSymbolValue"
+                      :loading="runtimeSymbolLoading"
+                      :placeholder="$t('strategyBuilder.symbolPlaceholder')"
+                      @search="$emit('runtime-symbol-search', $event)"
+                      @change="$emit('runtime-symbol-change', $event)"
+                      @dropdownVisibleChange="handleRuntimeSymbolDropdown"
+                    >
+                      <a-select-option v-for="option in runtimeSymbolOptions" :key="option.value" :value="option.value">
+                        <span class="runtime-symbol-option">
+                          <a-icon v-if="option.is_watchlist" type="star" theme="filled" />
+                          <span>{{ option.label }}</span>
+                        </span>
+                      </a-select-option>
+                    </a-select>
+                  </label>
+                  <label v-if="runtimeCapabilities.hasExchange" class="runtime-field runtime-field--wide">
+                    <span>{{ $t('strategyBuilder.exchange') }}</span>
+                    <a-select :value="runtimeConfig.exchange_id" @change="emitRuntimeChange('exchange_id', $event)">
+                      <a-select-option v-for="option in runtimeExchangeOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                      </a-select-option>
+                    </a-select>
+                  </label>
+                  <label
+                    v-if="runtimeCapabilities.hasProduct"
+                    class="runtime-field runtime-field--wide"
+                  >
+                    <span>{{ $t('strategyBuilder.product') }}</span>
+                    <a-radio-group class="runtime-product-switch" :value="runtimeConfig.market_type" button-style="solid" @change="emitRuntimeChange('market_type', $event.target.value)">
+                      <a-radio-button value="spot">{{ $t('strategyBuilder.spot') }}</a-radio-button>
+                      <a-radio-button value="swap">{{ $t('strategyBuilder.swap') }}</a-radio-button>
+                    </a-radio-group>
+                  </label>
+                  <label v-if="runtimeCapabilities.hasTimeframe" class="runtime-field" :class="{ 'runtime-field--wide': !runtimeCapabilities.hasDirection }">
+                    <span>{{ $t('strategyBuilder.timeframe') }}</span>
+                    <a-select :value="runtimeConfig.timeframe" @change="emitRuntimeChange('timeframe', $event)">
+                      <a-select-option v-for="timeframe in runtimeTimeframes" :key="timeframe" :value="timeframe">{{ timeframe }}</a-select-option>
+                    </a-select>
+                  </label>
+                  <label v-if="runtimeCapabilities.hasDirection" class="runtime-field">
+                    <span>{{ $t('strategyBuilder.direction') }}</span>
+                    <a-select :value="runtimeConfig.trade_direction" @change="emitRuntimeChange('trade_direction', $event)">
+                      <a-select-option value="long">{{ $t('strategyBuilder.long') }}</a-select-option>
+                      <a-select-option value="short">{{ $t('strategyBuilder.short') }}</a-select-option>
+                      <a-select-option value="both">{{ $t('strategyBuilder.both') }}</a-select-option>
+                    </a-select>
+                  </label>
+                </div>
+                <div v-if="runtimeCapabilities.hasProduct && runtimeConfig.market_category === 'Crypto' && runtimeConfig.market_type === 'spot'" class="runtime-setup__hint">
+                  <a-icon type="info-circle" /> {{ $t('strategyBuilder.spotLongOnly') }}
                 </div>
               </div>
-              <template v-if="activeParamTemplate">
+              <div v-if="hasStrategyCode && activeParamTemplate" class="params-toolbar">
+                <div class="params-toolbar__summary">
+                  <div class="panel-intro__title">
+                    {{ activeParamTemplateTitle }}
+                    <a-tag v-if="activeParamTemplate" color="green" class="params-count-tag">
+                      {{ (activeParamTemplate.params || []).length }} {{ $t('trading-assistant.editor.paramsTab') }}
+                    </a-tag>
+                  </div>
+                  <div class="panel-intro__desc">
+                    {{ activeParamTemplateDesc }}
+                  </div>
+                </div>
+                <div v-if="activeParamTemplate" class="params-actions">
+                  <a-button size="small" @click="resetTemplateParams">
+                    {{ $t('trading-assistant.editor.resetTemplateParams') }}
+                  </a-button>
+                  <a-button
+                    v-if="!hiddenSource"
+                    size="small"
+                    type="primary"
+                    @click="applySelectedTemplateToCode"
+                    :disabled="!templateDirty || readonly"
+                  >
+                    {{ $t('trading-assistant.editor.applyTemplateParams') }}
+                  </a-button>
+                  <a-tag v-else color="blue" class="params-live-tag">
+                    {{ $t('trading-assistant.editor.hiddenParamsLive') }}
+                  </a-tag>
+                </div>
+              </div>
+              <template v-if="hasStrategyCode && activeParamTemplate">
                 <div class="param-list">
                   <div v-for="param in activeParamTemplate.params" :key="param.name" class="param-item">
                     <div class="param-item__label-row">
@@ -93,7 +215,7 @@
                         v-for="option in (param.options || [])"
                         :key="option.value"
                         :value="option.value">
-                        {{ getOptionLabel(option) }}
+                        {{ getOptionLabel(param, option) }}
                       </a-select-option>
                     </a-select>
                     <div v-else-if="param.type === 'boolean'" class="param-item__switch">
@@ -110,26 +232,10 @@
                     />
                   </div>
                 </div>
-                <div class="params-actions">
-                  <a-button @click="resetTemplateParams">
-                    {{ $t('trading-assistant.editor.resetTemplateParams') }}
-                  </a-button>
-                  <a-button
-                    v-if="!hiddenSource"
-                    type="primary"
-                    @click="applySelectedTemplateToCode"
-                    :disabled="!templateDirty || readonly"
-                  >
-                    {{ $t('trading-assistant.editor.applyTemplateParams') }}
-                  </a-button>
-                  <a-tag v-else color="blue" class="params-live-tag">
-                    {{ $t('trading-assistant.editor.hiddenParamsLive') }}
-                  </a-tag>
-                </div>
               </template>
-            </div>
-            <div v-if="!activeParamTemplate" class="params-empty-guide">
-              <a-empty :description="$t('trading-assistant.editor.paramsEmpty')" />
+              <div v-else-if="!hasRuntimeControls" class="params-empty-guide">
+                <a-empty :description="$t('trading-assistant.editor.paramsEmpty')" />
+              </div>
             </div>
           </div>
         </div>
@@ -242,7 +348,7 @@
                         v-for="option in (param.options || [])"
                         :key="option.value"
                         :value="option.value">
-                        {{ getOptionLabel(option) }}
+                        {{ getOptionLabel(param, option) }}
                       </a-select-option>
                     </a-select>
                     <div v-else-if="param.type === 'boolean'" class="param-item__switch">
@@ -283,6 +389,12 @@
           </a-tab-pane>
 
         </a-tabs>
+      </div>
+      <div
+        v-if="isSplitSideMode && $slots['ai-workspace']"
+        class="strategy-ai-workspace-host strategy-ai-workspace-host--primary"
+      >
+        <slot name="ai-workspace"></slot>
       </div>
     </div>
     <a-modal
@@ -371,9 +483,16 @@ import {
   buildTemplateCode,
   buildTemplateParamValues,
   extractScriptParamsFromCode,
-  buildScriptCodeWithParamValues
+  buildScriptCodeWithParamValues,
+  applyStrategyRuntimeConfigToCode
 } from './scriptTemplateCatalog'
 import { getScriptTemplateList } from '@/api/strategy'
+import {
+  strategyParameterDescription,
+  strategyParameterLabel,
+  strategyParameterOptionLabel
+} from '@/utils/strategyParameterPresentation'
+import { ratioPercentInputFormatter, ratioPercentInputParser } from '@/utils/numberFormat'
 
 export default {
   name: 'StrategyEditor',
@@ -393,11 +512,18 @@ export default {
     hiddenDescription: { type: String, default: '' },
     readonly: { type: Boolean, default: false },
     consumeCopilotDraft: { type: Boolean, default: true },
-    sideMode: { type: String, default: 'tabs' }
+    sideMode: { type: String, default: 'tabs' },
+    runtimeConfig: { type: Object, default: () => ({}) },
+    runtimeExchangeOptions: { type: Array, default: () => [] },
+    runtimeSymbolOptions: { type: Array, default: () => [] },
+    runtimeSymbolLoading: { type: Boolean, default: false },
+    runtimeWatchlistCount: { type: Number, default: 0 },
+    runtimeCapabilities: { type: Object, default: () => ({}) }
   },
   data () {
     return {
       activeTab: 'templates',
+      lastVerificationState: '',
       showTemplatePicker: false,
       verifying: false,
       editor: null,
@@ -407,6 +533,7 @@ export default {
       inferredParamTemplate: null,
       templateParamValues: {},
       templateDirty: false,
+      runtimeTimeframes: ['1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W'],
       refreshTimer: null,
       refreshTimers: []
     }
@@ -414,6 +541,34 @@ export default {
   computed: {
     isSplitSideMode () {
       return this.sideMode === 'split'
+    },
+    hasStrategyCode () {
+      return this.hiddenSource || !!String(this.value || '').trim()
+    },
+    hasRuntimeControls () {
+      return this.hasStrategyCode && !!this.runtimeCapabilities.hasControls
+    },
+    hasStrategyConfiguration () {
+      return this.hasRuntimeControls || !!this.activeParamTemplate
+    },
+    runtimeSymbolValue () {
+      const market = String(this.runtimeConfig.market_category || '')
+      const symbol = String(this.runtimeConfig.symbol || '').toUpperCase()
+      const marketType = String(this.runtimeConfig.market_type || '')
+      const exchangeId = String(this.runtimeConfig.exchange_id || '')
+      const exact = this.runtimeSymbolOptions.find(option => (
+        String(option.market || '') === market &&
+        String(option.symbol || '').toUpperCase() === symbol &&
+        (!marketType || !option.market_type || String(option.market_type) === marketType) &&
+        (!this.runtimeCapabilities.hasExchange || !option.exchange_id || String(option.exchange_id) === exchangeId)
+      ))
+      return exact ? exact.value : symbol
+    },
+    runtimeMarketLabel () {
+      const market = String(this.runtimeConfig.market_category || '')
+      const key = `dashboard.analysis.market.${market}`
+      const translated = this.$t(key)
+      return translated === key ? market : translated
     },
     visibleTemplates () {
       const expected = this.assetType === 'portfolio_strategy' ? 'portfolio_strategy' : 'script'
@@ -481,6 +636,7 @@ export default {
   },
   watch: {
     value (newVal) {
+      this.lastVerificationState = ''
       if (this.hiddenSource) return
       if (this.editor && this.editor.getValue() !== newVal) {
         this.editor.setValue(newVal || '')
@@ -611,7 +767,7 @@ export default {
       if (this.hiddenSource) return
       if (!this.$refs.editorContainer) return
       this.editor = CodeMirror(this.$refs.editorContainer, {
-        value: this.value || this._getDefaultCode(),
+        value: String(this.value || ''),
         mode: 'python',
         theme: this.isDark ? 'monokai' : 'eclipse',
         lineNumbers: true,
@@ -670,29 +826,6 @@ export default {
         const timerId = setTimeout(() => this.refreshEditorLayout(), delay)
         this.refreshTimers.push(timerId)
       })
-    },
-
-    _getDefaultCode () {
-      return `"""
-My Custom Strategy
-
-Describe the strategy logic, supported markets, entry/exit rules, and risk controls here.
-"""
-
-def initialize(context):
-    context.set_universe(["USStock:SPY"])
-    context.subscribe(frequency="1d")
-    context.set_warmup(55)
-    g.period = 50
-
-def handle_data(context, data):
-    bars = get_history(g.period + 2, "1d", "close", "USStock:SPY")
-    if len(bars) < g.period:
-        return
-    average = float(bars["close"].tail(g.period).mean())
-    target = 1.0 if float(bars["close"].iloc[-1]) > average else 0.0
-    order_target_percent("USStock:SPY", target, reason="single_ma_regime")
-`
     },
 
     applyInitialTemplateKey (key, { preserveExistingCode = true } = {}) {
@@ -773,7 +906,7 @@ def handle_data(context, data):
       this.inferredParamTemplate = null
       this.templateParamValues = {}
       this.templateDirty = false
-      this.setCode(this._getDefaultCode())
+      this.setCode('')
       this.$emit('template-change', { key: '', params: {} })
       this.activeTab = this.isSplitSideMode ? 'params' : 'templates'
       this.showTemplatePicker = false
@@ -838,9 +971,12 @@ def handle_data(context, data):
       if (this.readonly) return
       const template = this.activeParamTemplate
       if (!template) return
-      const code = this.selectedTemplate
+      const parameterizedCode = this.selectedTemplate
         ? buildTemplateCode(this.selectedTemplate, this.templateParamValues)
         : buildScriptCodeWithParamValues(this.getCode(), template.params, this.templateParamValues)
+      const code = this.assetType === 'script'
+        ? applyStrategyRuntimeConfigToCode(parameterizedCode, this.runtimeConfig)
+        : parameterizedCode
       this.setCode(code)
       this.templateDirty = false
       this.$emit('template-change', {
@@ -871,6 +1007,7 @@ def handle_data(context, data):
       if (!inferred) {
         this.inferredParamTemplate = null
         this.templateParamValues = {}
+        this.$emit('template-change', { key: '', params: {}, param_schema: { params: [] } })
         return
       }
       const nextValues = buildTemplateParamValues(inferred)
@@ -883,34 +1020,20 @@ def handle_data(context, data):
       }
       this.inferredParamTemplate = inferred
       this.templateParamValues = nextValues
+      this.$emit('template-change', {
+        key: '',
+        params: { ...nextValues },
+        param_schema: { params: inferred.params.map(item => ({ ...item })) }
+      })
       this.activeTab = 'params'
     },
 
     getParamLabel (param) {
-      const directKey = param && (param.labelKey || param.label_key)
-      if (directKey) {
-        const directValue = this.$t(directKey)
-        if (directValue !== directKey) return directValue
-      }
-      const key = `trading-assistant.templateParam.${param.name}.label`
-      const value = this.$t(key)
-      if (value !== key) return value
-      if (param && param.label) return param.label
-      return param.name
+      return strategyParameterLabel(param, key => this.$t(key))
     },
 
     getParamDescription (param) {
-      const directKey = param && (param.descriptionKey || param.description_key)
-      if (directKey) {
-        const directValue = this.$t(directKey)
-        if (directValue !== directKey) return directValue
-      }
-      const key = `trading-assistant.templateParam.${param.name}.desc`
-      const value = this.$t(key)
-      if (value !== key) return value
-      const locale = String((this.$i18n && this.$i18n.locale) || '').toLowerCase()
-      if (locale.startsWith('en') && param && param.description) return param.description
-      return ''
+      return strategyParameterDescription(param, key => this.$t(key), this.$i18n && this.$i18n.locale)
     },
 
     getParamTypeLabel (type) {
@@ -918,22 +1041,23 @@ def handle_data(context, data):
     },
 
     formatPercentInput (value) {
-      if (value === '' || value === null || value === undefined) return ''
-      return String(value)
+      return ratioPercentInputFormatter(value)
     },
 
     parsePercentInput (value) {
-      if (value === '' || value === null || value === undefined) return ''
-      return String(value).trim()
+      return ratioPercentInputParser(value)
     },
 
-    getOptionLabel (option) {
-      if (!option) return ''
-      if (option.labelKey) {
-        const translated = this.$t(option.labelKey)
-        if (translated !== option.labelKey) return translated
-      }
-      return option.label || option.value
+    getOptionLabel (param, option) {
+      return strategyParameterOptionLabel(param, option, key => this.$t(key))
+    },
+
+    emitRuntimeChange (field, value) {
+      this.$emit('runtime-change', { field, value })
+    },
+
+    handleRuntimeSymbolDropdown (visible) {
+      if (visible) this.$emit('runtime-symbol-open')
     },
 
     safeTemplateIcon (template) {
@@ -1035,12 +1159,15 @@ def handle_data(context, data):
           data: { code }
         })
         if (res && res.code === 1 && res.data && res.data.valid) {
+          this.lastVerificationState = 'passed'
           message.success(this.$t('trading-assistant.editor.verifySuccess'))
-          this.$emit('verified')
+          this.$emit('verified', res.data)
         } else {
+          this.lastVerificationState = 'failed'
           message.error((res && res.data && res.data.error) || (res && res.msg) || this.$t('trading-assistant.editor.verifyFailed'))
         }
       } catch (e) {
+        this.lastVerificationState = 'failed'
         message.error(this.$t('trading-assistant.editor.verifyFailed') + ': ' + (e.message || ''))
       } finally {
         this.verifying = false
@@ -1065,6 +1192,28 @@ def handle_data(context, data):
   min-width: 0;
 }
 
+.editor-layout--split {
+  grid-template-columns: minmax(280px, 18%) minmax(520px, 1fr) minmax(340px, 29%);
+  grid-template-rows: minmax(0, 1fr);
+  display: grid;
+  gap: 10px;
+  height: 100%;
+}
+
+.editor-layout--split.editor-layout--split-no-params {
+  grid-template-columns: minmax(520px, 1fr) minmax(340px, 29%);
+}
+
+.editor-layout--split-no-params .code-col {
+  grid-column-start: 1;
+  grid-column-end: 2;
+}
+
+.editor-layout--split-no-params .strategy-ai-workspace-host--primary {
+  grid-column-start: 2;
+  grid-column-end: 3;
+}
+
 .editor-top-toolbar {
   display: flex;
   align-items: center;
@@ -1078,7 +1227,34 @@ def handle_data(context, data):
   display: flex;
   flex-direction: column;
   flex: 1 1 62%;
+  min-height: 0;
   min-width: 0;
+}
+
+.strategy-ai-workspace-host {
+  flex: 0 0 auto;
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.strategy-ai-workspace-host--primary {
+  grid-column-start: 3;
+  grid-column-end: 4;
+  grid-row-start: 1;
+  grid-row-end: 2;
+  height: 100%;
+  margin-top: 0;
+  min-width: 0;
+}
+
+.editor-layout--split .code-col {
+  grid-column-start: 2;
+  grid-column-end: 3;
+  grid-row-start: 1;
+  grid-row-end: 2;
+  width: 100%;
+  flex: none;
+  height: 100%;
 }
 
 .side-col {
@@ -1089,9 +1265,43 @@ def handle_data(context, data):
   max-width: 380px;
 }
 
+.editor-layout--split .side-col {
+  grid-column-start: 1;
+  grid-column-end: 2;
+  grid-row-start: 1;
+  grid-row-end: 2;
+  width: 100%;
+  flex: none;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
 @media (max-width: 768px) {
   .editor-layout {
     flex-direction: column;
+  }
+
+  .editor-layout--split {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(280px, auto) minmax(420px, auto) minmax(320px, auto);
+    display: grid;
+    height: auto;
+  }
+
+  .editor-layout--split.editor-layout--split-no-params {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(420px, auto) minmax(320px, auto);
+  }
+
+  .strategy-ai-workspace-host--primary,
+  .editor-layout--split .code-col,
+  .editor-layout--split .side-col {
+    grid-column-start: 1;
+    grid-column-end: 2;
+    grid-row-start: auto;
+    grid-row-end: auto;
+    height: auto;
   }
 
   .code-col,
@@ -1153,6 +1363,47 @@ def handle_data(context, data):
 .verify-btn {
   color: #52c41a;
   font-weight: 600;
+}
+
+.developer-guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 4px;
+  color: #52c41a;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus {
+    color: #389e0d;
+  }
+}
+
+.verification-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.verification-status--passed {
+  border-color: #b7eb8f;
+  color: #389e0d;
+  background: #f6ffed;
+}
+
+.verification-status--failed {
+  border-color: #ffccc7;
+  color: #cf1322;
+  background: #fff2f0;
 }
 
 .code-editor-container {
@@ -1276,61 +1527,358 @@ def handle_data(context, data):
 }
 
 .side-tabs--split {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fff;
+
+  ::v-deep .ant-tabs-content {
+    min-height: 0;
+    padding: 0;
+  }
+
+  ::v-deep .ant-tabs-tabpane-active {
+    height: 100%;
+  }
 
   .split-param-pane {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 12px;
+    padding: 0;
     overflow: hidden;
-    border: 1px solid #e8e8e8;
-    border-radius: 8px;
+    border: 0;
+    border-radius: 0;
     background: #fff;
   }
 
   .params-panel {
+    height: 100%;
     min-height: 0;
     display: flex;
     flex-direction: column;
   }
 
-  .panel-intro {
-    padding: 10px 12px;
+  .params-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fafafa;
+  }
+
+  .params-toolbar__summary {
+    min-width: 0;
+  }
+
+  .params-toolbar .panel-intro__title {
+    font-size: 13px;
+  }
+
+  .params-toolbar .panel-intro__desc {
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.55;
   }
 
   .param-list {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    align-content: start;
     overflow-y: auto;
-    gap: 10px;
-    padding-right: 2px;
+    gap: 8px;
+    padding: 10px;
   }
 
   .param-item {
-    padding: 10px 12px;
+    min-width: 0;
+    padding: 10px;
   }
 
   .params-empty-guide {
+    flex: 1 1 auto;
     min-height: 0;
-    padding: 12px 0 0;
-    align-items: flex-start;
+    padding: 24px 12px;
+    align-items: center;
   }
 
   .params-actions {
     flex: 0 0 auto;
-    margin: 10px -12px -12px;
-    padding: 10px 12px;
-    border-top: 1px solid #f0f0f0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+    border-left: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .params-actions .ant-btn {
+    width: 100%;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+}
+
+.params-count-tag {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.runtime-setup {
+  flex: 0 0 auto;
+  margin: 10px;
+  padding: 13px;
+  border: 1px solid #e7e9ed;
+  border-radius: 10px;
+  background: #fafbfc;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.runtime-setup__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+
+  .runtime-setup__copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  strong {
+    color: #202633;
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+
+  .runtime-setup__copy > span {
+    color: #7b8494;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+}
+
+.runtime-market-badge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(250, 173, 20, 0.22);
+  border-radius: 999px;
+  color: var(--primary-color, #faad14);
+  background: rgba(250, 173, 20, 0.08);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.runtime-setup__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px 10px;
+}
+
+.runtime-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+
+  > span {
+    color: #4b5565;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .runtime-field__label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    small {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--primary-color, #faad14);
+      font-size: 10px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+  }
+
+  ::v-deep .ant-select {
+    width: 100%;
+  }
+
+  ::v-deep .ant-select-selection,
+  ::v-deep .ant-select-selection--single {
+    height: 34px;
+    border-color: #dfe3e8;
+    border-radius: 6px;
     background: #fff;
-    box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.04);
+  }
+
+  ::v-deep .ant-select-selection__rendered {
+    margin-right: 28px;
+    margin-left: 10px;
+    line-height: 32px;
+  }
+
+  ::v-deep .ant-radio-group {
+    display: flex;
+    width: 100%;
+  }
+
+  ::v-deep .ant-radio-button-wrapper {
+    flex: 1;
+    height: 34px;
+    padding: 0 6px;
+    text-align: center;
+    line-height: 32px;
+    white-space: nowrap;
+  }
+}
+
+.runtime-product-switch {
+  padding: 2px;
+  border: 1px solid #dfe3e8;
+  border-radius: 7px;
+  background: #f0f2f5;
+
+  ::v-deep .ant-radio-button-wrapper {
+    height: 28px;
+    border: 0;
+    border-radius: 5px;
+    color: #667085;
+    background: transparent;
+    box-shadow: none;
+    line-height: 28px;
+
+    &::before {
+      display: none;
+    }
+
+    &:not(:first-child) {
+      border-left: 0;
+    }
+
+    &.ant-radio-button-wrapper-checked {
+      color: #fff;
+      background: var(--primary-color, #faad14);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+    }
+  }
+}
+
+.runtime-field--wide {
+  grid-column-start: 1;
+  grid-column-end: -1;
+}
+
+.runtime-symbol-option {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+
+  .anticon {
+    flex: 0 0 auto;
+    color: var(--primary-color, #faad14);
+    font-size: 11px;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.runtime-setup__hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 11px;
+  padding: 8px 9px;
+  border: 1px solid #e8eaee;
+  border-radius: 6px;
+  color: #7b8494;
+  background: #f4f6f8;
+  font-size: 11px;
+  line-height: 1.5;
+
+  .anticon {
+    margin-top: 2px;
+    color: var(--primary-color, #faad14);
+  }
+}
+
+.theme-dark {
+  .runtime-setup {
+    border-color: rgba(255, 255, 255, 0.09);
+    background: #1b1b1b;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+  }
+
+  .runtime-setup__head strong,
+  .runtime-field > span {
+    color: #e8e8e8;
+  }
+
+  .runtime-setup__head .runtime-setup__copy > span,
+  .runtime-setup__hint {
+    color: rgba(255, 255, 255, 0.48);
+  }
+
+  .runtime-market-badge {
+    border-color: rgba(250, 173, 20, 0.22);
+    background: rgba(250, 173, 20, 0.08);
+  }
+
+  .runtime-field {
+    ::v-deep .ant-select-selection,
+    ::v-deep .ant-select-selection--single {
+      border-color: rgba(255, 255, 255, 0.11) !important;
+      background: #141414 !important;
+    }
+  }
+
+  .runtime-product-switch {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: #121212;
+
+    ::v-deep .ant-radio-button-wrapper {
+      color: rgba(255, 255, 255, 0.58);
+      background: transparent;
+
+      &.ant-radio-button-wrapper-checked {
+        color: #fff;
+        background: var(--primary-color, #faad14);
+      }
+    }
+  }
+
+  .runtime-setup__hint {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: #151515;
   }
 }
 
@@ -1676,9 +2224,13 @@ def handle_data(context, data):
 
 .param-item__desc {
   margin-bottom: 8px;
+  display: -webkit-box;
+  overflow: hidden;
   font-size: 12px;
   line-height: 1.5;
   color: #8c8c8c;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .param-item__switch {
@@ -1709,12 +2261,13 @@ def handle_data(context, data):
 
 .theme-dark {
   .code-section {
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: #303030;
+    background: #171717;
   }
 
   .section-header {
-    background: #1c1c1c;
-    border-color: rgba(255, 255, 255, 0.1);
+    background: #202020;
+    border-color: #303030;
   }
 
   .section-title {
@@ -1728,11 +2281,12 @@ def handle_data(context, data):
   }
 
   .side-tabs {
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: #303030;
+    background: #191919;
 
     ::v-deep .ant-tabs-bar {
-      background: #1c1c1c;
-      border-bottom-color: rgba(255, 255, 255, 0.08);
+      background: #202020;
+      border-bottom-color: #303030;
     }
 
     ::v-deep .ant-tabs-nav .ant-tabs-tab {
@@ -1749,18 +2303,34 @@ def handle_data(context, data):
   }
 
   .side-tabs--split {
-    border-color: transparent;
+    border-color: #303030;
+    background: #191919;
 
     .split-param-pane {
-      background: #181818;
-      border-color: rgba(255, 255, 255, 0.1);
+      background: #191919;
+      border-color: #303030;
+    }
+
+    .params-toolbar {
+      border-bottom-color: #303030;
+      background: #202020;
     }
 
     .params-actions {
-      border-top-color: rgba(255, 255, 255, 0.08);
-      background: #181818;
-      box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.24);
+      background: transparent;
     }
+  }
+
+  .verification-status--passed {
+    border-color: rgba(82, 196, 26, 0.35);
+    color: #95de64;
+    background: rgba(82, 196, 26, 0.12);
+  }
+
+  .verification-status--failed {
+    border-color: rgba(255, 77, 79, 0.34);
+    color: #ff7875;
+    background: rgba(255, 77, 79, 0.12);
   }
 
   .panel-intro {
@@ -1783,8 +2353,8 @@ def handle_data(context, data):
   .param-item,
   .blank-card,
   .template-card {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: #1c1c1c;
+    border-color: #303030;
+    background: #202020;
   }
 
   .param-item--strategy-name {
@@ -1904,15 +2474,24 @@ def handle_data(context, data):
     color: #52c41a;
   }
 
+  .developer-guide-link {
+    color: #73d13d;
+
+    &:hover,
+    &:focus {
+      color: #95de64;
+    }
+  }
+
   .code-editor-container {
     ::v-deep .CodeMirror {
-      background: #141414;
+      background: #151515;
       color: #d1d4dc;
     }
 
     ::v-deep .CodeMirror-gutters {
-      border-right-color: rgba(255, 255, 255, 0.08);
-      background: linear-gradient(to right, #1a1a1a 0%, #1c1c1c 100%);
+      border-right-color: #2b2b2b;
+      background: #1d1d1d;
     }
 
     ::v-deep .CodeMirror-linenumber {

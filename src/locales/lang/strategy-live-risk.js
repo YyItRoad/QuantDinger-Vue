@@ -1,4 +1,42 @@
 const locale = {
+  'trading-assistant.notify.discord': 'Discord',
+  'trading-assistant.notify.webhook': 'Webhook',
+  'strategyRuntime.fillContractMetadataUnavailable': 'Contract specifications are unavailable. Fill accounting will retry without guessing the quantity.',
+  'strategyRuntime.unsupportedFillContract': 'This contract unit is not supported by the current accounting model.',
+  'strategyRuntime.invalidFillQuantity': 'The exchange fill quantity is invalid. Accounting has been deferred.',
+  'strategyRuntime.inconsistentFillSnapshot': 'The cumulative fill value is inconsistent. Reconciliation is required.',
+  'strategyRuntime.fillSnapshotNotReady': 'The exchange fill snapshot is not ready. Accounting will retry.',
+  'strategyRuntime.spotBalanceUnavailable': 'The available spot balance could not be verified. No sell order was submitted. Refresh the account balance and try again.',
+  'strategyRuntime.spotBalanceInsufficient': 'No sellable spot balance is available, or the quantity is below the trading minimum. Check frozen balances and pending orders before retrying.',
+  'strategyRuntime.spotCloseQuantityInvalid': 'The spot sell quantity or its precision adjustment is invalid. No order was submitted.',
+  'strategyRuntime.gridStartupRollbackClientFailed': 'The initial grid position could not be rolled back because the exchange connection failed. Manual review is required.',
+  'strategyRuntime.gridStartupRollbackFailed': 'The initial grid position could not be fully closed. Manual review is required.',
+  'strategyRuntime.gridStartupRollbackPartial': 'The initial grid position was only partially closed. Manual review is required.',
+  'strategyRuntime.gridStartupRollbackCompleted': 'The initial grid position was closed because exchange resting coverage could not be established.',
+  'strategyRuntime.gridStartupCoverageFailed': 'Grid startup stopped because no exchange resting coverage was established.',
+  'strategyRuntime.gridStartupCoverageFailedRolledBack': 'Grid startup stopped because no exchange resting coverage was established. The initial position was closed.',
+  'strategyRuntime.gridStartupCoverageFailedRollbackFailed': 'Grid startup stopped because no exchange resting coverage was established, and the initial position could not be fully closed. Manual review is required.',
+  'strategyRuntime.gridOrderErrorExitsPreserved': 'Grid entries were cancelled after repeated exchange errors. Existing exit orders were preserved; review exchange orders and the remaining position.',
+  'strategyCenter.positionOwnership.alpacaRiskDescription': 'For each Alpaca snapshot, holdings above the combined strategy allocation are treated as user-owned surplus. Each strategy exit is capped by its own inventory and reserves other strategy allocations. External orders and manual trades change the next snapshot, and opposite entries remain blocked when they would offset an existing account position.',
+  'strategyCenter.positionOwnership.alpacaHelp': 'No manual ownership registration is required. Active orders must finish or be cancelled before another strategy order is submitted. Account shortfalls block new entries; exits remain capped by available strategy inventory. The crypto 10 USD tolerance does not apply to stocks.',
+  'strategyCenter.positionOwnership.alpacaQuoteDifference': 'Approximately {value} USD',
+  'positionOwnership.accountBusy': 'This account is submitting an order or updating ownership. Retry shortly.',
+  'positionOwnership.ordersPending': 'This symbol has pending orders. Wait for reconciliation or review and cancel those orders before retrying.',
+  'positionOwnership.oppositeInventory': 'The account holds the opposite direction. This entry would offset existing inventory and was blocked.',
+  'positionOwnership.driftBlocked': 'New entries are blocked because the account holds less than the combined strategy allocation. Reconcile exchange fills or manual trades.',
+  'positionOwnership.noStrategyInventory': 'No strategy-owned quantity is available to close without consuming another strategy allocation.',
+  'strategyCenter.positionOwnership.resolveNow': 'Review and resolve position differences',
+  'strategyCenter.positionOwnership.relatedStrategies': 'Related strategy allocations',
+  'strategyCenter.positionOwnership.toleranceHelp': 'Account surplus is always allowed. Crypto shortfalls up to 10 USD are tolerated when a current price is available; larger shortfalls pause new entries while available reduce-only exits remain enabled.',
+  'strategyCenter.positionOwnership.shortfall': 'Position shortfall',
+  'strategyCenter.positionOwnership.shortfallHelp': 'The account holds less than the strategies claim. This is missing inventory, not a negative manual position. Recheck exchange fills and manual sells before adjusting strategy allocations; no inventory or profit is fabricated.',
+  'strategyCenter.positionOwnership.resetProtection': 'Update protected quantity',
+  'strategyCenter.positionOwnership.resetProtectionConfirm': 'Set protected manual inventory to account quantity minus strategy allocations? This changes the protected baseline and does not place an order.',
+  'strategyCenter.positionOwnership.quoteDifference': '{value} USD',
+  'positionOwnership.accountBelowStrategyAllocation': 'The account quantity is below strategy allocations. Reconcile strategy fills or manual sells first; there is no unallocated inventory to protect.',
+  'positionOwnership.invalidRepairAction': 'This repair action is not available for the current position state.',
+  'positionOwnership.snapshotUnavailable': 'A complete current account snapshot is unavailable. No protected quantity was changed; retry when the account connection recovers.',
+  'positionOwnership.coexistenceMarketUnsupported': 'This account does not support protected manual inventory.',
   'trading-assistant.logs.level.all': 'All',
   'trading-assistant.logs.level.info': 'Info',
   'trading-assistant.logs.level.warning': 'Warning',
@@ -39,19 +77,20 @@ const locale = {
   'strategyCenter.editor.directionMode': 'Strategy trading capability',
   'strategyCenter.editor.directionLongOnly': 'Long only',
   'strategyCenter.editor.directionShortOnly': 'Short only',
-  'strategyCenter.editor.directionBoth': 'Long & short',
+  'strategyCenter.editor.directionOneWay': 'One-way long / short',
+  'strategyCenter.editor.directionBoth': 'Hedge-mode dual legs',
   'strategyCenter.editor.directionNeutral': 'Neutral',
   'strategyCenter.editor.directionMode.long_only': 'Long only',
   'strategyCenter.editor.directionMode.short_only': 'Short only',
-  'strategyCenter.editor.directionMode.both': 'Long and short',
+  'strategyCenter.editor.directionMode.one_way': 'One-way long / short',
+  'strategyCenter.editor.directionMode.both': 'Hedge-mode dual legs',
   'strategyCenter.editor.directionMode.neutral': 'Neutral dual-leg',
   'strategyCenter.editor.directionMode.unknown': 'Not declared',
   'strategyCenter.editor.directionModeDetectedHint': 'Detected from the strategy contract. Strategy signals still decide each order direction.',
   'strategyCenter.editor.directionModeLegacyHint': 'This legacy strategy does not declare its capability. Select a compatibility mode; new strategies should declare direction_mode in metadata.',
   'strategyCenter.editor.directionModeRequired': 'Select a compatibility mode for this legacy swap strategy.',
-  'strategyCenter.editor.accountRiskTitle': 'Account-level risk limits',
-  'strategyCenter.editor.accountRiskHint': 'Limits apply across all live strategies that share this exchange account.',
-  'strategyCenter.editor.accountRiskAutoHint': 'Set a limit to 0 to derive it from strategy capital and leverage.',
+  'strategyCenter.editor.leverageAutoTitle': 'Perpetual contract leverage',
+  'strategyCenter.editor.leverageAutoHint': 'Enabled automatically for this perpetual strategy. Enter a multiplier from 1× to {max}×; 1× does not amplify exposure.',
   'strategyCenter.editor.maxGrossNotional': 'Maximum gross notional',
   'strategyCenter.editor.maxSymbolGrossNotional': 'Maximum symbol gross notional',
   'strategyCenter.editor.maxMarginEstimate': 'Maximum estimated margin',
@@ -64,12 +103,39 @@ const locale = {
   'strategyV2.directionModeInvalid': 'The strategy trading-direction capability is invalid.',
   'strategyV2.directionModeMismatch': 'The selected trading capability conflicts with the strategy contract.',
   'strategyV2.directionModeViolation': 'The order direction exceeds the strategy\'s declared trading capability.',
-  'strategyV2.dualDirectionHedgeModeRequired': 'Long-and-short or neutral strategies require hedge mode on the exchange account.',
+  'strategyV2.dualDirectionHedgeModeRequired': 'Hedge-leg or neutral strategies require hedge mode on the exchange account.',
+  'strategyV2.oneWayPositionModeRequired': 'This one-way strategy requires one-way mode on the exchange account.',
+  'strategyV2.aiOneWayPositionSideForbidden': 'A one-way strategy must use the signed net position and omit position_side.',
+  'strategyV2.positionModeDetail.binanceOneWay': 'Binance Futures currently reports One-way Mode. Change the account to Hedge Mode, then start the strategy again.',
+  'strategyV2.positionModeDetail.hedgeMode': 'The exchange account currently reports Hedge Mode. Change it to One-way Mode, then start the strategy again.',
   'strategyV2.accountRiskInvalid': 'The account risk configuration is invalid.',
   'strategyV2.hedgeModeRequired': 'The exchange account is in one-way mode. Switch it to hedge mode before starting.',
   'strategyV2.hedgeModeUnknown': 'The exchange position mode could not be verified, so live execution was blocked.',
   'strategyV2.liveLegConflict': 'Another live strategy already owns this account, symbol, and direction.',
+  'strategyV2.instrumentVenueMismatch': 'The strategy instrument belongs to a different exchange than the selected credential.',
+  'strategyV2.instrumentCatalogMissing': 'This instrument is missing from the latest exchange catalog. Synchronize market metadata before starting the strategy.',
+  'strategyV2.equityProductVenueRequired': 'Select the exchange explicitly for this exchange-listed equity product.',
+  'strategyV2.equityProductUnsupported': 'This exchange product or API family is not supported for live execution.',
+  'strategyV2.gateStockTestnetUnsupported': 'This Gate account is configured for testnet. Gate stock trading does not support testnet. To trade stocks with real funds, explicitly select a live Gate account with stock trading enabled. Restarting or changing the strategy warmup will not resolve this account mismatch.',
+  'strategyV2.equityRobotUnsupported': 'Gate exchange stocks currently support Strategy API execution, but not resting-order grid robots.',
+  'strategyV2.equityProductCatalogStale': 'The exchange product is missing or inactive in the latest instrument catalog. Refresh market metadata before starting.',
+  'strategyV2.equityProductContractChanged': 'The exchange changed this product contract. Review the instrument and redeploy the strategy.',
+  'strategyV2.equityProductNotTradable': 'The exchange currently marks this product as unavailable for new trading.',
+  'strategyV2.instrumentProductContractMismatch': 'The queued order does not match the product contract saved with this deployment.',
+  'strategyV2.bitgetRealityTimeframeUnsupported': 'Bitget Reality supports only 1m, 5m, 15m, 1h, 4h, and 1d strategy intervals.',
   'strategyV2.stopClosePartialFailure': 'The strategy was paused, but one or more close orders could not be queued.',
+  'strategyV2.stopQueued': 'Pause request accepted; waiting for the execution worker to confirm. Positions are retained.',
+  'strategyRuntime.leaseLost': 'Runtime ownership expired or was transferred. Strategy execution is suspended until ownership is restored.',
+  'strategyRuntime.startFailed': 'The runtime exited during startup; recovery will retry according to the desired strategy state.',
+  'strategyRuntime.stopCommand': 'The execution worker received a pause command.',
+  'strategyRuntime.workerShutdown': 'The trading worker is shutting down; persisted strategy state is retained for recovery.',
+  'strategyRuntime.gridStopCleanup': 'Grid stop cleanup completed. Check exchange order status for cancellations that remain unconfirmed.',
+  'strategyV2.stopAndCloseQueued': 'Pause and close request accepted; waiting for execution. Positions have not been confirmed closed.',
+  'strategyV2.stopFailed': 'Pause could not be confirmed. Check the latest strategy status and logs before retrying.',
+  'strategyV2.closeRunIdentityMissing': 'The position has no usable strategy run identity.',
+  'strategyV2.closePositionSideInvalid': 'The position direction could not be confirmed.',
+  'strategyV2.closePositionQuoteMissing': 'The position quantity or reference price is unavailable.',
+  'strategyV2.closeOrderQueueFailed': 'The close order could not be added to the execution queue.',
   'strategyV2.paused': 'Strategy paused',
   'strategyV2.stoppedAndCloseQueued': 'Strategy paused and close orders queued',
   'strategyV2.startQueued': 'Strategy start queued; waiting for the execution worker to confirm.',
@@ -83,12 +149,21 @@ const locale = {
   'accountRisk.proposedPriceMissing': 'The opening order has no usable reference price, so it was blocked.'
   , 'strategyCenter.gridOrders.tab': 'Exchange orders'
   , 'strategyCenter.gridOrders.title': 'Exchange resting grid orders'
-  , 'strategyCenter.gridOrders.description': 'Orders are reconciled against the exchange; an exchange order ID is the placement proof.'
+  , 'strategyCenter.gridOrders.description': 'Matches tracked order IDs against the bound account’s current exchange orders. Prices and quantities come from the exchange; verification does not place or cancel orders.'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_snapshot_failed': 'Could not read a complete exchange order snapshot. Order status remains unverified; retry shortly.'
+  , 'strategyCenter.gridOrders.exchangeStatus.open': 'Confirmed open'
+  , 'strategyCenter.gridOrders.exchangeStatus.partial': 'Partially filled'
+  , 'strategyCenter.gridOrders.exchangeStatus.not_open': 'Not in open orders'
+  , 'strategyCenter.gridOrders.exchangeStatus.unverified': 'Unverified'
   , 'strategyCenter.gridOrders.reconcile': 'Reconcile now'
   , 'strategyCenter.gridOrders.syncFailed': 'Exchange reconciliation failed'
+  , 'strategyCenter.gridOrders.errors.grid_runner_not_available': 'The grid runtime is not available for verification.'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_client_unavailable': 'The exchange client could not be created for verification.'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_audit_rate_limited': 'The verification request limit was reached before every tracked order could be checked.'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_orders_unverified': 'One or more tracked orders could not be confirmed on the exchange.'
   , 'strategyCenter.gridOrders.open': 'Tracked open orders'
   , 'strategyCenter.gridOrders.verified': 'Verified on exchange'
-  , 'strategyCenter.gridOrders.unverified': 'Missing exchange ID'
+  , 'strategyCenter.gridOrders.unverified': 'Not confirmed active'
   , 'strategyCenter.gridOrders.lastSync': 'Last reconciliation'
   , 'strategyCenter.gridOrders.cell': 'Cell'
   , 'strategyCenter.gridOrders.purpose': 'Purpose'
@@ -108,6 +183,42 @@ const enUSFallback = locale
 
 const zhCN = {
   ...enUSFallback,
+  'strategyRuntime.fillContractMetadataUnavailable': '合约规格暂不可用，成交入账将重试，不会猜测成交数量。',
+  'strategyRuntime.unsupportedFillContract': '当前入账模型不支持此合约单位。',
+  'strategyRuntime.invalidFillQuantity': '交易所成交数量无效，已暂缓入账。',
+  'strategyRuntime.inconsistentFillSnapshot': '累计成交金额不一致，需要对账。',
+  'strategyRuntime.fillSnapshotNotReady': '交易所成交快照尚未就绪，入账将重试。',
+  'strategyRuntime.spotBalanceUnavailable': '无法确认现货可用余额，未提交卖单。请刷新账户余额后重试。',
+  'strategyRuntime.spotBalanceInsufficient': '现货可卖余额为零，或数量低于交易最小要求。请检查冻结余额和未完成订单后重试。',
+  'strategyRuntime.spotCloseQuantityInvalid': '现货卖出数量或精度调整结果无效，未提交订单。',
+  'strategyRuntime.gridStartupRollbackClientFailed': '交易所连接失败，无法回滚网格初始仓位，请人工核查。',
+  'strategyRuntime.gridStartupRollbackFailed': '网格初始仓位未能完全平仓，请人工核查。',
+  'strategyRuntime.gridStartupRollbackPartial': '网格初始仓位仅部分平仓，请人工核查。',
+  'strategyRuntime.gridStartupRollbackCompleted': '因未能建立交易所常驻挂单，系统已平掉本次新增的网格初始仓位。',
+  'strategyRuntime.gridStartupCoverageFailed': '未能建立交易所常驻挂单，网格启动已停止。',
+  'strategyRuntime.gridStartupCoverageFailedRolledBack': '未能建立交易所常驻挂单，网格启动已停止，并已平掉本次新增的初始仓位。',
+  'strategyRuntime.gridStartupCoverageFailedRollbackFailed': '未能建立交易所常驻挂单，网格启动已停止；初始仓位未能完全平掉，请人工核查。',
+  'strategyRuntime.gridOrderErrorExitsPreserved': '交易所连续报错后已撤销网格开仓单，并保留已有平仓单；请核对交易所订单和剩余持仓。',
+  'strategyCenter.positionOwnership.alpacaRiskDescription': '每次读取 Alpaca 快照时，账户持仓超过关联策略合计的部分会作为用户自有余量。每个策略平仓只使用自己的仓位，并为其他策略预留其账本数量。外部挂单或手动交易会改变下一次快照；可能抵消账户反方向持仓的开仓仍会被拦截。',
+  'strategyCenter.positionOwnership.alpacaHelp': '用户原有仓位无需手动登记。有未完成订单时，需要等待成交核对或处理订单后再提交策略订单。账户持仓不足会限制新开仓，平仓仍以策略实际可用数量为上限；加密货币 10U 容差不适用于股票。',
+  'strategyCenter.positionOwnership.alpacaQuoteDifference': '约 {value} 美元',
+  'positionOwnership.accountBusy': '账户正在提交订单或更新持仓归属，请稍后重试。',
+  'positionOwnership.ordersPending': '该标的还有待处理订单，请等待成交核对，或检查并取消这些订单后重试。',
+  'positionOwnership.oppositeInventory': '账户存在反方向持仓，本次开仓可能抵消已有仓位，已拦截。',
+  'positionOwnership.driftBlocked': '账户实际持仓小于关联策略合计，已限制新开仓。请核对交易所成交或手动交易记录。',
+  'positionOwnership.noStrategyInventory': '当前没有可供本策略平仓的数量；平仓不能占用其他策略仓位。',
+  'strategyCenter.positionOwnership.resolveNow': '查看差额与处理方式',
+  'strategyCenter.positionOwnership.relatedStrategies': '关联策略合计',
+  'strategyCenter.positionOwnership.toleranceHelp': '账户持仓盈余始终允许；有当前价格时，加密货币 10U 内的持仓缺口自动容忍，超过容差才会限制新开仓，按实际可用数量执行的减仓仍保留。',
+  'strategyCenter.positionOwnership.shortfall': '持仓缺口',
+  'strategyCenter.positionOwnership.shortfallHelp': '账户实际持仓小于策略账面仓位，这是数量缺口，不是负数的用户仓位。请先重新核对交易所成交、手动卖出及相关策略记录，再校准策略归属；系统不会虚增持仓或收益。',
+  'strategyCenter.positionOwnership.resetProtection': '更新保护数量',
+  'strategyCenter.positionOwnership.resetProtectionConfirm': '将用户保护数量更新为“账户持仓 − 策略仓位”？此操作会调整保护基线，不会下单。',
+  'strategyCenter.positionOwnership.quoteDifference': '约 {value} U',
+  'positionOwnership.accountBelowStrategyAllocation': '账户实际持仓不足以覆盖策略仓位，请先核对策略成交或手动卖出记录；当前没有可登记为用户保护的剩余仓位。',
+  'positionOwnership.invalidRepairAction': '当前持仓状态不支持此修复操作。',
+  'positionOwnership.snapshotUnavailable': '暂时无法取得完整的账户实时持仓，保护数量未修改，请在账户连接恢复后重新核对。',
+  'positionOwnership.coexistenceMarketUnsupported': '此账户暂不支持用户仓位保护。',
   'trading-assistant.logs.level.all': '全部',
   'trading-assistant.logs.level.info': '信息',
   'trading-assistant.logs.level.warning': '警告',
@@ -148,19 +259,20 @@ const zhCN = {
   'strategyCenter.editor.directionMode': '策略交易方向能力',
   'strategyCenter.editor.directionLongOnly': '仅做多',
   'strategyCenter.editor.directionShortOnly': '仅做空',
-  'strategyCenter.editor.directionBoth': '多空双向',
+  'strategyCenter.editor.directionOneWay': '单向持仓多空切换',
+  'strategyCenter.editor.directionBoth': '双向持仓（独立双腿）',
   'strategyCenter.editor.directionNeutral': '中性双腿',
   'strategyCenter.editor.directionMode.long_only': '仅做多',
   'strategyCenter.editor.directionMode.short_only': '仅做空',
-  'strategyCenter.editor.directionMode.both': '多空双向',
+  'strategyCenter.editor.directionMode.one_way': '单向持仓多空切换',
+  'strategyCenter.editor.directionMode.both': '双向持仓（独立双腿）',
   'strategyCenter.editor.directionMode.neutral': '中性双腿',
   'strategyCenter.editor.directionMode.unknown': '未声明',
   'strategyCenter.editor.directionModeDetectedHint': '已从策略契约自动识别；每笔订单的实际方向仍由策略信号决定。',
   'strategyCenter.editor.directionModeLegacyHint': '该旧策略未声明方向能力，请选择兼容模式；新策略应在元数据中声明 direction_mode。',
   'strategyCenter.editor.directionModeRequired': '请为该旧版合约策略选择兼容模式。',
-  'strategyCenter.editor.accountRiskTitle': '账户级风险限制',
-  'strategyCenter.editor.accountRiskHint': '限制会统计共享同一交易所账户的全部实盘策略。',
-  'strategyCenter.editor.accountRiskAutoHint': '数值设为 0 时，将根据策略资金和杠杆自动计算。',
+  'strategyCenter.editor.leverageAutoTitle': '永续合约杠杆',
+  'strategyCenter.editor.leverageAutoHint': '已根据永续合约自动启用。直接填写 1× 至 {max}×；1× 表示不放大敞口。',
   'strategyCenter.editor.maxGrossNotional': '最大总名义仓位',
   'strategyCenter.editor.maxSymbolGrossNotional': '单标的最大总名义仓位',
   'strategyCenter.editor.maxMarginEstimate': '最大预估保证金',
@@ -173,12 +285,39 @@ const zhCN = {
   'strategyV2.directionModeInvalid': '策略交易方向能力无效。',
   'strategyV2.directionModeMismatch': '所选交易方向能力与策略契约不一致。',
   'strategyV2.directionModeViolation': '订单方向超出了策略声明的交易方向能力。',
-  'strategyV2.dualDirectionHedgeModeRequired': '多空双向或中性策略要求交易所账户开启双向持仓模式。',
+  'strategyV2.dualDirectionHedgeModeRequired': '独立多空腿或中性策略要求交易所账户开启双向持仓模式。',
+  'strategyV2.oneWayPositionModeRequired': '该单向持仓策略要求交易所账户使用单向持仓模式。',
+  'strategyV2.aiOneWayPositionSideForbidden': '单向持仓策略必须使用有符号净持仓，并省略 position_side。',
+  'strategyV2.positionModeDetail.binanceOneWay': 'Binance 合约账户当前为单向持仓模式（One-way Mode），请切换为双向持仓模式（Hedge Mode）后重新启动。',
+  'strategyV2.positionModeDetail.hedgeMode': '交易所合约账户当前为双向持仓模式（Hedge Mode），请切换为单向持仓模式（One-way Mode）后重新启动。',
   'strategyV2.accountRiskInvalid': '账户风险配置无效。',
   'strategyV2.hedgeModeRequired': '交易所账户处于单向持仓模式，请切换为双向持仓后再启动。',
   'strategyV2.hedgeModeUnknown': '无法确认交易所持仓模式，已阻止实盘启动。',
   'strategyV2.liveLegConflict': '同一账户、标的和方向已有其他实盘策略运行。',
+  'strategyV2.instrumentVenueMismatch': '策略标的所属交易所与所选账户不一致。',
+  'strategyV2.instrumentCatalogMissing': '最新交易品种目录中缺少该标的，请先同步市场元数据再启动策略。',
+  'strategyV2.equityProductVenueRequired': '交易所股票产品必须明确指定交易所。',
+  'strategyV2.equityProductUnsupported': '当前交易所产品或 API 类型暂不支持实盘执行。',
+  'strategyV2.gateStockTestnetUnsupported': '当前 Gate 账户配置为测试网，Gate 股票交易不支持测试网。若要使用真实资金交易股票，请主动选择已开通股票交易的 Gate 正式账户。重启或修改策略预热参数无法解决此账户配置问题。',
+  'strategyV2.equityRobotUnsupported': 'Gate 交易所股票当前支持 Strategy API 实盘执行，暂不支持交易所挂单网格机器人。',
+  'strategyV2.equityProductCatalogStale': '最新交易产品目录中已找不到该标的，或标的已停用；请刷新市场元数据后再启动。',
+  'strategyV2.equityProductContractChanged': '交易所已变更该产品契约，请重新核对标的并部署策略。',
+  'strategyV2.equityProductNotTradable': '交易所当前不允许该产品新开交易。',
+  'strategyV2.instrumentProductContractMismatch': '待执行订单与部署时保存的产品契约不一致。',
+  'strategyV2.bitgetRealityTimeframeUnsupported': 'Bitget Reality 策略周期仅支持 1m、5m、15m、1h、4h 和 1d。',
   'strategyV2.stopClosePartialFailure': '策略已暂停，但部分平仓订单未能提交。',
+  'strategyV2.stopQueued': '暂停请求已受理，等待执行确认；持仓将保留。',
+  'strategyRuntime.leaseLost': '运行权租约已过期或被其他进程接管，策略执行已暂停，等待恢复运行权。',
+  'strategyRuntime.startFailed': '策略运行线程在启动期间退出，将按策略期望状态重试恢复。',
+  'strategyRuntime.stopCommand': '执行进程已收到暂停命令。',
+  'strategyRuntime.workerShutdown': '交易执行进程正在退出，策略期望状态已保留，供重启后恢复。',
+  'strategyRuntime.gridStopCleanup': '网格停止清理已执行，请在交易所订单中核对是否仍有未确认撤单的订单。',
+  'strategyV2.stopAndCloseQueued': '暂停并平仓请求已受理，等待执行，尚未确认平仓完成。',
+  'strategyV2.stopFailed': '暂未确认暂停成功，请查看最新策略状态和日志后再重试。',
+  'strategyV2.closeRunIdentityMissing': '未找到持仓对应的有效策略运行记录。',
+  'strategyV2.closePositionSideInvalid': '无法确认持仓方向。',
+  'strategyV2.closePositionQuoteMissing': '持仓数量或参考价格不可用。',
+  'strategyV2.closeOrderQueueFailed': '平仓订单未能加入执行队列。',
   'strategyV2.paused': '策略已暂停',
   'strategyV2.stoppedAndCloseQueued': '策略已暂停，平仓订单已提交',
   'accountRisk.grossNotionalExceeded': '账户总名义仓位超过限制。',
@@ -191,12 +330,21 @@ const zhCN = {
   'accountRisk.proposedPriceMissing': '开仓订单缺少可用参考价格，已阻止提交。'
   , 'strategyCenter.gridOrders.tab': '交易所挂单'
   , 'strategyCenter.gridOrders.title': '交易所常驻网格挂单'
-  , 'strategyCenter.gridOrders.description': '挂单会与交易所回读核验；交易所订单号是挂单成功的凭证。'
+  , 'strategyCenter.gridOrders.description': '按订单号核对绑定账户的当前交易所挂单，价格和数量以交易所回报为准。核验不会下单或撤单。'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_snapshot_failed': '未能完整读取交易所挂单，当前状态待核验，请稍后重试。'
+  , 'strategyCenter.gridOrders.exchangeStatus.open': '已确认挂单'
+  , 'strategyCenter.gridOrders.exchangeStatus.partial': '部分成交'
+  , 'strategyCenter.gridOrders.exchangeStatus.not_open': '未在当前挂单中'
+  , 'strategyCenter.gridOrders.exchangeStatus.unverified': '待核验'
   , 'strategyCenter.gridOrders.reconcile': '立即核验'
   , 'strategyCenter.gridOrders.syncFailed': '交易所挂单核验失败'
+  , 'strategyCenter.gridOrders.errors.grid_runner_not_available': '当前网格运行实例不可用，暂时无法核验挂单。'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_client_unavailable': '无法创建交易所连接，暂时无法核验挂单。'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_audit_rate_limited': '本次核验触发请求频率限制，未能检查全部挂单。'
+  , 'strategyCenter.gridOrders.errors.grid_exchange_orders_unverified': '部分本地跟踪订单未能从交易所确认。'
   , 'strategyCenter.gridOrders.open': '跟踪中挂单'
   , 'strategyCenter.gridOrders.verified': '交易所已确认'
-  , 'strategyCenter.gridOrders.unverified': '缺少交易所订单号'
+  , 'strategyCenter.gridOrders.unverified': '未确认仍在挂单'
   , 'strategyCenter.gridOrders.lastSync': '最近核验'
   , 'strategyCenter.gridOrders.cell': '网格'
   , 'strategyCenter.gridOrders.purpose': '用途'
@@ -214,6 +362,28 @@ const zhCN = {
 
 const zhTW = {
   ...zhCN,
+  'strategyCenter.editor.leverageAutoTitle': '永續合約槓桿',
+  'strategyCenter.editor.leverageAutoHint': '已根據永續合約自動啟用。直接填寫 1× 至 {max}×；1× 表示不放大曝險。',
+  'strategyRuntime.fillContractMetadataUnavailable': '合約規格暫不可用，成交入帳將重試，不會猜測成交數量。',
+  'strategyRuntime.unsupportedFillContract': '目前入帳模型不支援此合約單位。',
+  'strategyRuntime.invalidFillQuantity': '交易所成交數量無效，已暫緩入帳。',
+  'strategyRuntime.inconsistentFillSnapshot': '累計成交金額不一致，需要對帳。',
+  'strategyRuntime.fillSnapshotNotReady': '交易所成交快照尚未就緒，入帳將重試。',
+  'strategyRuntime.spotBalanceUnavailable': '無法確認現貨可用餘額，未提交賣單。請重新整理帳戶餘額後重試。',
+  'strategyRuntime.spotBalanceInsufficient': '現貨可賣餘額為零，或數量低於交易最小要求。請檢查凍結餘額和未完成訂單後重試。',
+  'strategyRuntime.spotCloseQuantityInvalid': '現貨賣出數量或精度調整結果無效，未提交訂單。',
+  'strategyCenter.positionOwnership.resolveNow': '查看差額與處理方式',
+  'strategyCenter.positionOwnership.relatedStrategies': '關聯策略合計',
+  'strategyCenter.positionOwnership.toleranceHelp': '有目前價格時，加密貨幣 10U 內的差額自動容忍；超過容差會限制新開倉，按實際可用數量執行的減倉保護仍保留。',
+  'strategyCenter.positionOwnership.shortfall': '持倉缺口',
+  'strategyCenter.positionOwnership.shortfallHelp': '帳戶實際持倉小於策略帳面倉位，這是數量缺口，不是負數的使用者倉位。請先重新核對交易所成交、手動賣出及相關策略紀錄，再校準策略歸屬；系統不會虛增持倉或收益。',
+  'strategyCenter.positionOwnership.resetProtection': '更新保護數量',
+  'strategyCenter.positionOwnership.resetProtectionConfirm': '將使用者保護數量更新為「帳戶持倉 − 策略倉位」？此操作會調整保護基線，不會下單。',
+  'strategyCenter.positionOwnership.quoteDifference': '約 {value} U',
+  'positionOwnership.accountBelowStrategyAllocation': '帳戶實際持倉不足以涵蓋策略倉位，請先核對策略成交或手動賣出紀錄；目前沒有可登記為使用者保護的剩餘倉位。',
+  'positionOwnership.invalidRepairAction': '目前持倉狀態不支援此修復操作。',
+  'positionOwnership.snapshotUnavailable': '暫時無法取得完整的帳戶即時持倉，保護數量未修改，請在帳戶連線恢復後重新核對。',
+  'positionOwnership.coexistenceMarketUnsupported': '此帳戶暫不支援使用者倉位保護。',
   'trading-assistant.logs.level.info': '資訊',
   'trading-assistant.logs.level.error': '錯誤',
   'trading-assistant.logs.level.signal': '訊號',

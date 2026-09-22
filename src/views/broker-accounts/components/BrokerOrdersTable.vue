@@ -15,7 +15,7 @@
       :loading="loading"
       :row-key="rowKey"
       size="small"
-      :scroll="{ x: 820 }"
+      :scroll="{ x: 1530 }"
     >
       <template slot="side" slot-scope="text, record">
         <a-tag :color="(record.side || record.action || '').toLowerCase() === 'buy' ? 'green' : 'red'">
@@ -26,19 +26,24 @@
         <a-tag :color="statusColor(record.status)">{{ record.status || '--' }}</a-tag>
       </template>
       <template slot="qty" slot-scope="text, record">
-        {{ Number(record.quantity || record.qty || record.size || 0).toLocaleString() }}
+        {{ formatQuantity(firstValue(record.quantity, record.qty, record.size)) }}
       </template>
+      <template slot="filledQty" slot-scope="text, record">{{ formatQuantity(firstValue(record.filled_qty, record.filled)) }}</template>
+      <template slot="fillPrice" slot-scope="text, record">{{ formatMoney(firstValue(record.filled_avg_price, record.avgFillPrice)) }}</template>
+      <template slot="submittedAt" slot-scope="text, record">{{ formatTime(firstValue(record.submitted_at, record.submittedAt, record.created_at)) }}</template>
+      <template slot="filledAt" slot-scope="text, record">{{ formatTime(firstValue(record.filled_at, record.filledAt)) }}</template>
       <template slot="price" slot-scope="text, record">
         {{ formatMoney(record.limit_price || record.limitPrice || record.price) }}
       </template>
       <template slot="action" slot-scope="text, record">
         <a-popconfirm
+          v-if="canCancel(record)"
           :title="$t('brokerAccounts.confirmCancel')"
           :ok-text="$t('brokerAccounts.confirm')"
           :cancel-text="$t('brokerAccounts.cancel')"
           @confirm="onCancel(record)"
         >
-          <a-button size="small" type="link" :disabled="!canCancel(record)">
+          <a-button size="small" type="link" :loading="cancellingId === record.id" :disabled="!!cancellingId">
             <a-icon type="close-circle" /> {{ $t('brokerAccounts.cancelOrder') }}
           </a-button>
         </a-popconfirm>
@@ -49,26 +54,21 @@
 
 <script>
 import { broker } from '@/api/broker'
-import { brokerOrderStatusColor } from '@/utils/brokerOrderStatus'
-
-function money (v) {
-  const n = Number(v)
-  if (!isFinite(n) || n === 0) return '--'
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-const FINAL_STATUSES = new Set(['filled', 'canceled', 'cancelled', 'rejected', 'expired', 'done_for_day'])
+import { brokerOrderStatusColor, brokerOrderCanCancel } from '@/utils/brokerOrderStatus'
+import { firstValue, brokerPrice, brokerQuantity, brokerTime } from '@/utils/brokerAccountDisplay'
 
 export default {
   name: 'BrokerOrdersTable',
   props: {
     brokerId: { type: String, required: true },
+    credentialId: { type: Number, default: null },
     isDarkTheme: { type: Boolean, default: false }
   },
   data () {
     return {
       rows: [],
-      loading: false
+      loading: false,
+      cancellingId: null
     }
   },
   computed: {
@@ -78,6 +78,10 @@ export default {
         { title: this.$t('brokerAccounts.col.symbol'), dataIndex: 'symbol', key: 'symbol', width: 110 },
         { title: this.$t('brokerAccounts.col.side'), key: 'side', width: 90, scopedSlots: { customRender: 'side' } },
         { title: this.$t('brokerAccounts.col.qty'), key: 'qty', width: 90, scopedSlots: { customRender: 'qty' }, align: 'right' },
+        { title: this.$t('brokerAccounts.col.filledQty'), key: 'filledQty', width: 110, scopedSlots: { customRender: 'filledQty' }, align: 'right' },
+        { title: this.$t('brokerAccounts.col.fillPrice'), key: 'fillPrice', width: 120, scopedSlots: { customRender: 'fillPrice' }, align: 'right' },
+        { title: this.$t('brokerAccounts.col.submittedAt'), key: 'submittedAt', width: 215, scopedSlots: { customRender: 'submittedAt' } },
+        { title: this.$t('brokerAccounts.col.filledAt'), key: 'filledAt', width: 215, scopedSlots: { customRender: 'filledAt' } },
         { title: this.$t('brokerAccounts.col.limitPrice'), key: 'price', width: 110, scopedSlots: { customRender: 'price' }, align: 'right' },
         { title: this.$t('brokerAccounts.col.status'), key: 'status', width: 110, scopedSlots: { customRender: 'status' } },
         { title: this.$t('brokerAccounts.col.action'), key: 'action', width: 140, scopedSlots: { customRender: 'action' }, fixed: 'right' }
@@ -88,13 +92,15 @@ export default {
     this.load()
   },
   methods: {
-    formatMoney: money,
+    firstValue,
+    formatMoney: brokerPrice,
+    formatQuantity: brokerQuantity,
+    formatTime (value) { return brokerTime(value, this.$i18n.locale) },
     statusColor (s) {
       return brokerOrderStatusColor(s)
     },
     canCancel (record) {
-      const s = String(record.status || '').toLowerCase()
-      return !!record.id && !FINAL_STATUSES.has(s)
+      return brokerOrderCanCancel(record, this.brokerId)
     },
     rowKey (row) {
       return row.id || row.ticket || row.symbol || JSON.stringify(row).slice(0, 32)
@@ -102,19 +108,31 @@ export default {
     async load () {
       this.loading = true
       try {
-        const res = await broker[this.brokerId].orders()
+        const res = await broker[this.brokerId].orders(this.credentialId ? { credential_id: this.credentialId } : {})
+        if (res && res.success === false) throw new Error('brokerAccounts.ordersLoadFailed')
         const payload = (res && (res.data || res)) || {}
         const list = Array.isArray(payload) ? payload : (Array.isArray(payload.data) ? payload.data : (payload.orders || []))
         this.rows = list || []
       } catch (_) {
         this.rows = []
+        this.$message.error(this.$t('brokerAccounts.ordersLoadFailed'))
       } finally {
         this.loading = false
       }
     },
-    onCancel (record) {
-      this.$emit('cancel', record.id)
-      this.load()
+    async onCancel (record) {
+      if (!this.canCancel(record) || this.cancellingId) return
+      this.cancellingId = record.id
+      try {
+        const res = await broker[this.brokerId].cancelOrder(record.id, this.credentialId ? { credential_id: this.credentialId } : {})
+        if (!(res && (res.success || (res.data && res.data.success)))) throw new Error('brokerAccounts.cancelFailed')
+        this.$message.success(this.$t('brokerAccounts.cancelRequested'))
+      } catch (_) {
+        this.$message.error(this.$t('brokerAccounts.cancelFailed'))
+      } finally {
+        await this.load()
+        this.cancellingId = null
+      }
     }
   }
 }
@@ -130,6 +148,10 @@ export default {
 .bp-table-count { font-size: 12px; color: #8c8c8c; }
 
 .bp-table-wrapper.theme-dark {
+  ::v-deep .ant-table-fixed-right,
+  ::v-deep .ant-table-fixed-right .ant-table-header {
+    background: #181818;
+  }
   .bp-table-count { color: rgba(255, 255, 255, 0.48); }
 
   ::v-deep .ant-table {

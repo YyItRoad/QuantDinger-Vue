@@ -95,7 +95,7 @@ export const asyncRouterMap = [
       {
         path: '/ai-analysis/:pageNo([1-9]\\d*)?',
         name: 'Analysis',
-        component: () => import('@/views/ai-analysis'),
+        redirect: '/ai-asset-analysis',
         hidden: true,
         meta: { title: 'menu.dashboard.analysis', keepAlive: false, icon: 'thunderbolt', permission: ['dashboard'] }
       },
@@ -162,6 +162,13 @@ export const asyncRouterMap = [
  * @type { *[] }
  */
 export const constantRouterMap = [
+  {
+    path: '/report/share/:token',
+    name: 'PublicProfessionalReport',
+    hidden: true,
+    meta: { title: 'fastAnalysis.sharedReportPageTitle', public: true },
+    component: () => import('@/views/public-report')
+  },
   {
     path: '/strategy-runtime',
     hidden: true,

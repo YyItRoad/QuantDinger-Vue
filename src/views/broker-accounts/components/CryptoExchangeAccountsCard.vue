@@ -44,6 +44,20 @@
                 <span v-if="item.api_key_hint" class="crypto-item-hint">{{ item.api_key_hint }}</span>
                 <span v-if="item.created_at" class="crypto-item-time">{{ formatTime(item.created_at) }}</span>
               </div>
+              <div class="crypto-item-attributes">
+                <div class="crypto-item-attribute">
+                  <span class="crypto-item-attribute-label">{{ $t('brokerAccounts.cryptoSection.environmentLabel') }}</span>
+                  <a-tag :class="['credential-tag', 'credential-tag--' + credentialEnvironment(item)]">
+                    {{ $t(credentialEnvironmentKey(item)) }}
+                  </a-tag>
+                </div>
+                <div class="crypto-item-attribute">
+                  <span class="crypto-item-attribute-label">{{ $t('brokerAccounts.cryptoSection.scopeLabel') }}</span>
+                  <a-tag class="credential-tag credential-tag--scope">
+                    {{ $t(credentialScopeKey(item)) }}
+                  </a-tag>
+                </div>
+              </div>
             </div>
           </div>
           <div class="crypto-item-footer">
@@ -90,10 +104,10 @@
       <a-spin :spinning="snapshotLoading">
         <a-alert
           v-if="snapshotErrors.length"
-          type="error"
+          :type="snapshotPartial ? 'warning' : 'error'"
           show-icon
           class="snapshot-error-alert"
-          :message="$t('trading-assistant.positions.snapshotFetchErrors')"
+          :message="snapshotPartial ? $t('trading-assistant.positions.snapshotPartial') : $t('trading-assistant.positions.snapshotFetchErrors')"
         >
           <template slot="description">
             <ul class="snapshot-error-list">
@@ -131,7 +145,7 @@
             />
             <a-empty
               v-else
-              :description="snapshotErrors.length ? $t('trading-assistant.positions.fetchFailedShort') : $t('trading-assistant.positions.noSwapPositions')"
+              :description="snapshotScopeFailed('swapPositions') ? $t('trading-assistant.positions.fetchFailedShort') : $t('trading-assistant.positions.noSwapPositions')"
             />
           </a-tab-pane>
           <a-tab-pane key="spot" :tab="spotTabLabel">
@@ -146,23 +160,42 @@
             />
             <a-empty
               v-else
-              :description="snapshotErrors.length ? $t('trading-assistant.positions.fetchFailedShort') : $t('trading-assistant.positions.noSpotPositions')"
+              :description="snapshotScopeFailed('spotPositions') ? $t('trading-assistant.positions.fetchFailedShort') : $t('trading-assistant.positions.noSpotPositions')"
             />
           </a-tab-pane>
           <a-tab-pane key="orders" :tab="ordersTabLabel">
-            <a-table
-              v-if="orderRows.length"
-              :columns="orderColumns"
-              :data-source="orderRows"
-              :pagination="false"
-              size="small"
-              row-key="rowKey"
-              :scroll="{ x: 720 }"
-            />
-            <a-empty
-              v-else
-              :description="snapshotErrors.length ? $t('trading-assistant.positions.fetchFailedShort') : $t('trading-assistant.positions.noOpenOrders')"
-            />
+            <a-tabs v-model="snapshotOrderActiveTab" class="snapshot-order-tabs" type="card" size="small">
+              <a-tab-pane key="spot" :tab="spotOrdersTabLabel">
+                <a-table
+                  v-if="spotOrderRows.length"
+                  :columns="orderColumns"
+                  :data-source="spotOrderRows"
+                  :pagination="spotOrderPagination"
+                  size="small"
+                  row-key="rowKey"
+                  :scroll="{ x: 720, y: 420 }"
+                />
+                <a-empty
+                  v-else
+                  :description="snapshotScopeFailed('spotOrders') ? $t('trading-assistant.positions.fetchFailedShort') : $t('trading-assistant.positions.noOpenOrders')"
+                />
+              </a-tab-pane>
+              <a-tab-pane key="swap" :tab="swapOrdersTabLabel">
+                <a-table
+                  v-if="swapOrderRows.length"
+                  :columns="orderColumns"
+                  :data-source="swapOrderRows"
+                  :pagination="swapOrderPagination"
+                  size="small"
+                  row-key="rowKey"
+                  :scroll="{ x: 720, y: 420 }"
+                />
+                <a-empty
+                  v-else
+                  :description="snapshotScopeFailed('swapOrders') ? $t('trading-assistant.positions.fetchFailedShort') : $t('trading-assistant.positions.noOpenOrders')"
+                />
+              </a-tab-pane>
+            </a-tabs>
           </a-tab-pane>
         </a-tabs>
       </a-spin>
@@ -176,6 +209,11 @@ import { getAccountSnapshot } from '@/api/strategy'
 import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
 import RenameCredentialModal from '@/components/RenameCredentialModal/RenameCredentialModal.vue'
 import { filterCryptoExchangeCredentials, getExchangeDisplayName } from '@/utils/exchangeCredential'
+import {
+  credentialEnvironmentKey as getCredentialEnvironmentKey,
+  credentialScopeKey as getCredentialScopeKey,
+  normalizeCredentialEnvironment
+} from '@/utils/exchangeCredentialPresentation'
 import moment from 'moment'
 
 const DISPLAY_NAMES = {
@@ -214,11 +252,13 @@ export default {
       snapshotLoading: false,
       snapshotTarget: null,
       snapshotActiveTab: 'swap',
+      snapshotOrderActiveTab: 'spot',
       swapRows: [],
       spotRows: [],
       orderRows: [],
       snapshotFetchedAt: null,
       snapshotErrors: [],
+      snapshotWarningCodes: [],
       snapshotPartial: false
     }
   },
@@ -251,6 +291,24 @@ export default {
         ? `${this.$t('trading-assistant.positions.tabOpenOrders')} (${n})`
         : this.$t('trading-assistant.positions.tabOpenOrders')
     },
+    spotOrderRows () {
+      return this.orderRows.filter(row => row.marketType === 'spot')
+    },
+    swapOrderRows () {
+      return this.orderRows.filter(row => row.marketType !== 'spot')
+    },
+    spotOrdersTabLabel () {
+      return this.orderTypeTabLabel('executorStrategies.spot', this.spotOrderRows.length)
+    },
+    swapOrdersTabLabel () {
+      return this.orderTypeTabLabel('executorStrategies.swap', this.swapOrderRows.length)
+    },
+    spotOrderPagination () {
+      return this.orderPagination(this.spotOrderRows.length)
+    },
+    swapOrderPagination () {
+      return this.orderPagination(this.swapOrderRows.length)
+    },
     snapshotModalWrapClass () {
       const base = 'exchange-account-snapshot-modal'
       return this.isDarkTheme ? `${base} ${base}--dark` : base
@@ -279,6 +337,16 @@ export default {
     this.loadCredentials()
   },
   methods: {
+    snapshotScopeFailed (scope) {
+      const spotCode = 'brokerAccounts.snapshotSpotOrdersFailed'
+      const swapCode = 'brokerAccounts.snapshotSwapOrdersFailed'
+      const specificCodes = new Set([spotCode, swapCode])
+      const codes = this.snapshotWarningCodes || []
+      if (codes.some(code => !specificCodes.has(code))) return codes.length > 0
+      if (scope === 'spotOrders') return codes.includes(spotCode)
+      if (scope === 'swapOrders') return codes.includes(swapCode)
+      return false
+    },
     emitSummary () {
       this.$emit('summary-change', {
         items: this.items.map(item => ({
@@ -297,6 +365,15 @@ export default {
       const hint = item && item.api_key_hint
       if (hint) return hint
       return this.$t('brokerAccounts.cryptoSection.unnamed')
+    },
+    credentialEnvironment (item) {
+      return normalizeCredentialEnvironment(item)
+    },
+    credentialEnvironmentKey (item) {
+      return getCredentialEnvironmentKey(item)
+    },
+    credentialScopeKey (item) {
+      return getCredentialScopeKey(item)
     },
     exchangeInitial (id) {
       const name = this.exchangeDisplayName(id)
@@ -337,11 +414,14 @@ export default {
     mapOrderRows (rows) {
       return (rows || []).map((r, idx) => {
         const side = String(r.side || '').toLowerCase()
+        const rawMarketType = String(r.market_type || r.marketType || '').trim().toLowerCase()
+        const marketType = rawMarketType === 'spot' || rawMarketType === 'cash' ? 'spot' : 'swap'
         const px = parseFloat(r.price || 0)
         const amt = parseFloat(r.amount || 0)
         const filled = parseFloat(r.filled || 0)
         return {
-          rowKey: r.exchange_order_id || `${r.symbol}-${side}-${idx}`,
+          rowKey: `${marketType}:${r.exchange_order_id || `${r.symbol}-${side}-${idx}`}`,
+          marketType,
           symbol: r.symbol || '',
           sideLabel: side === 'buy' || side === 'long'
             ? this.$t('trading-assistant.table.buy')
@@ -355,6 +435,19 @@ export default {
           statusLabel: String(r.status || '--')
         }
       })
+    },
+    orderTypeTabLabel (translationKey, count) {
+      const label = this.$t(translationKey)
+      return count > 0 ? `${label} (${count})` : label
+    },
+    orderPagination (total) {
+      return {
+        pageSize: 20,
+        total,
+        showSizeChanger: true,
+        pageSizeOptions: ['10', '20', '50', '100'],
+        hideOnSinglePage: total <= 20
+      }
     },
     async loadCredentials () {
       this.loading = true
@@ -389,12 +482,14 @@ export default {
       this.snapshotTarget = item
       this.snapshotModalVisible = true
       this.snapshotActiveTab = 'swap'
+      this.snapshotOrderActiveTab = 'spot'
       this.snapshotLoading = true
       this.swapRows = []
       this.spotRows = []
       this.orderRows = []
       this.snapshotFetchedAt = null
       this.snapshotErrors = []
+      this.snapshotWarningCodes = []
       this.snapshotPartial = false
       try {
         const res = await getAccountSnapshot({ credential_id: item.id })
@@ -402,24 +497,29 @@ export default {
         this.swapRows = this.mapPositionRows(data.swap_positions || [])
         this.spotRows = this.mapPositionRows(data.spot_positions || [])
         this.orderRows = this.mapOrderRows(data.open_orders || [])
+        this.snapshotOrderActiveTab = this.spotOrderRows.length ? 'spot' : 'swap'
         this.snapshotFetchedAt = data.fetched_at || null
-        this.snapshotPartial = !!data.partial
         const warnings = Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : []
-        if (data.error) {
-          this.snapshotErrors = [data.error, ...warnings.filter(w => w !== data.error)]
-        } else {
-          this.snapshotErrors = warnings
-        }
+        this.snapshotWarningCodes = data.error
+          ? [data.error, ...warnings.filter(w => w !== data.error)]
+          : warnings
+        this.snapshotPartial = !!data.partial || this.snapshotWarningCodes.some(code => [
+          'brokerAccounts.snapshotSpotOrdersFailed',
+          'brokerAccounts.snapshotSwapOrdersFailed'
+        ].includes(code))
+        this.snapshotErrors = [...this.snapshotWarningCodes]
+        this.snapshotErrors = this.snapshotErrors.map(message => this.$te(message) ? this.$t(message) : message)
         if (this.snapshotErrors.length) {
-          if (!this.swapRows.length && !this.spotRows.length && !this.orderRows.length) {
-            this.$message.error(this.snapshotErrors[0])
-          } else {
+          if (this.snapshotPartial) {
             this.$message.warning(this.snapshotErrors[0])
+          } else {
+            this.$message.error(this.snapshotErrors[0])
           }
         } else if (res && res.code !== 1 && res.msg) {
           this.$message.warning(res.msg)
         }
       } catch (e) {
+        this.snapshotWarningCodes = ['trading-assistant.positions.snapshotFailed']
         this.snapshotErrors = [this.$t('trading-assistant.positions.snapshotFailed')]
         this.$message.error(this.$t('trading-assistant.positions.snapshotFailed'))
       } finally {
@@ -587,6 +687,74 @@ export default {
 }
 .crypto-item-time { color: #bfbfbf; font-size: 11px; }
 .crypto-card.theme-dark .crypto-item-time { color: rgba(255, 255, 255, 0.4); }
+.crypto-item-attributes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 10px;
+}
+.crypto-item-attribute {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.crypto-item-attribute-label {
+  color: #8c8c8c;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.credential-tag {
+  margin: 0;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.credential-tag--live {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+  color: #389e0d;
+}
+.credential-tag--demo {
+  border-color: #ffd591;
+  background: #fff7e6;
+  color: #d46b08;
+}
+.credential-tag--testnet {
+  border-color: #91d5ff;
+  background: #e6f7ff;
+  color: #096dd9;
+}
+.credential-tag--scope {
+  border-color: #d9d9d9;
+  background: #fafafa;
+  color: #434343;
+}
+.crypto-card.theme-dark {
+  .crypto-item-attribute-label { color: rgba(255, 255, 255, 0.48); }
+  .credential-tag--live {
+    border-color: rgba(82, 196, 26, 0.45);
+    background: rgba(82, 196, 26, 0.13);
+    color: #95de64;
+  }
+  .credential-tag--demo {
+    border-color: rgba(250, 173, 20, 0.45);
+    background: rgba(250, 173, 20, 0.13);
+    color: #ffc53d;
+  }
+  .credential-tag--testnet {
+    border-color: rgba(24, 144, 255, 0.45);
+    background: rgba(24, 144, 255, 0.14);
+    color: #69c0ff;
+  }
+  .credential-tag--scope {
+    border-color: #434343;
+    background: #242424;
+    color: rgba(255, 255, 255, 0.78);
+  }
+}
 .crypto-item-footer {
   display: flex;
   flex-wrap: wrap;
@@ -638,9 +806,33 @@ export default {
 .snapshot-tabs {
   margin-top: 4px;
 }
+.snapshot-order-tabs {
+  margin-top: 2px;
+
+  ::v-deep .ant-tabs-content {
+    min-height: 250px;
+  }
+
+  ::v-deep .ant-pagination {
+    margin-bottom: 0;
+  }
+}
 </style>
 
 <style lang="less">
+.exchange-account-snapshot-modal {
+  .ant-modal {
+    top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .ant-modal-body {
+    max-height: calc(100vh - 112px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 .exchange-account-snapshot-modal--dark {
   .ant-modal-content,
   .ant-modal-header,
@@ -743,6 +935,26 @@ export default {
 
   .ant-empty-description {
     color: rgba(255, 255, 255, 0.56);
+  }
+
+  .ant-pagination,
+  .ant-pagination-item a,
+  .ant-pagination-jump-prev,
+  .ant-pagination-jump-next {
+    color: rgba(255, 255, 255, 0.68);
+  }
+
+  .ant-pagination-item,
+  .ant-pagination-prev .ant-pagination-item-link,
+  .ant-pagination-next .ant-pagination-item-link,
+  .ant-pagination-options .ant-select-selection {
+    border-color: #3a3a3a;
+    background: #1f1f1f;
+    color: rgba(255, 255, 255, 0.78);
+  }
+
+  .ant-pagination-item-active {
+    border-color: var(--primary-color, #1890ff);
   }
 }
 </style>

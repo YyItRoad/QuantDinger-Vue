@@ -36,10 +36,28 @@ export function getQuickTradeHistory (params) {
   })
 }
 
+/** Get Quick Trade AI decision audit rows */
+export function getQuickTradeAiDecisions (params) {
+  return request({
+    url: '/api/quick-trade/ai-decisions',
+    method: 'get',
+    params
+  })
+}
+
 /** Close an existing position */
 export function closeQuickTradePosition (data) {
   return request({
     url: '/api/quick-trade/close-position',
+    method: 'post',
+    data
+  })
+}
+
+/** Cancel an active quick trade order */
+export function cancelQuickTradeOrder (data) {
+  return request({
+    url: '/api/quick-trade/cancel-order',
     method: 'post',
     data
   })

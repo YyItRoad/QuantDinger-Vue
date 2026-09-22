@@ -1299,14 +1299,14 @@ export default {
   background: #edf0f5;
 }
 
+.notice-detail-modal .qd-notice-card--signal .qd-notice-card__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .notice-detail-modal .qd-notice-card__metric {
   min-height: 76px;
   padding: 13px 16px;
   background: #ffffff;
-}
-
-.notice-detail-modal .qd-notice-card__metric.is-wide {
-  grid-column: 1 / -1;
 }
 
 .notice-detail-modal .qd-notice-card__metric span {
@@ -1375,7 +1375,8 @@ export default {
     max-width: 100%;
   }
 
-  .notice-detail-modal .qd-notice-card__grid {
+  .notice-detail-modal .qd-notice-card__grid,
+  .notice-detail-modal .qd-notice-card--signal .qd-notice-card__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

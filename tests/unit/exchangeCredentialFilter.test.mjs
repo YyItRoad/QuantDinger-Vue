@@ -49,3 +49,18 @@ test('account rail summary remains based on every credential while cards are fil
   assert.match(component, /items:\s*this\.items\.map\(/)
   assert.doesNotMatch(component, /items:\s*this\.filteredItems\.map\(/)
 })
+
+test('account snapshot separates spot and futures orders with bounded paginated tables', () => {
+  const component = fs.readFileSync(
+    path.resolve(dirname, '../../src/views/broker-accounts/components/CryptoExchangeAccountsCard.vue'),
+    'utf8'
+  )
+
+  assert.match(component, /snapshotOrderActiveTab/)
+  assert.match(component, /spotOrderRows \(\)[\s\S]*row\.marketType === 'spot'/)
+  assert.match(component, /swapOrderRows \(\)[\s\S]*row\.marketType !== 'spot'/)
+  assert.match(component, /:pagination="spotOrderPagination"/)
+  assert.match(component, /:pagination="swapOrderPagination"/)
+  assert.match(component, /:scroll="\{ x: 720, y: 420 \}"/)
+  assert.match(component, /max-height: calc\(100vh - 112px\)/)
+})

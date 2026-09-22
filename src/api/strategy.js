@@ -19,10 +19,12 @@ const api = {
   unreadNotificationCount: '/api/strategies/notifications/unread-count',
   verifyCode: '/api/strategies/verify',
   aiGenerate: '/api/strategies/generate',
+  aiWorkspace: '/api/strategies/ai-workspace',
   scriptTemplates: '/api/strategies/script-templates',
   reviewReport: '/api/strategies/review-report',
   reviewReportHistory: '/api/strategies/review-report/history',
   logs: '/api/strategies/logs',
+  aiDecisions: '/api/strategies/ai-decisions',
   gridRestingOrders: '/api/strategies/grid-resting-orders',
   executorTemplates: '/api/strategies/executors/templates',
   executorPreview: '/api/strategies/executors/preview',
@@ -33,7 +35,6 @@ const api = {
   strategyFactorResearch: '/api/backtest/factor-research',
   strategyFactorResearchHistory: '/api/backtest/factor-research/history',
   strategyFactorResearchGet: '/api/backtest/factor-research/get',
-  strategyBacktestTune: '/api/backtest/tune',
   strategyBacktestHistory: '/api/backtest/history',
   strategyBacktestGet: '/api/backtest/get',
   scriptSources: '/api/strategies/script-sources',
@@ -42,6 +43,7 @@ const api = {
   updateScriptSource: '/api/strategies/script-sources/update',
   deleteScriptSource: '/api/strategies/script-sources/delete',
   publishScriptSource: '/api/strategies/script-sources/publish',
+  scriptSourcePublishReadiness: '/api/strategies/script-sources/publish-readiness',
   scriptSourceVersions: '/api/strategies/script-sources/versions',
   restoreScriptSourceVersion: '/api/strategies/script-sources/versions/restore',
   compileScriptSource: '/api/strategies/script-sources/compile',
@@ -124,6 +126,14 @@ export function getPositionManagementTradeHistory (params = {}) {
     url: api.positionManagementTradeHistory,
     method: 'get',
     params
+  })
+}
+
+export function getStrategyAiDecisions (id, limit = 100) {
+  return request({
+    url: api.aiDecisions,
+    method: 'get',
+    params: { id, limit }
   })
 }
 
@@ -258,6 +268,39 @@ export function aiGenerateStrategy (data) {
   })
 }
 
+export function getStrategyAiWorkspace (sourceId, params = {}) {
+  return request({
+    url: `${api.aiWorkspace}/${sourceId}`,
+    method: 'get',
+    params
+  })
+}
+
+export function clearStrategyAiWorkspace (sourceId, params = {}) {
+  return request({
+    url: `${api.aiWorkspace}/${sourceId}`,
+    method: 'delete',
+    params
+  })
+}
+
+export function runStrategyAiTurn (data) {
+  return request({
+    url: `${api.aiWorkspace}/turn`,
+    method: 'post',
+    data,
+    timeout: AI_GENERATE_TIMEOUT
+  })
+}
+
+export function setStrategyAiCandidateStatus (changeId, status) {
+  return request({
+    url: `${api.aiWorkspace}/changes/${changeId}/status`,
+    method: 'post',
+    data: { status }
+  })
+}
+
 export function getScriptTemplateList (params = {}) {
   return request({
     url: api.scriptTemplates,
@@ -363,18 +406,6 @@ export function getStrategyFactorResearchRun (runId) {
   })
 }
 
-export function tuneStrategyBacktest (data) {
-  const payload = { ...(data || {}) }
-  const timeout = Number(payload.timeout) > 0 ? Number(payload.timeout) : BACKTEST_TIMEOUT
-  delete payload.timeout
-  return request({
-    url: api.strategyBacktestTune,
-    method: 'post',
-    data: payload,
-    timeout
-  })
-}
-
 export function getStrategyBacktestHistory (params = {}) {
   return request({
     url: api.strategyBacktestHistory,
@@ -437,6 +468,14 @@ export function publishScriptSource (data) {
     url: api.publishScriptSource,
     method: 'post',
     data
+  })
+}
+
+export function getScriptSourcePublishReadiness (sourceId) {
+  return request({
+    url: api.scriptSourcePublishReadiness,
+    method: 'get',
+    params: { id: sourceId }
   })
 }
 

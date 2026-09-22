@@ -91,6 +91,19 @@ test('indicator conversion resolves Crypto source context without falling back t
   )
 })
 
+test('indicator conversion keeps the strategy identity separate from the venue native id', () => {
+  const resolved = resolveIndicatorStrategyContext({
+    market: 'Crypto',
+    symbol: 'RAAPL/USDT',
+    exchange_id: 'bitget',
+    market_type: 'spot',
+    instrument_id: 'rAAPLUSDT',
+    timeframe: '1m'
+  })
+
+  assert.equal(resolved.instrument, 'Crypto:RAAPL/USDT@bitget:spot')
+})
+
 test('indicator conversion uses the current strategy context when indicator metadata is generic', () => {
   const resolved = resolveIndicatorStrategyContext({}, {}, {
     market_category: 'Crypto',

@@ -709,7 +709,7 @@
               <a-icon type="dollar" />
             </div>
             <div class="summary-info">
-              <div class="summary-value">{{ formatNumber(orderSummary.total_revenue) }} <span style="font-size: 13px; color: #999;">USDT</span></div>
+              <div class="summary-value">{{ formatNumber(orderSummary.total_revenue) }} <span style="font-size: 13px; color: #999;">{{ orderSummary.revenue_currency || 'USD' }}</span></div>
               <div class="summary-label">{{ $t('adminOrders.totalRevenue') || 'Total Revenue' }}</div>
             </div>
           </div>
@@ -728,14 +728,33 @@
               <a-select-option value="paid">{{ $t('adminOrders.filterPaid') || 'Paid' }}</a-select-option>
               <a-select-option value="confirmed">{{ $t('adminOrders.filterConfirmed') || 'Confirmed' }}</a-select-option>
               <a-select-option value="expired">{{ $t('adminOrders.filterExpired') || 'Expired' }}</a-select-option>
+              <a-select-option value="failed">{{ $t('adminOrders.filterFailed') || 'Failed' }}</a-select-option>
+              <a-select-option value="cancelled">{{ $t('adminOrders.filterCancelled') || 'Cancelled' }}</a-select-option>
             </a-select>
+            <a-select v-model="orderPaymentFilter" class="toolbar-select" @change="handleOrderFilterChange">
+              <a-select-option value="all">{{ $t('adminOrders.filterPaymentAll') || 'All payment methods' }}</a-select-option>
+              <a-select-option value="usdt">USDT</a-select-option>
+              <a-select-option value="usdc">USDC</a-select-option>
+              <a-select-option value="stripe">{{ $t('adminOrders.methodStripe') || 'Card (Stripe)' }}</a-select-option>
+            </a-select>
+            <a-select v-model="orderPlanFilter" class="toolbar-select" @change="handleOrderFilterChange">
+              <a-select-option value="all">{{ $t('adminOrders.filterPlanAll') || 'All plans' }}</a-select-option>
+              <a-select-option v-for="plan in orderFilterOptions.plans" :key="plan.code" :value="plan.code">
+                {{ plan.name || plan.code }}
+              </a-select-option>
+            </a-select>
+            <a-button v-if="hasActiveOrderFilters" @click="resetOrderFilters">
+              <a-icon type="undo" />
+              {{ $t('adminOrders.resetFilters') || 'Reset' }}
+            </a-button>
           </div>
           <div class="toolbar-right">
             <a-input-search
               v-model="orderSearchKeyword"
               class="toolbar-search"
-              :placeholder="$t('adminOrders.searchPlaceholder') || 'Search by username/email'"
+              :placeholder="$t('adminOrders.searchPlaceholderExtended') || 'User, email, order no. or payment reference'"
               allowClear
+              @change="handleOrderSearchChange"
               @search="handleOrderSearch"
               @pressEnter="handleOrderSearch"
             />
@@ -765,17 +784,18 @@
               </a-tooltip>
             </template>
 
-            <!-- Order Type Column -->
+            <!-- Payment Method Column -->
             <template slot="orderTypeInfo" slot-scope="text">
-              <a-tag :color="text === 'usdt' ? 'green' : 'blue'">
-                {{ text === 'usdt' ? 'USDT' : 'Mock' }}
+              <a-tag :color="getPaymentMethodColor(text)" class="payment-method-tag">
+                <a-icon :type="text === 'stripe' ? 'credit-card' : 'wallet'" />
+                {{ getPaymentMethodLabel(text) }}
               </a-tag>
             </template>
 
             <!-- Plan Column -->
-            <template slot="planInfo" slot-scope="text">
-              <a-tag :color="text === 'lifetime' ? 'gold' : text === 'yearly' ? 'purple' : 'cyan'">
-                {{ text === 'lifetime' ? ($t('adminOrders.lifetime') || 'Lifetime') : text === 'yearly' ? ($t('adminOrders.yearly') || 'Yearly') : ($t('adminOrders.monthly') || 'Monthly') }}
+            <template slot="planInfo" slot-scope="text, record">
+              <a-tag :color="getOrderPlanColor(text)">
+                {{ record.plan_name || getOrderPlanLabel(text) }}
               </a-tag>
             </template>
 
@@ -804,7 +824,7 @@
               <span v-else class="text-muted">-</span>
             </template>
 
-            <!-- Tx Hash Column -->
+            <!-- Payment Reference Column -->
             <template slot="txHashInfo" slot-scope="text">
               <a-tooltip v-if="text" :title="text">
                 <span class="hash-text">{{ truncate(text, 14) }}</span>
@@ -824,7 +844,7 @@
                  silently revive a refund) and confirmed shows a passive
                  "amend note" link that re-uses the same modal. -->
             <template slot="orderActions" slot-scope="text, record">
-              <template v-if="canManualConfirm(record.status)">
+              <template v-if="canManualConfirm(record)">
                 <a-button type="link" size="small" class="manual-confirm-btn" @click="openManualConfirm(record)">
                   <a-icon type="thunderbolt" />
                   {{ $t('adminOrders.manualConfirm') || 'Manual confirm' }}
@@ -848,7 +868,7 @@
              grant the membership. -->
         <a-modal
           v-model="manualConfirmModal.visible"
-          :title="$t('adminOrders.manualConfirmTitle') || 'Manual confirm USDT order'"
+          :title="$t('adminOrders.manualConfirmTitle') || 'Manual confirm on-chain order'"
           :ok-text="$t('adminOrders.manualConfirmOk') || 'Confirm & grant'"
           :cancel-text="$t('common.cancel') || 'Cancel'"
           :ok-button-props="{ props: { type: 'primary', loading: manualConfirmModal.submitting, disabled: !manualConfirmModal.txHash.trim() } }"
@@ -869,7 +889,7 @@
           <div v-if="manualConfirmModal.record" class="mc-summary">
             <div class="mc-row"><span class="mc-label">{{ $t('adminOrders.colUser') || 'User' }}:</span><span>{{ manualConfirmModal.record.username || '-' }} <span class="text-muted">({{ manualConfirmModal.record.user_email || '-' }})</span></span></div>
             <div class="mc-row"><span class="mc-label">{{ $t('adminOrders.colPlan') || 'Plan' }}:</span><a-tag :color="manualConfirmModal.record.plan === 'lifetime' ? 'gold' : manualConfirmModal.record.plan === 'yearly' ? 'purple' : 'cyan'">{{ manualConfirmModal.record.plan }}</a-tag></div>
-            <div class="mc-row"><span class="mc-label">{{ $t('adminOrders.colAmount') || 'Amount' }}:</span><span class="mc-amount">{{ manualConfirmModal.record.amount }} USDT</span></div>
+            <div class="mc-row"><span class="mc-label">{{ $t('adminOrders.colAmount') || 'Amount' }}:</span><span class="mc-amount">{{ manualConfirmModal.record.amount }} {{ manualConfirmModal.record.currency }}</span></div>
             <div class="mc-row"><span class="mc-label">{{ $t('adminOrders.colChain') || 'Chain' }}:</span><a-tag color="green">{{ manualConfirmModal.record.chain }}</a-tag></div>
             <div class="mc-row mc-row-mono"><span class="mc-label">{{ $t('adminOrders.colAddress') || 'Address' }}:</span><span class="mc-mono">{{ manualConfirmModal.record.address }}</span></div>
             <div class="mc-row"><span class="mc-label">{{ $t('adminOrders.colStatus') || 'Status' }}:</span><a-tag :color="getOrderStatusColor(manualConfirmModal.record.status)">{{ getOrderStatusLabel(manualConfirmModal.record.status) }}</a-tag></div>
@@ -907,7 +927,7 @@
             <div class="summary-info">
               <div class="summary-value">{{ (aiStatsSummary.total_analyses || 0) + (aiStatsSummary.total_copilot_sessions || 0) }}</div>
               <div class="summary-label">{{ $t('adminAiStats.aiActivity') || 'AI Activity' }}</div>
-              <div class="summary-sub">{{ aiStatsSummary.total_analyses || 0 }} {{ isZh ? '份报告' : 'reports' }} / {{ aiStatsSummary.total_copilot_sessions || 0 }} {{ isZh ? '个会话' : 'chats' }}</div>
+              <div class="summary-sub">{{ $t('adminAiStats.reportCount', { count: aiStatsSummary.total_analyses || 0 }) }} / {{ $t('adminAiStats.chatCount', { count: aiStatsSummary.total_copilot_sessions || 0 }) }}</div>
             </div>
           </div>
           <div class="summary-card">
@@ -917,7 +937,7 @@
             <div class="summary-info">
               <div class="summary-value">{{ Math.max(aiStatsSummary.unique_users || 0, aiStatsSummary.unique_chat_users || 0) }}</div>
               <div class="summary-label">{{ $t('adminAiStats.activeUsers') || 'Active Users' }}</div>
-              <div class="summary-sub">{{ aiStatsSummary.unique_chat_users || 0 }} {{ isZh ? '名 Copilot 用户' : 'Copilot users' }}</div>
+              <div class="summary-sub">{{ $t('adminAiStats.copilotUserCount', { count: aiStatsSummary.unique_chat_users || 0 }) }}</div>
             </div>
           </div>
           <div class="summary-card">
@@ -1333,6 +1353,12 @@ export default {
       orders: [],
       orderSummary: null,
       orderStatusFilter: 'all',
+      orderPaymentFilter: 'all',
+      orderPlanFilter: 'all',
+      orderFilterOptions: {
+        payment_methods: ['usdt', 'usdc', 'stripe'],
+        plans: []
+      },
       orderSearchKeyword: '',
       orderPagination: {
         current: 1,
@@ -1372,6 +1398,12 @@ export default {
     },
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
+    },
+    hasActiveOrderFilters () {
+      return this.orderStatusFilter !== 'all' ||
+        this.orderPaymentFilter !== 'all' ||
+        this.orderPlanFilter !== 'all' ||
+        Boolean((this.orderSearchKeyword || '').trim())
     },
     userManageModalWrapClass () {
       return this.isDarkTheme ? 'user-manage-modal user-manage-modal-dark' : 'user-manage-modal'
@@ -1658,15 +1690,20 @@ export default {
     orderColumns () {
       return [
         {
+          title: this.$t('adminOrders.colOrderNo') || 'Order No.',
+          dataIndex: 'order_no',
+          width: 128
+        },
+        {
           title: this.$t('adminOrders.colUser') || 'User',
           dataIndex: 'username',
           width: 120,
           scopedSlots: { customRender: 'orderUserInfo' }
         },
         {
-          title: this.$t('adminOrders.colType') || 'Type',
-          dataIndex: 'order_type',
-          width: 80,
+          title: this.$t('adminOrders.colType') || 'Payment',
+          dataIndex: 'payment_method',
+          width: 128,
           scopedSlots: { customRender: 'orderTypeInfo' }
         },
         {
@@ -1700,9 +1737,9 @@ export default {
           scopedSlots: { customRender: 'addressInfo' }
         },
         {
-          title: this.$t('adminOrders.colTxHash') || 'Tx Hash',
-          dataIndex: 'tx_hash',
-          width: 160,
+          title: this.$t('adminOrders.colPaymentReference') || 'Payment Reference',
+          dataIndex: 'payment_reference',
+          width: 190,
           scopedSlots: { customRender: 'txHashInfo' }
         },
         {
@@ -2399,14 +2436,13 @@ export default {
       const min = Math.floor(diffSec / 60)
       const hr = Math.floor(min / 60)
       const day = Math.floor(hr / 24)
-      const isZh = String(this.$i18n?.locale || '').toLowerCase().startsWith('zh')
-      const suffix = future
-        ? (isZh ? '后' : ' left')
-        : (isZh ? '前' : ' ago')
-      if (day > 0) return `${day}${isZh ? '天' : 'd'}${suffix}`
-      if (hr > 0) return `${hr}${isZh ? '小时' : 'h'}${suffix}`
-      if (min > 0) return `${min}${isZh ? '分' : 'm'}${suffix}`
-      return isZh ? '刚刚' : 'just now'
+      const locale = String(this.$i18n?.locale || 'en-US')
+      const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+      const direction = future ? 1 : -1
+      if (day > 0) return formatter.format(direction * day, 'day')
+      if (hr > 0) return formatter.format(direction * hr, 'hour')
+      if (min > 0) return formatter.format(direction * min, 'minute')
+      return formatter.format(0, 'second')
     },
 
     formatNumber (num) {
@@ -2833,19 +2869,22 @@ export default {
           page: this.orderPagination.current,
           page_size: this.orderPagination.pageSize,
           status: this.orderStatusFilter === 'all' ? '' : this.orderStatusFilter,
+          payment_method: this.orderPaymentFilter === 'all' ? '' : this.orderPaymentFilter,
+          plan: this.orderPlanFilter === 'all' ? '' : this.orderPlanFilter,
           search: this.orderSearchKeyword || ''
         })
         if (res.code === 1) {
           this.orders = res.data.items || []
           this.orderPagination.total = res.data.total || 0
           this.orderSummary = res.data.summary || {}
+          this.orderFilterOptions = res.data.filter_options || this.orderFilterOptions
           this.ordersLoaded = true
         } else {
-          this.$message.error(res.msg || 'Failed to load orders')
+          this.$message.error(res.msg || this.$t('adminOrders.loadFailed'))
         }
       } catch (error) {
         console.error('Failed to load orders:', error)
-        this.$message.error('Failed to load orders')
+        this.$message.error(this.$t('adminOrders.loadFailed'))
       } finally {
         this.orderLoading = false
       }
@@ -2856,7 +2895,24 @@ export default {
       this.loadOrders()
     },
 
+    handleOrderSearchChange (event) {
+      const value = event && event.target ? event.target.value : this.orderSearchKeyword
+      if (!String(value || '').trim()) {
+        this.orderSearchKeyword = ''
+        this.handleOrderSearch()
+      }
+    },
+
     handleOrderFilterChange () {
+      this.orderPagination.current = 1
+      this.loadOrders()
+    },
+
+    resetOrderFilters () {
+      this.orderStatusFilter = 'all'
+      this.orderPaymentFilter = 'all'
+      this.orderPlanFilter = 'all'
+      this.orderSearchKeyword = ''
       this.orderPagination.current = 1
       this.loadOrders()
     },
@@ -2874,8 +2930,34 @@ export default {
     // confirmation delay glitch), expired (TTL ran out before the
     // watcher caught up). Cancelled is intentionally excluded so a
     // refunded order doesn't get accidentally revived.
-    canManualConfirm (status) {
-      return ['pending', 'paid', 'expired'].indexOf(String(status || '').toLowerCase()) >= 0
+    canManualConfirm (record) {
+      const method = String((record && (record.payment_method || record.order_type)) || '').toLowerCase()
+      const status = String((record && record.status) || '').toLowerCase()
+      return ['usdt', 'usdc'].indexOf(method) >= 0 && ['pending', 'paid', 'expired'].indexOf(status) >= 0
+    },
+
+    getPaymentMethodColor (method) {
+      return { usdt: 'green', usdc: 'blue', stripe: 'purple' }[String(method || '').toLowerCase()] || 'default'
+    },
+
+    getPaymentMethodLabel (method) {
+      const normalized = String(method || '').toLowerCase()
+      if (normalized === 'usdt') return 'USDT'
+      if (normalized === 'usdc') return 'USDC'
+      if (normalized === 'stripe') return this.$t('adminOrders.methodStripe') || 'Card (Stripe)'
+      return method || '-'
+    },
+
+    getOrderPlanColor (plan) {
+      return { lifetime: 'gold', yearly: 'purple', monthly: 'cyan' }[String(plan || '').toLowerCase()] || 'blue'
+    },
+
+    getOrderPlanLabel (plan) {
+      const normalized = String(plan || '').toLowerCase()
+      if (normalized === 'lifetime') return this.$t('adminOrders.lifetime') || 'Lifetime'
+      if (normalized === 'yearly') return this.$t('adminOrders.yearly') || 'Yearly'
+      if (normalized === 'monthly') return this.$t('adminOrders.monthly') || 'Monthly'
+      return plan || '-'
     },
 
     openManualConfirm (record) {

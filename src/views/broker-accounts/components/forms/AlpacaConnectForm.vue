@@ -1,5 +1,8 @@
 <template>
   <a-form layout="vertical" class="broker-form">
+    <a-form-item :label="$t('brokerAccounts.accountName')">
+      <a-input v-model="form.name" :max-length="100" :disabled="disabled" :placeholder="$t('brokerAccounts.accountNameHint')" />
+    </a-form-item>
     <a-row :gutter="12">
       <a-col :xs="24" :md="12">
         <a-form-item :label="$t('brokerAccounts.alpaca.apiKey')">
@@ -41,6 +44,7 @@ export default {
   data () {
     return {
       form: {
+        name: '',
         apiKey: '',
         secretKey: ''
       }
@@ -57,6 +61,7 @@ export default {
       const apiKey = this.form.apiKey.trim()
       this.$emit('submit', {
         apiKey,
+        name: this.form.name,
         secretKey: this.form.secretKey.trim(),
         paper: apiKey.toUpperCase().startsWith('PK'),
         baseUrl: null

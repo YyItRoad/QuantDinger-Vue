@@ -59,6 +59,16 @@
               <a-button size="small" icon="unordered-list" @click="viewMembers(item)">{{ t('universeManager.viewMembers') }}</a-button>
               <a-button v-if="item.is_system && item.code !== 'watchlist'" size="small" icon="copy" :loading="cloningId === item.id" @click="clone(item)">{{ t('universeManager.copyToMine') }}</a-button>
               <a-button v-if="isEditable(item)" size="small" icon="edit" @click="editUniverse(item)">{{ t('universeManager.edit') }}</a-button>
+              <a-popconfirm
+                v-if="isDeletable(item)"
+                :title="t('universeManager.deleteConfirm')"
+                :ok-text="t('universeManager.delete')"
+                :cancel-text="t('universeManager.cancel')"
+                ok-type="danger"
+                @confirm="removeUniverse(item)"
+              >
+                <a-button size="small" icon="delete" type="danger" :loading="deletingId === item.id">{{ t('universeManager.delete') }}</a-button>
+              </a-popconfirm>
             </div>
           </article>
         </div>
@@ -78,7 +88,7 @@
       <a-input v-model="form.name" :disabled="!!editingId" />
       <label class="field-label">{{ t('universeManager.market') }}</label>
       <a-select v-model="form.market" :disabled="!!editingId" class="full-width">
-        <a-select-option v-for="market in markets" :key="market" :value="market">{{ marketText(market) }}</a-select-option>
+        <a-select-option v-for="market in editableMarkets" :key="market" :value="market">{{ marketText(market) }}</a-select-option>
       </a-select>
       <label class="field-label">{{ t('universeManager.members') }}</label>
       <a-textarea v-model="form.memberText" :rows="10" :placeholder="memberPlaceholder" />
@@ -88,15 +98,27 @@
     <a-drawer :visible="drawerVisible" :title="drawerTitle" width="min(760px, 92vw)" @close="drawerVisible = false">
       <div class="drawer-toolbar">
         <a-input-search v-model="memberKeyword" allowClear :placeholder="t('universeManager.searchMembers')" />
+        <a-button v-if="isEditable(drawerUniverse)" icon="edit" @click="editUniverse(drawerUniverse)">{{ t('universeManager.manageMembers') }}</a-button>
         <a-tag>{{ filteredMembers.length }} {{ t('universeManager.symbols') }}</a-tag>
       </div>
       <a-spin :spinning="membersLoading">
         <div class="member-table-wrap">
           <table class="member-table">
-            <thead><tr><th>{{ t('universeManager.symbol') }}</th><th>{{ t('universeManager.memberName') }}</th><th>{{ t('universeManager.market') }}</th><th>{{ t('universeManager.weight') }}</th></tr></thead>
+            <thead><tr><th>{{ t('universeManager.symbol') }}</th><th>{{ t('universeManager.memberName') }}</th><th>{{ t('universeManager.market') }}</th><th>{{ t('universeManager.weight') }}</th><th v-if="isEditable(drawerUniverse)">{{ t('universeManager.actions') }}</th></tr></thead>
             <tbody>
               <tr v-for="member in pagedMembers" :key="`${member.market}-${member.symbol}`">
                 <td><strong>{{ member.symbol }}</strong></td><td>{{ member.name || '-' }}</td><td>{{ marketText(member.market) }}</td><td>{{ formatWeight(member.weight) }}</td>
+                <td v-if="isEditable(drawerUniverse)">
+                  <a-popconfirm
+                    :title="t('universeManager.removeMemberConfirm', { symbol: member.symbol })"
+                    :ok-text="t('universeManager.delete')"
+                    :cancel-text="t('universeManager.cancel')"
+                    ok-type="danger"
+                    @confirm="removeMember(member)"
+                  >
+                    <a-button type="link" size="small" icon="delete" :loading="removingMemberKey === memberKey(member)">{{ t('universeManager.remove') }}</a-button>
+                  </a-popconfirm>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -115,7 +137,7 @@
 
 <script>
 import { mapState } from 'vuex'
-import { cloneUniverse, createUniverse, getUniverseMembers, getUniverses, replaceUniverseMembers } from '@/api/universe'
+import { cloneUniverse, createUniverse, deleteUniverse, getUniverseMembers, getUniverses, replaceUniverseMembers } from '@/api/universe'
 
 export default {
   name: 'UniverseManager',
@@ -125,11 +147,14 @@ export default {
 saving: false,
 membersLoading: false,
 cloningId: 0,
+deletingId: 0,
+removingMemberKey: '',
       activeTab: 'system',
 keyword: '',
 marketFilter: 'all',
 universes: [],
       markets: ['USStock', 'CNStock', 'HKStock', 'Crypto', 'Mixed'],
+      editableMarkets: ['USStock', 'CNStock', 'HKStock', 'Crypto'],
       editorVisible: false,
 editingId: 0,
 form: { name: '', market: 'USStock', memberText: '' },
@@ -164,7 +189,7 @@ memberPageSize: 50
       const values = this.systemUniverses.map(item => this.universeVersion(item)).filter(value => value && value !== '-')
       return values.sort().reverse()[0] || '-'
     },
-    memberPlaceholder () { return this.form.market === 'Mixed' ? this.t('universeManager.mixedPlaceholder') : this.t('universeManager.placeholder') },
+    memberPlaceholder () { return this.t('universeManager.placeholder') },
     drawerTitle () { return this.drawerUniverse ? this.universeLabel(this.drawerUniverse) : this.t('universeManager.members') },
     filteredMembers () {
       const keyword = this.memberKeyword.trim().toLowerCase()
@@ -183,13 +208,16 @@ memberPageSize: 50
   methods: {
     t (key) { return this.$t(key) },
     unwrap (res) { return res && Object.prototype.hasOwnProperty.call(res, 'data') ? res.data : res },
+    errorText (error, fallbackKey) { const code = error && error.backendMessage; const translated = code ? this.t(code) : ''; return (translated && translated !== code) ? translated : (code || (error && error.message) || this.t(fallbackKey)) },
     universeLabel (item) { const translated = item.name_i18n_key ? this.t(item.name_i18n_key) : ''; return translated && translated !== item.name_i18n_key ? translated : (item.name || item.code) },
     universeVersion (item) { return (item.metadata && item.metadata.snapshot_as_of) || (item.updated_at ? String(item.updated_at).slice(0, 10) : '-') },
     statusText (status) { return this.t(`universeManager.status.${status || 'data_required'}`) },
     marketText (market) { return this.t(`universeManager.market.${market || 'Mixed'}`) },
     marketIcon (market) { return { Crypto: 'thunderbolt', CNStock: 'stock', HKStock: 'bank', USStock: 'global' }[market] || 'appstore' },
     marketClass (market) { return `market-${String(market || 'mixed').toLowerCase()}` },
-    isEditable (item) { return !item.is_system && item.universe_type === 'manual' },
+    isEditable (item) { return Boolean(this.isDeletable(item) && item.market !== 'Mixed') },
+    isDeletable (item) { return Boolean(item && !item.is_system && item.universe_type === 'manual') },
+    memberKey (member) { return [member.market, member.symbol, member.exchange_id, member.market_type, member.instrument_id].map(value => String(value || '')).join(':') },
     formatWeight (value) { return value === null || value === undefined ? '-' : `${(Number(value) * 100).toFixed(2)}%` },
     async loadUniverses () {
       this.loading = true
@@ -199,10 +227,15 @@ memberPageSize: 50
     parseMembers () {
       const entries = this.form.memberText.split(/[\n,;]+/).map(item => item.trim()).filter(Boolean)
       return entries.map(entry => {
-        if (this.form.market !== 'Mixed') return { market: this.form.market, symbol: entry }
         const separator = entry.indexOf(':')
-        if (separator <= 0) throw new Error(this.t('universeManager.mixedFormatError'))
-        return { market: entry.slice(0, separator).trim(), symbol: entry.slice(separator + 1).trim() }
+        if (separator > 0) {
+          const prefix = entry.slice(0, separator).trim()
+          if (this.editableMarkets.includes(prefix)) {
+            if (prefix !== this.form.market) throw new Error(this.t('universeManager.memberMarketMismatch'))
+            entry = entry.slice(separator + 1).trim()
+          }
+        }
+        return { market: this.form.market, symbol: entry }
       })
     },
     async save () {
@@ -217,7 +250,7 @@ memberPageSize: 50
         this.resetForm()
         this.activeTab = 'personal'
         await this.loadUniverses()
-      } catch (error) { this.$message.error(error.backendMessage || error.message || this.t('universeManager.saveFailed')) } finally { this.saving = false }
+      } catch (error) { this.$message.error(this.errorText(error, 'universeManager.saveFailed')) } finally { this.saving = false }
     },
     async editUniverse (item) {
       try {
@@ -241,6 +274,27 @@ memberPageSize: 50
         this.activeTab = 'personal'
         await this.loadUniverses()
       } catch (error) { this.$message.error(error.backendMessage || error.message || this.t('universeManager.copyFailed')) } finally { this.cloningId = 0 }
+    },
+    async removeMember (member) {
+      if (!this.isEditable(this.drawerUniverse)) return
+      const key = this.memberKey(member)
+      this.removingMemberKey = key
+      try {
+        const nextMembers = this.members.filter(item => this.memberKey(item) !== key)
+        await replaceUniverseMembers(this.drawerUniverse.id, nextMembers)
+        this.members = nextMembers
+        this.$message.success(this.t('universeManager.memberRemoved'))
+        await this.loadUniverses()
+      } catch (error) { this.$message.error(this.errorText(error, 'universeManager.saveFailed')) } finally { this.removingMemberKey = '' }
+    },
+    async removeUniverse (item) {
+      this.deletingId = item.id
+      try {
+        await deleteUniverse(item.id)
+        if (this.drawerUniverse && Number(this.drawerUniverse.id) === Number(item.id)) this.drawerVisible = false
+        this.$message.success(this.t('universeManager.deleted'))
+        await this.loadUniverses()
+      } catch (error) { this.$message.error(this.errorText(error, 'universeManager.deleteFailed')) } finally { this.deletingId = 0 }
     },
     resetForm () { this.editingId = 0; this.form = { name: '', market: 'USStock', memberText: '' } }
   }

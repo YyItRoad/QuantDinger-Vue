@@ -83,8 +83,29 @@
           <div class="kpi-value kpi-dd">{{ formatPercent(indicator.max_drawdown) }}</div>
         </div>
       </div>
-      <overfit-risk-gauge v-if="isStrategyAsset && hasKpi" :indicator="indicator" />
-      <div v-if="hasApplicable" class="card-tags">
+      <div v-if="isStrategyAsset" class="strategy-applicability">
+        <div class="strategy-applicability__row">
+          <span>{{ $t('community.boundTo') }}</span>
+          <strong>{{ boundInstrumentLabel }}</strong>
+        </div>
+        <div v-if="testedInstrumentLabel" class="strategy-applicability__row strategy-applicability__row--muted">
+          <span>{{ $t('community.testedOn') }}</span>
+          <strong>{{ testedInstrumentLabel }}</strong>
+        </div>
+        <div class="strategy-applicability__row strategy-applicability__row--muted">
+          <span>{{ $t('community.executionMode') }}</span>
+          <strong>{{ executionModeLabel }}</strong>
+        </div>
+        <div class="strategy-applicability__row strategy-applicability__row--muted">
+          <span>{{ $t('community.executionFrequency') }}</span>
+          <strong>{{ executionFrequencyLabel }}</strong>
+        </div>
+        <div v-if="confirmationFrequencyLabel" class="strategy-applicability__row strategy-applicability__row--muted">
+          <span>{{ $t('community.confirmationFrequencies') }}</span>
+          <strong>{{ confirmationFrequencyLabel }}</strong>
+        </div>
+      </div>
+      <div v-else-if="hasApplicable" class="card-tags">
         <a-tag v-for="sym in visibleSymbols" :key="`s-${sym}`" class="tag-symbol">{{ sym }}</a-tag>
         <a-tag v-if="extraSymbolCount > 0" class="tag-extra">+{{ extraSymbolCount }}</a-tag>
         <a-tag v-for="tf in visibleTimeframes" :key="`t-${tf}`" class="tag-tf">{{ tf }}</a-tag>
@@ -115,8 +136,6 @@
 </template>
 
 <script>
-import OverfitRiskGauge from './OverfitRiskGauge.vue'
-
 const GRADIENT_PRESETS = [
   'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
   'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -134,7 +153,6 @@ const GRADIENT_PRESETS = [
 
 export default {
   name: 'IndicatorCard',
-  components: { OverfitRiskGauge },
   props: {
     indicator: {
       type: Object,
@@ -153,6 +171,36 @@ export default {
     isStrategyAsset () {
       const assetType = String(this.indicator.asset_type || '').toLowerCase()
       return assetType === 'script_template' || assetType === 'script' || assetType === 'strategy'
+    },
+    strategyContract () {
+      const contract = this.indicator.marketplace_contract || this.indicator.strategy_contract
+      return contract && typeof contract === 'object' ? contract : {}
+    },
+    executionModeLabel () {
+      const mode = this.strategyContract.execution_mode || this.indicator.execution_mode || 'bar'
+      const key = `community.executionModeValue.${mode}`
+      return this.$te(key) ? this.$t(key) : mode
+    },
+    executionFrequencyLabel () {
+      return this.strategyContract.execution_frequency || this.indicator.execution_frequency || this.strategyContract.primary_frequency || '—'
+    },
+    confirmationFrequencyLabel () {
+      const values = this.strategyContract.confirmation_frequencies || this.indicator.confirmation_frequencies || []
+      return Array.isArray(values) && values.length ? values.join(' · ') : ''
+    },
+    bindingMode () {
+      return this.indicator.binding_mode || this.strategyContract.binding_mode || 'unknown'
+    },
+    boundInstrumentLabel () {
+      if (this.strategyContract.universe_reference) return this.strategyContract.universe_reference
+      const values = this.strategyContract.bound_instruments || []
+      if (!values.length) return this.$t(`community.binding.${this.bindingMode}`)
+      return values.slice(0, 2).join(' · ') + (values.length > 2 ? ` +${values.length - 2}` : '')
+    },
+    testedInstrumentLabel () {
+      const values = this.indicator.tested_instruments || this.indicator.applicable_symbols || []
+      if (!values.length) return ''
+      return values.slice(0, 2).join(' · ') + (values.length > 2 ? ` +${values.length - 2}` : '')
     },
     coverGradient () {
       const index = (this.indicator.id || 0) % GRADIENT_PRESETS.length
@@ -473,6 +521,7 @@ export default {
       &--mid { background: linear-gradient(135deg, #8e8e8e, #b4b4b4); }
       &--low { background: rgba(0, 0, 0, 0.55); }
     }
+
   }
 
   .vip-free-tag {
@@ -646,6 +695,34 @@ export default {
       }
     }
 
+    .strategy-applicability {
+      margin: 2px 0 9px;
+      padding: 7px 8px;
+      border: 1px solid rgba(82, 196, 26, 0.16);
+      border-radius: 6px;
+      background: rgba(82, 196, 26, 0.045);
+
+      &__row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 10px;
+
+        span { color: rgba(0, 0, 0, 0.42); }
+        strong {
+          min-width: 0;
+          overflow: hidden;
+          color: rgba(0, 0, 0, 0.72);
+          font-size: 10px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        &--muted { margin-top: 4px; }
+      }
+    }
+
     .card-author {
       display: flex;
       align-items: center;
@@ -743,6 +820,66 @@ export default {
       .tag-symbol { background: rgba(24, 144, 255, 0.16); color: #69c0ff; }
       .tag-tf { background: rgba(82, 196, 26, 0.16); color: #95de64; }
       .tag-extra { background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.45); }
+    }
+  }
+}
+</style>
+
+<!-- The market card lives inside a themed page owned by the parent component.
+     These selectors must remain unscoped so the ancestor theme class can match. -->
+<style lang="less">
+.theme-dark .indicator-card,
+.dark-theme .indicator-card,
+[data-theme='dark'] .indicator-card {
+  background: #1f1f1f;
+  border-color: #343434;
+
+  .ant-card-body {
+    background: #1f1f1f;
+  }
+
+  .card-content {
+    .card-title { color: rgba(255, 255, 255, 0.9); }
+    .card-desc { color: rgba(255, 255, 255, 0.58); }
+    .card-author .author-name { color: rgba(255, 255, 255, 0.76); }
+    .card-stats .stat-item { color: rgba(255, 255, 255, 0.55); }
+
+    .card-kpi {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.055);
+
+      .kpi-label { color: rgba(255, 255, 255, 0.56); }
+      .kpi-value {
+        color: rgba(255, 255, 255, 0.88);
+        &.kpi-pos { color: #73d13d; }
+        &.kpi-neg,
+        &.kpi-dd { color: #ff7875; }
+      }
+    }
+
+    .strategy-applicability {
+      border-color: rgba(82, 196, 26, 0.28);
+      background: rgba(82, 196, 26, 0.09);
+
+      &__row {
+        span { color: rgba(255, 255, 255, 0.6); }
+        strong { color: rgba(255, 255, 255, 0.86); }
+      }
+    }
+
+    .visual-summary {
+      border-color: rgba(255, 255, 255, 0.09);
+      background: linear-gradient(135deg, rgba(24, 144, 255, 0.14), rgba(82, 196, 26, 0.12));
+    }
+
+    .visual-summary__head {
+      color: rgba(255, 255, 255, 0.56);
+      strong { color: rgba(255, 255, 255, 0.82); }
+    }
+
+    .visual-chips span {
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.65);
     }
   }
 }

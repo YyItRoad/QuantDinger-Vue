@@ -20,3 +20,12 @@ export function brokerOrderStatusColor (status) {
   if (NEUTRAL_FINAL_ORDER_STATUSES.has(value)) return undefined
   return 'orange'
 }
+
+export function brokerOrderCanCancel (record, brokerId = 'alpaca') {
+  if (!record || !record.id) return false
+  const status = String(record.status || '').trim().toLowerCase()
+  const statuses = brokerId === 'ibkr'
+    ? ['submitted', 'presubmitted', 'pendingsubmit', 'pending_submit']
+    : ['new', 'accepted', 'pending_new', 'partially_filled', 'accepted_for_bidding']
+  return statuses.includes(status)
+}

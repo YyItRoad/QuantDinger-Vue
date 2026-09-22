@@ -18,35 +18,31 @@
       :scroll="{ x: 720 }"
     >
       <template slot="pnl" slot-scope="text, record">
-        <span :class="pnlClass(record)">{{ formatMoney(record.unrealized_pnl || record.unrealizedPnl || record.profit) }}</span>
+        <span :class="pnlClass(record)">{{ formatMoney(firstValue(record.unrealized_pnl, record.unrealizedPnl, record.unrealizedPnL, record.profit)) }}</span>
       </template>
       <template slot="qty" slot-scope="text, record">
-        {{ Number(record.quantity || record.qty || record.position || 0).toLocaleString() }}
+        {{ formatQuantity(firstValue(record.quantity, record.qty, record.position)) }}
       </template>
       <template slot="value" slot-scope="text, record">
-        {{ formatMoney(record.market_value || record.marketValue || record.value) }}
+        {{ formatMoney(firstValue(record.market_value, record.marketValue, record.value)) }}
       </template>
       <template slot="avg" slot-scope="text, record">
-        {{ formatMoney(record.avg_entry_price || record.avgPrice || record.avg_price) }}
+        {{ formatPrice(firstValue(record.avg_entry_price, record.avgPrice, record.avg_price, record.avgCost)) }}
       </template>
+      <template slot="current" slot-scope="text, record">{{ formatPrice(firstValue(record.current_price, record.currentPrice, record.marketPrice)) }}</template>
     </a-table>
   </div>
 </template>
 
 <script>
 import { broker } from '@/api/broker'
-
-function money (v) {
-  const n = Number(v)
-  if (!isFinite(n)) return '--'
-  const sign = n < 0 ? '-' : ''
-  return `${sign}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
+import { firstValue, brokerMoney, brokerPrice, brokerQuantity } from '@/utils/brokerAccountDisplay'
 
 export default {
   name: 'BrokerPositionsTable',
   props: {
     brokerId: { type: String, required: true },
+    credentialId: { type: Number, default: null },
     isDarkTheme: { type: Boolean, default: false }
   },
   data () {
@@ -61,7 +57,8 @@ export default {
         { title: this.$t('brokerAccounts.col.symbol'), dataIndex: 'symbol', key: 'symbol', width: 120 },
         { title: this.$t('brokerAccounts.col.side'), dataIndex: 'side', key: 'side', width: 80 },
         { title: this.$t('brokerAccounts.col.qty'), key: 'qty', width: 100, scopedSlots: { customRender: 'qty' }, align: 'right' },
-        { title: this.$t('brokerAccounts.col.avgPrice'), key: 'avg', width: 110, scopedSlots: { customRender: 'avg' }, align: 'right' },
+        { title: this.$t('brokerAccounts.col.entryPrice'), key: 'avg', width: 110, scopedSlots: { customRender: 'avg' }, align: 'right' },
+        { title: this.$t('brokerAccounts.col.currentPrice'), key: 'current', width: 110, scopedSlots: { customRender: 'current' }, align: 'right' },
         { title: this.$t('brokerAccounts.col.marketValue'), key: 'value', width: 130, scopedSlots: { customRender: 'value' }, align: 'right' },
         { title: this.$t('brokerAccounts.col.pnl'), key: 'pnl', width: 130, scopedSlots: { customRender: 'pnl' }, align: 'right' }
       ]
@@ -71,9 +68,12 @@ export default {
     this.load()
   },
   methods: {
-    formatMoney: money,
+    firstValue,
+    formatMoney: brokerMoney,
+    formatPrice: brokerPrice,
+    formatQuantity: brokerQuantity,
     pnlClass (record) {
-      const v = Number(record.unrealized_pnl || record.unrealizedPnl || record.profit || 0)
+      const v = Number(firstValue(record.unrealized_pnl, record.unrealizedPnl, record.unrealizedPnL, record.profit))
       if (v > 0) return 'pnl-positive'
       if (v < 0) return 'pnl-negative'
       return ''
@@ -84,12 +84,14 @@ export default {
     async load () {
       this.loading = true
       try {
-        const res = await broker[this.brokerId].positions()
+        const res = await broker[this.brokerId].positions(this.credentialId ? { credential_id: this.credentialId } : {})
+        if (res && res.success === false) throw new Error('brokerAccounts.snapshotPositionsFailed')
         const payload = (res && (res.data || res)) || {}
         const list = Array.isArray(payload) ? payload : (Array.isArray(payload.data) ? payload.data : (payload.positions || []))
         this.rows = list || []
       } catch (_) {
         this.rows = []
+        this.$message.error(this.$t('brokerAccounts.snapshotPositionsFailed'))
       } finally {
         this.loading = false
       }

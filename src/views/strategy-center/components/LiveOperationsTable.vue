@@ -142,10 +142,10 @@
           </span>
           <span>
             {{ $t('strategyCenter.console.latency') }}
-            <strong>{{ health(selectedStrategy).latency_ms || health(selectedStrategy).loop_latency_ms || '-' }} ms</strong>
+            <strong>{{ runtimeLatency(selectedStrategy) }} ms</strong>
           </span>
           <span>
-            {{ $t('liveMonitor.pendingOrders') }}
+            {{ pendingWorkLabel(selectedStrategy) }}
             <strong>{{ health(selectedStrategy).pending_orders || 0 }}</strong>
           </span>
         </div>
@@ -225,6 +225,7 @@
             <grid-resting-orders
               v-if="detailTab === 'grid-orders'"
               :strategy-id="Number(selectedStrategy.id)"
+              :is-dark="dark"
             />
           </a-tab-pane>
           <a-tab-pane key="overview" :tab="$t('strategyCenter.tabs.overview')">
@@ -263,6 +264,13 @@
               :bot-type="selectedStrategy.bot_type || ''"
             />
           </a-tab-pane>
+          <a-tab-pane v-if="aiDecisionFilterEnabled" key="ai-decisions" :tab="$t('aiDecisionFilter.tab')">
+            <ai-decision-records
+              v-if="detailTab === 'ai-decisions'"
+              :strategy-id="Number(selectedStrategy.id)"
+              :is-dark="dark"
+            />
+          </a-tab-pane>
           <a-tab-pane key="review" :tab="$t('trading-assistant.tabs.aiReview')">
             <strategy-review-report
               v-if="detailTab === 'review'"
@@ -290,6 +298,7 @@ import TradingRecords from './TradingRecords.vue'
 import StrategyReviewReport from './StrategyReviewReport.vue'
 import StrategyLogs from './StrategyLogs.vue'
 import GridRestingOrders from './GridRestingOrders.vue'
+import AiDecisionRecords from './AiDecisionRecords.vue'
 import { getExchangeDisplayName } from '@/utils/exchangeCredential'
 import {
   normalizeTimestampMilliseconds,
@@ -305,7 +314,7 @@ import {
 
 export default {
   name: 'LiveOperationsTable',
-  components: { PositionRecords, TradingRecords, StrategyReviewReport, StrategyLogs, GridRestingOrders },
+  components: { PositionRecords, TradingRecords, StrategyReviewReport, StrategyLogs, GridRestingOrders, AiDecisionRecords },
   props: {
     strategies: { type: Array, default: () => [] },
     loading: { type: Boolean, default: false },
@@ -338,10 +347,18 @@ export default {
     },
     isGridStrategy () {
       const strategy = this.selectedStrategy || {}
+      if (this.executionMode(strategy) !== 'live') return false
       const config = strategyTradingConfig(strategy)
-      const type = String(strategy.bot_type || config.bot_type || config.executor_type || '').toLowerCase()
+      const type = String(strategy.resolved_bot_type || strategy.bot_type || config.bot_type || config.executor_type || '').toLowerCase().replace(/-/g, '_')
       const template = String(strategy.template_key || config.template_key || '').toLowerCase()
-      return type === 'grid' || template.includes('robot_v2_grid')
+      const params = config.bot_params && typeof config.bot_params === 'object' ? config.bot_params : {}
+      const parameterKeys = Object.keys(params).map(key => String(key).toLowerCase().replace(/_/g, ''))
+      const hasGridParameters = ['gridcount', 'lowerprice', 'upperprice'].every(key => parameterKeys.includes(key))
+      const triggerMode = String(this.health(strategy).trigger_mode || '').toLowerCase()
+      return type === 'grid' || hasGridParameters || template.includes('robot_v2_grid') || triggerMode === 'exchange_resting_orders'
+    },
+    aiDecisionFilterEnabled () {
+      return Boolean(strategyTradingConfig(this.selectedStrategy || {}).ai_decision_filter)
     },
     runningStrategies () {
       return this.strategies.filter(this.isRunning)
@@ -486,6 +503,11 @@ export default {
     resizeChart () { if (this.chart) this.chart.resize() },
     isRunning (strategy) { return String(strategy && strategy.status || '').toLowerCase() === 'running' },
     executionMode (strategy) { return strategyExecutionMode(strategy) },
+    pendingWorkLabel (strategy) {
+      return this.executionMode(strategy) === 'live'
+        ? this.$t('liveMonitor.pendingOrders')
+        : this.$t('strategyCenter.console.pendingSignals')
+    },
     liveExchangeName (strategy) {
       if (this.executionMode(strategy) !== 'live') return ''
       const exchangeId = strategyExchangeId(strategy)
@@ -537,6 +559,11 @@ export default {
     },
     formatLivePnl (value) { return this.isLiveFinancial ? this.formatPnl(value) : '—' },
     formatLivePercent (value, signed = true) { return this.isLiveFinancial ? this.formatPercent(value, signed) : '—' },
+    runtimeLatency (strategy) {
+      const health = this.health(strategy)
+      const value = health.latency_ms ?? health.loop_latency_ms
+      return value == null || value === '' || !Number.isFinite(Number(value)) ? '-' : Number(value)
+    },
     formatTime (value) {
       if (!value) return '-'
       const numeric = typeof value === 'number' || /^\d+(?:\.\d+)?$/.test(String(value).trim()) ? Number(value) : null
@@ -626,7 +653,7 @@ export default {
 .overview-positions-panel ::v-deep .positions-section { padding: 0 14px 14px; }
 .overview-positions-panel ::v-deep .strategy-tab-empty { min-height: 132px; border: 0; background: transparent; }
 .workspace-empty { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 620px; padding: 30px; text-align: center; }.workspace-empty > .anticon { margin-bottom: 18px; color: #d19a18; font-size: 42px; }.workspace-empty h2 { margin: 0 0 8px; }.workspace-empty p { max-width: 430px; margin-bottom: 20px; color: #7b8490; }.detail-empty { display: flex; align-items: center; justify-content: center; }
-.theme-dark { border-color: #262a30; background: #111315; color: #e5e7eb; .strategy-master { border-color: #292d33; background: #121416; }.master-tabs,.strategy-master footer { border-color: #292d33; }.master-tabs b { background: #25282d; color: #a5abb4; }.strategy-row { border-color: #272b31; }.strategy-row:hover { background: #191c20; }.strategy-row.selected { background: #211d13; }.row-main strong { color: #e7e9ed; }.row-main small,.row-status { color: #818995; }.row-status em { border-color: #383c43; color: #959ca6; }.strategy-detail { background: #101214; }.detail-header,.section-head { border-color: #292d33; }.detail-title-line h2 { color: #f0f1f3; }.status-pill.stopped { background: #262a2f; color: #9ba2ab; }.execution-pill { border-color: #3a3e45; }.runtime-status-bar strong { color: #e1e4e8; }.metric-section-head h3 { color: #d8dce2; }.panel-section { border-color: #292d33; background: #131517; }.section-head h3 { color: #e0e3e7; }.master-search ::v-deep .ant-input { border-color: #30343a; background: #181b1e; color: #e4e7eb; }.workspace-empty h2 { color: #eceef1; }}
+.theme-dark { border-color: #262a30; background: #111315; color: #e5e7eb; .strategy-master { border-color: #292d33; background: #121416; }.master-tabs,.strategy-master footer { border-color: #292d33; }.master-tabs b { background: #25282d; color: #a5abb4; }.strategy-row { border-color: #272b31; }.strategy-row:hover { background: #191c20; }.strategy-row.selected { background: #211d13; }.row-main strong { color: #e7e9ed; }.row-main small,.row-status { color: #818995; }.row-status em { border-color: #383c43; color: #959ca6; }.strategy-detail { background: #101214; }.detail-header,.section-head { border-color: #292d33; }.detail-title-line h2 { color: #f0f1f3; }.status-pill.stopped { background: #262a2f; color: #9ba2ab; }.execution-pill { border-color: #3a3e45; }.runtime-status-bar strong { color: #e1e4e8; }.metric-section-head h3 { color: #d8dce2; }.panel-section { border-color: #292d33; background: #131517; }.section-head h3 { color: #e0e3e7; }.master-search ::v-deep .ant-input { border-color: #30343a; background: #181b1e; color: #e4e7eb; }.master-search ::v-deep .ant-input-search-icon,.master-search ::v-deep .ant-input-clear-icon { color: #8f9baa; }.master-search ::v-deep .ant-input-search-icon:hover,.master-search ::v-deep .ant-input-clear-icon:hover { color: #f1f5f9; }.workspace-empty h2 { color: #eceef1; }}
 .theme-dark .exchange-pill { border-color: rgba(64, 169, 255, .3); color: #69c0ff; background: rgba(24, 144, 255, .1); }
 
 /* Operational console layout */

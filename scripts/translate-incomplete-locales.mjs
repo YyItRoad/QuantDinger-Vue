@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import {
   evaluateObject,
@@ -19,11 +19,24 @@ const authEndpoint = process.env.QUANTDINGER_TRANSLATE_AUTH_ENDPOINT ||
 const endpoint = process.env.QUANTDINGER_TRANSLATE_ENDPOINT ||
   'https://api-edge.cognitive.microsofttranslator.com/translate'
 const requestDelayMs = Number(process.env.QUANTDINGER_TRANSLATE_DELAY_MS || 180)
+const requestedProvider = process.env.QUANTDINGER_TRANSLATE_PROVIDER || 'auto'
+const missingOnly = process.env.QUANTDINGER_TRANSLATE_MISSING_ONLY === '1'
 const batchCharacterLimit = 3500
 const batchItemLimit = 90
+const bingBatchCharacterLimit = 850
+const bingParallelTargets = Number(process.env.QUANTDINGER_TRANSLATE_PARALLEL_TARGETS || 3)
+const existingGeneratedMessages = existsSync(outputPath)
+  ? evaluateObject(
+      readFileSync(outputPath, 'utf8'),
+      'const messages =',
+      'generated-locale-overrides.js'
+    )
+  : {}
 
-const sleep = milliseconds => new Promise(resolvePromise => setTimeout(resolvePromise, milliseconds))
+const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 let translationToken = ''
+let activeProvider = requestedProvider
+let bingSession = null
 
 function protectText(value) {
   const protectedValues = []
@@ -53,13 +66,174 @@ function restoreText(value, protectedValues) {
 async function getTranslationToken(forceRefresh = false) {
   if (translationToken && !forceRefresh) return translationToken
   const response = await fetch(authEndpoint)
-  if (!response.ok) throw new Error(`Translation auth failed with HTTP ${response.status}`)
+  if (!response.ok) {
+    const error = new Error(`Translation auth failed with HTTP ${response.status}`)
+    error.status = response.status
+    throw error
+  }
   translationToken = (await response.text()).trim()
   if (!translationToken) throw new Error('Translation auth returned an empty token')
   return translationToken
 }
 
+const bingHeaders = {
+  'accept-language': 'en-US,en;q=0.9',
+  'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
+    'AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36'
+}
+
+async function getBingSession(forceRefresh = false) {
+  if (bingSession && !forceRefresh && Date.now() - bingSession.createdAt < 45 * 60 * 1000) {
+    return bingSession
+  }
+  const response = await fetch('https://www.bing.com/translator', { headers: bingHeaders })
+  if (!response.ok) throw new Error(`Bing translation bootstrap failed with HTTP ${response.status}`)
+  const html = await response.text()
+  const ig = html.match(/IG:"([^"]+)"/)?.[1]
+  const iid = html.match(/data-iid="([^"]+)"/)?.[1]
+  const auth = html.match(/params_AbusePreventionHelper\s*=\s*\[(\d+),"([^"]+)"/)
+  const cookies = (response.headers.getSetCookie?.() || [])
+    .map(value => value.split(';', 1)[0])
+    .join('; ')
+  if (!ig || !iid || !auth) {
+    throw new Error('Bing translation bootstrap parameters were not found')
+  }
+  bingSession = {
+    ig,
+    iid,
+    key: auth[1],
+    token: auth[2],
+    cookies,
+    createdAt: Date.now()
+  }
+  return bingSession
+}
+
+async function requestBingText(text, targetLanguage, attempt = 1) {
+  const session = await getBingSession(attempt > 1 && attempt % 3 === 0)
+  const body = new URLSearchParams({
+    fromLang: 'en',
+    to: targetLanguage,
+    text,
+    key: session.key,
+    token: session.token
+  })
+  const response = await fetch(
+    `https://www.bing.com/ttranslatev3?isVertical=1&IG=${session.ig}&IID=${session.iid}`,
+    {
+      method: 'POST',
+      headers: {
+        ...bingHeaders,
+        'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        cookie: session.cookies,
+        origin: 'https://www.bing.com',
+        referer: 'https://www.bing.com/translator'
+      },
+      body
+    }
+  )
+  if (!response.ok) {
+    if (attempt >= 6) throw new Error(`Bing translation failed with HTTP ${response.status}`)
+    if (response.status === 401 || response.status === 403) bingSession = null
+    const baseDelay = response.status === 429 ? 5000 : 750
+    await sleep(Math.min(baseDelay * (2 ** (attempt - 1)), 30000))
+    return requestBingText(text, targetLanguage, attempt + 1)
+  }
+  const payload = await response.json()
+  const translated = payload?.[0]?.translations?.[0]?.text
+  if (typeof translated !== 'string') {
+    throw new Error('Bing translation response did not contain translated text')
+  }
+  return translated
+}
+
+function makeBingBatches(protectedItems) {
+  const batches = []
+  let current = []
+  let characters = 0
+  protectedItems.forEach((item, index) => {
+    const marker = `QDINGERITEM${String(index).padStart(6, '0')}TOKEN`
+    const size = marker.length + item.text.length + 2
+    if (current.length && characters + size > bingBatchCharacterLimit) {
+      batches.push(current)
+      current = []
+      characters = 0
+    }
+    current.push({ ...item, index, marker })
+    characters += size
+  })
+  if (current.length) batches.push(current)
+  return batches
+}
+
+function extractBingBatch(translatedText, batch) {
+  const markerPattern = /QDINGERITEM(\d{6})TOKEN/g
+  const matches = [...translatedText.matchAll(markerPattern)]
+  if (matches.length !== batch.length) {
+    throw new Error('Bing translation response lost an item separator')
+  }
+  const values = new Map()
+  matches.forEach((match, index) => {
+    const itemIndex = Number(match[1])
+    const start = match.index + match[0].length
+    const end = matches[index + 1]?.index ?? translatedText.length
+    values.set(itemIndex, translatedText.slice(start, end).trim())
+  })
+  return values
+}
+
+async function requestBingTranslationMatrix(values, targetLanguages) {
+  const protectedItems = values.map(protectText)
+  const batches = makeBingBatches(protectedItems)
+  const matrix = values.map(() => ({}))
+  let nextTarget = 0
+
+  async function translateTarget() {
+    while (nextTarget < targetLanguages.length) {
+      const targetLanguage = targetLanguages[nextTarget++]
+      for (const batch of batches) {
+        const joined = batch.map(item => `${item.marker}\n${item.text}`).join('\n')
+        const translated = await requestBingText(joined, targetLanguage)
+        let translatedItems
+        try {
+          translatedItems = extractBingBatch(translated, batch)
+        } catch (error) {
+          console.warn(
+            `${targetLanguage}: ${error.message}; retrying ${batch.length} strings individually`
+          )
+          translatedItems = new Map()
+          for (const item of batch) {
+            translatedItems.set(
+              item.index,
+              await requestBingText(item.text, targetLanguage)
+            )
+            await sleep(requestDelayMs)
+          }
+        }
+        for (const item of batch) {
+          matrix[item.index][targetLanguage] = restoreText(
+            translatedItems.get(item.index) || '',
+            item.protectedValues
+          )
+        }
+        await sleep(requestDelayMs)
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from(
+      { length: Math.min(bingParallelTargets, targetLanguages.length) },
+      () => translateTarget()
+    )
+  )
+  return matrix
+}
+
 async function requestTranslationMatrix(values, targetLanguages, attempt = 1) {
+  if (activeProvider === 'bing') {
+    return requestBingTranslationMatrix(values, targetLanguages)
+  }
   const protectedItems = values.map(protectText)
   const query = new URLSearchParams({
     'api-version': '3.0',
@@ -104,6 +278,13 @@ async function requestTranslationMatrix(values, targetLanguages, attempt = 1) {
       return translations
     })
   } catch (error) {
+    if (activeProvider === 'auto' && (
+      error.status === 401 || error.status === 403 || error.status === 404
+    )) {
+      activeProvider = 'bing'
+      console.warn(`${error.message}; falling back to Bing Translator`)
+      return requestBingTranslationMatrix(values, targetLanguages)
+    }
     if (attempt >= 8) throw error
     if (error.status === 401 || error.status === 403) {
       await getTranslationToken(true)
@@ -220,6 +401,40 @@ function renderGeneratedOverrides(messages, verifiedSame) {
     `export default messages\n`
 }
 
+if (process.env.QUANTDINGER_TRANSLATE_REBUILD_VERIFIED_ONLY === '1') {
+  const generatedSource = readFileSync(outputPath, 'utf8')
+  const generatedMessages = evaluateObject(
+    generatedSource,
+    'const messages =',
+    'generated-locale-overrides.js'
+  )
+  const modules = await loadOverrideModules()
+  const english = {
+    ...loadCoreLocale(langDir, 'en-US').locale,
+    ...composeOverrides(modules, 'en-US')
+  }
+  const verified = Object.fromEntries(
+    Object.keys(localeTargets).map(localeName => {
+      const effective = {
+        ...loadCoreLocale(langDir, localeName).locale,
+        ...composeOverrides(modules, localeName),
+        ...(generatedMessages[localeName] || {})
+      }
+      const keys = Object.entries(english)
+        .filter(([key, source]) => (
+          typeof source === 'string' &&
+          isTranslatableText(source) &&
+          effective[key] === source
+        ))
+        .map(([key]) => key)
+      return [localeName, new Set(keys)]
+    })
+  )
+  writeFileSync(outputPath, renderGeneratedOverrides(generatedMessages, verified), 'utf8')
+  console.log(`Rebuilt verified same-language entries in ${outputPath}`)
+  process.exit(0)
+}
+
 const coreLocales = {}
 const verifiedSame = Object.fromEntries(
   Object.keys(localeTargets).map(localeName => [localeName, new Set()])
@@ -238,7 +453,7 @@ for (const localeName of Object.keys(localeTargets)) {
       isTranslatableText(source) &&
       (
         typeof locale[key] !== 'string' ||
-        locale[key] === source ||
+        (!missingOnly && locale[key] === source) ||
         !placeholdersMatch(source, locale[key])
       )
     ))
@@ -282,8 +497,15 @@ const overrideCandidates = {}
 
 for (const localeName of Object.keys(localeTargets)) {
   const existingOverrides = composeOverrides(overrideModules, localeName)
-  const current = { ...coreLocales[localeName], ...existingOverrides }
-  const generated = {}
+  const retainedGenerated = missingOnly
+    ? (existingGeneratedMessages[localeName] || {})
+    : {}
+  const current = {
+    ...coreLocales[localeName],
+    ...existingOverrides,
+    ...retainedGenerated
+  }
+  const generated = { ...retainedGenerated }
   const entries = []
 
   for (const [key, source] of Object.entries(finalEnglish)) {
@@ -304,7 +526,7 @@ for (const localeName of Object.keys(localeTargets)) {
       } else {
         generated[key] = source
       }
-    } else if (target === source && isTranslatableText(source)) {
+    } else if (!missingOnly && target === source && isTranslatableText(source)) {
       entries.push({ key, source })
     }
   }
@@ -324,6 +546,24 @@ for (const localeName of Object.keys(localeTargets)) {
   generatedMessages[localeName] = {
     ...generatedSeeds[localeName],
     ...overrideTranslations[localeName]
+  }
+
+  // Rebuild the allow-list from the final effective locale instead of relying
+  // only on values translated during this process. This also preserves
+  // intentional technical terms when a missing-only run skips existing text.
+  const finalLocale = {
+    ...coreLocales[localeName],
+    ...composeOverrides(overrideModules, localeName),
+    ...generatedMessages[localeName]
+  }
+  for (const [key, source] of Object.entries(finalEnglish)) {
+    if (
+      typeof source === 'string' &&
+      isTranslatableText(source) &&
+      finalLocale[key] === source
+    ) {
+      verifiedSame[localeName].add(key)
+    }
   }
 }
 

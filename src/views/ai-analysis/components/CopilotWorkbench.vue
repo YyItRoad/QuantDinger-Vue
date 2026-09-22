@@ -1,6 +1,10 @@
 <template>
   <div class="copilot-workbench">
-    <aside class="left-rail">
+    <div v-if="mobileSessionsOpen" class="mobile-rail-backdrop" @click="mobileSessionsOpen = false"></div>
+    <aside class="left-rail" :class="{ 'mobile-open': mobileSessionsOpen }">
+      <button type="button" class="mobile-rail-close" :aria-label="text.sessions" @click="mobileSessionsOpen = false">
+        <a-icon type="close" />
+      </button>
       <section class="rail-panel sessions-panel">
         <div class="panel-head">
           <span><a-icon type="history" /> {{ text.sessions }}</span>
@@ -32,10 +36,38 @@
         </div>
       </section>
 
+      <section class="rail-panel saved-prompt-library">
+        <div class="saved-prompt-library__head">
+          <strong><a-icon type="book" /> {{ text.savedPrompts }}</strong>
+          <span>{{ text.savedPromptsHint }}</span>
+        </div>
+        <div v-if="!savedPrompts.length" class="empty-mini">{{ text.noSavedPrompts }}</div>
+        <div v-else class="saved-prompt-library__list">
+          <div v-for="item in savedPrompts" :key="item.id" class="saved-prompt-library__item">
+            <button type="button" class="saved-prompt-card" @click="useSavedPrompt(item)">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.context_symbol || item.category || text.savedPrompts }}</span>
+            </button>
+            <a-popconfirm
+              :title="text.deleteSavedPromptConfirm"
+              :ok-text="text.remove"
+              :cancel-text="text.cancel"
+              @confirm="removeSavedPrompt(item)"
+            >
+              <button type="button" class="saved-prompt-delete" @click.stop><a-icon type="delete" /></button>
+            </a-popconfirm>
+          </div>
+        </div>
+      </section>
+
     </aside>
 
     <main class="chat-panel">
       <header class="chat-hero">
+        <button type="button" class="mobile-sessions-trigger" @click="mobileSessionsOpen = true">
+          <a-icon type="history" />
+          <span>{{ text.sessions }}</span>
+        </button>
         <div class="hero-main">
           <div class="hero-copy">
             <span class="eyebrow">{{ text.title }}</span>
@@ -46,22 +78,30 @@
 
       <div ref="messages" class="messages">
         <div v-if="messages.length === 0" class="welcome">
-          <a-icon type="robot" />
-          <h3>{{ text.welcomeTitle }}</h3>
-          <p>{{ text.welcomeDesc }}</p>
+          <a-icon type="search" />
+          <h3>{{ text.researchWelcomeTitle }}</h3>
+          <p>{{ text.researchWelcomeDesc }}</p>
           <div class="welcome-prompts">
             <button
-              v-for="item in registeredQuickTasks"
+              v-for="item in starterPrompts"
               :key="'welcome-' + item.key"
               type="button"
-              :class="['welcome-task', item.tone ? `welcome-task--${item.tone}` : '']"
-              @click="handleQuickPrompt(item)"
+              class="research-prompt-pill"
+              @click="useStarterPrompt(item)"
             >
-              <span class="task-icon"><a-icon :type="item.icon" /></span>
-              <span class="task-copy">
-                <strong>{{ item.label }}</strong>
-                <em>{{ item.desc }}</em>
-              </span>
+              <a-icon :type="item.icon" />
+              <span>{{ item.label }}</span>
+            </button>
+          </div>
+          <div v-if="savedPrompts.length" class="saved-prompt-preview">
+            <span class="saved-prompt-preview__label"><a-icon type="book" /> {{ text.savedPrompts }}</span>
+            <button
+              v-for="item in savedPrompts.slice(0, 4)"
+              :key="'saved-welcome-' + item.id"
+              type="button"
+              @click="useSavedPrompt(item)"
+            >
+              {{ item.title }}
             </button>
           </div>
         </div>
@@ -95,35 +135,70 @@
               :data-report-id="reportId(msg)"
               class="copilot-report-card"
             >
-              <FastAnalysisReport
+              <div v-if="msg.report && !isReportExpanded(msg)" class="report-artifact-summary">
+                <div class="report-artifact-summary__top">
+                  <span class="report-artifact-summary__icon"><a-icon type="thunderbolt" /></span>
+                  <div>
+                    <span>{{ text.professionalReport }}</span>
+                    <strong>{{ reportTargetLabel(msg) }}</strong>
+                  </div>
+                  <em :class="reportDecisionClass(msg)">{{ reportDecision(msg) }}</em>
+                </div>
+                <p>{{ reportSummary(msg) }}</p>
+                <div class="report-artifact-summary__metrics">
+                  <span><small>{{ text.confidence }}</small><strong>{{ reportConfidence(msg) }}%</strong></span>
+                  <span><small>{{ text.currentPrice }}</small><strong>{{ reportCurrentPrice(msg) }}</strong></span>
+                  <span :class="{ warning: reportHasRrWarning(msg) }"><small>R/R</small><strong>{{ reportRiskReward(msg) }}</strong></span>
+                </div>
+                <div v-if="reportHasRrWarning(msg)" class="report-artifact-summary__warning">
+                  <a-icon type="warning" /> {{ reportRiskRewardWarning(msg) }}
+                </div>
+                <button type="button" class="report-expand-button" @click="toggleReportExpanded(msg)">
+                  <a-icon type="down" /> {{ text.viewFullReport }}
+                </button>
+              </div>
+              <ProfessionalAnalysisReport
+                v-else
                 :result="msg.report || null"
                 :loading="!!msg.reportLoading"
                 :error="msg.reportError || null"
                 :error-tone="msg.reportErrorTone || 'error'"
                 @retry="retryProfessionalAnalysis(msg)"
-                @generate-strategy="handleReportGenerateStrategy"
-                @go-backtest="handleReportGoBacktest"
               />
+              <button v-if="msg.report && isReportExpanded(msg)" type="button" class="report-collapse-button" @click="toggleReportExpanded(msg)">
+                <a-icon type="up" /> {{ text.collapseReport }}
+              </button>
             </div>
             <div v-if="msg.streamWarning" class="stream-warning">
               <a-icon type="warning" />
               <span>{{ msg.streamWarning }}</span>
             </div>
             <div v-if="msg.meta" class="message-meta">{{ msg.meta }}</div>
-            <div v-if="agentUsageItems(msg).length" class="agent-usage">
-              <span class="agent-usage-title"><a-icon type="apartment" /> {{ text.usedThisTurn }}</span>
-              <span
-                v-for="item in agentUsageItems(msg)"
-                :key="item.kind + '-' + item.id"
-                :class="['agent-usage-chip', `agent-usage-chip--${item.kind}`]"
-              >
-                <a-icon :type="item.kind === 'tool' ? 'api' : 'experiment'" />
-                {{ item.label }}
-              </span>
-            </div>
-            <div v-if="visibleMessageActions(msg).length || strategyCodeForMessage(msg)" class="message-actions">
+            <details v-if="agentUsageItems(msg).length" class="agent-usage">
+              <summary>
+                <a-icon type="database" />
+                {{ text.dataSourcesUsed }} · {{ agentUsageItems(msg).length }}
+              </summary>
+              <div class="agent-usage-items">
+                <span
+                  v-for="item in agentUsageItems(msg)"
+                  :key="item.kind + '-' + item.id"
+                  :class="['agent-usage-chip', `agent-usage-chip--${item.kind}`]"
+                >
+                  <a-icon :type="item.kind === 'tool' ? 'api' : 'experiment'" />
+                  {{ item.label }}
+                </span>
+              </div>
+            </details>
+            <div v-if="msg.role === 'assistant' && !msg.isThinking" class="message-actions">
+              <button type="button" @click="copyMessageContent(msg)">
+                <a-icon type="copy" /> {{ text.copyAnswer }}
+              </button>
+              <button v-if="promptForMessage(msg)" type="button" @click="savePromptForMessage(msg)">
+                <a-icon type="book" /> {{ text.savePrompt }}
+              </button>
               <button v-for="action in visibleMessageActions(msg)" :key="action.key || action.label" type="button" @click="runMessageAction(action, msg)">
-                <a-icon :type="action.icon || 'arrow-right'" /> {{ action.label }}
+                <a-icon :type="action.icon || 'arrow-right'" /> {{ messageActionLabel(action) }}
               </button>
               <button v-if="strategyCodeForMessage(msg)" type="button" @click="copyStrategyCode(msg)">
                 <a-icon type="copy" /> {{ text.copyCode }}
@@ -132,6 +207,18 @@
             <div v-if="formatMessageTime(msg)" class="message-time">{{ formatMessageTime(msg) }}</div>
           </div>
         </article>
+      </div>
+
+      <div v-if="messages.length && contextualFollowups.length" class="followup-suggestions">
+        <button
+          v-for="item in contextualFollowups"
+          :key="item.key"
+          type="button"
+          @click="useFollowupPrompt(item)"
+        >
+          <a-icon :type="item.icon" />
+          <span>{{ item.label }}</span>
+        </button>
       </div>
 
       <div v-if="attachments.length" class="pending-attachments">
@@ -177,6 +264,32 @@
               </a-select-option>
             </a-select>
           </div>
+          <a-button class="professional-report-button" :disabled="!context.symbol || sending" @click="confirmProfessionalAnalysis">
+            <a-icon type="file-text" /> {{ text.professionalReport }}
+          </a-button>
+          <button type="button" class="session-memory-status" @click="openMemoryManager">
+            <a-icon type="bulb" />
+            <span>{{ sessionMemoryLabel }}</span>
+          </button>
+        </div>
+        <div v-if="draftReferencedReportId" class="referenced-report-chip">
+          <a-icon type="link" />
+          <span>{{ text.followingReport }}</span>
+          <button type="button" @click="draftReferencedReportId = null"><a-icon type="close" /></button>
+        </div>
+        <div class="research-mode-bar" role="tablist" :aria-label="text.researchMode">
+          <button
+            v-for="mode in researchModeOptions"
+            :key="mode.key"
+            type="button"
+            role="tab"
+            :aria-selected="activeResearchMode === mode.key ? 'true' : 'false'"
+            :class="{ active: activeResearchMode === mode.key }"
+            @click="selectResearchMode(mode.key)"
+          >
+            <a-icon :type="mode.icon" />
+            {{ mode.label }}
+          </button>
         </div>
         <div v-if="strategyComposerGuide" class="composer-coach">
           <span class="composer-coach-icon"><a-icon :type="strategyComposerGuide.icon" /></span>
@@ -217,9 +330,6 @@
           </p>
           <div class="composer-actions">
             <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" multiple @change="handleFiles">
-            <a-button v-if="messages.length" @click="quickToolsVisible = true">
-              <a-icon type="appstore" /> {{ text.quickTools }}
-            </a-button>
             <a-button @click="$refs.fileInput.click()">
               <a-icon type="picture" /> {{ uploadImageLabel }}
             </a-button>
@@ -254,7 +364,7 @@
                 <em>{{ item.name || marketLabel(item.market) }}</em>
               </span>
               <span class="watch-market-data">
-                <strong class="watch-price">{{ formatPriceValue(priceFor(item) && priceFor(item).price) }}</strong>
+                <strong class="watch-price">{{ formatPriceValue(priceFor(item) && priceFor(item).price, item.market) }}</strong>
                 <em :class="watchChangeClass(item)" class="watch-change">
                   {{ formatChangePercent(priceFor(item)) }}
                 </em>
@@ -430,27 +540,63 @@
     </a-modal>
 
     <a-modal
-      v-model="quickToolsVisible"
-      :title="text.quickTools"
+      v-model="memoryManagerVisible"
+      :title="text.manageMemory"
       :footer="null"
-      wrap-class-name="copilot-modal quick-tools-modal"
-      width="760px"
+      wrap-class-name="copilot-modal memory-manager-modal"
+      width="720px"
     >
-      <div class="quick-task-modal-grid">
-        <button
-          v-for="item in registeredQuickTasks"
-          :key="'modal-' + item.key"
-          type="button"
-          :class="['welcome-task', item.tone ? `welcome-task--${item.tone}` : '']"
-          @click="handleQuickPrompt(item)"
-        >
-          <span class="task-icon"><a-icon :type="item.icon" /></span>
-          <span class="task-copy">
-            <strong>{{ item.label }}</strong>
-            <em>{{ item.desc }}</em>
-          </span>
-        </button>
-      </div>
+      <a-spin :spinning="loadingSessionMemory">
+        <section class="session-memory-panel">
+          <div class="memory-section-head">
+            <div>
+              <strong>{{ text.sessionMemory }}</strong>
+              <span>{{ text.sessionMemoryHint }}</span>
+            </div>
+            <a-popconfirm :title="text.clearSessionMemoryConfirm" :ok-text="text.clear" :cancel-text="text.cancel" @confirm="clearCurrentSessionMemory">
+              <a-button size="small" :disabled="!sessionId || !hasSessionSummary">{{ text.clear }}</a-button>
+            </a-popconfirm>
+          </div>
+          <div v-if="hasSessionSummary" class="session-memory-summary">
+            <span v-if="sessionMemory.summary.selected_target"><small>{{ text.target }}</small><strong>{{ memoryTargetLabel }}</strong></span>
+            <span v-if="sessionMemory.summary.timeframe"><small>{{ text.timeframe }}</small><strong>{{ sessionMemory.summary.timeframe }}</strong></span>
+            <span v-if="sessionMemory.summary.active_workflow"><small>{{ text.workflow }}</small><strong>{{ sessionMemory.summary.active_workflow }}</strong></span>
+            <div v-if="sessionMemory.summary.stable_constraints && sessionMemory.summary.stable_constraints.length" class="memory-constraints">
+              <small>{{ text.constraints }}</small>
+              <em v-for="item in sessionMemory.summary.stable_constraints" :key="item">{{ item }}</em>
+            </div>
+          </div>
+          <div v-else class="utility-empty">{{ sessionId ? text.noSessionMemory : text.startChatForMemory }}</div>
+          <div v-if="sessionMemory.recent_requests && sessionMemory.recent_requests.length" class="context-telemetry">
+            <span><small>{{ text.lastInputTokens }}</small><strong>{{ latestContextUsage.estimated_input_tokens || 0 }}</strong></span>
+            <span><small>{{ text.historyTurns }}</small><strong>{{ latestContextUsage.history_message_count || 0 }}</strong></span>
+            <span><small>{{ text.memoryItems }}</small><strong>{{ latestContextUsage.memory_count || 0 }}</strong></span>
+            <span><small>{{ text.contextStatus }}</small><strong>{{ latestContextUsage.context_truncated ? text.compacted : text.normal }}</strong></span>
+          </div>
+        </section>
+
+        <section class="long-term-memory-panel">
+          <div class="memory-section-head">
+            <div>
+              <strong>{{ text.longTermMemory }}</strong>
+              <span>{{ text.longTermMemoryHint }}</span>
+            </div>
+          </div>
+          <div v-if="!userMemories.length" class="utility-empty">{{ text.noLongTermMemory }}</div>
+          <div v-else class="memory-editor-list">
+            <div v-for="item in userMemories" :key="item.id" class="memory-editor-row">
+              <a-input v-model="item.title" :placeholder="text.memoryTitle" />
+              <a-textarea v-model="item.content" :auto-size="{ minRows: 2, maxRows: 4 }" :placeholder="text.memoryContent" />
+              <div>
+                <a-button size="small" type="primary" @click="saveMemoryEdit(item)">{{ text.save }}</a-button>
+                <a-popconfirm :title="text.deleteMemoryConfirm" :ok-text="text.remove" :cancel-text="text.cancel" @confirm="removeLongTermMemory(item)">
+                  <a-button size="small" type="danger">{{ text.remove }}</a-button>
+                </a-popconfirm>
+              </div>
+            </div>
+          </div>
+        </section>
+      </a-spin>
     </a-modal>
 
     <a-modal
@@ -536,8 +682,18 @@ import {
   getAiSkillPrompt,
   getUserMemory,
   saveUserMemory,
+  updateUserMemory,
+  deleteUserMemory,
+  getChatSessionMemory,
+  clearChatSessionMemory,
   saveCopilotMessage,
-  exportChatReportPdf
+  getSavedPrompts,
+  savePrompt,
+  deleteSavedPrompt,
+  trackCopilotEvent,
+  getCopilotEventSummary,
+  exportChatReportPdf,
+  createChatReportShare
 } from '@/api/market'
 import { aiGenerateStrategy } from '@/api/strategy'
 import { getEconomicCalendar } from '@/api/global-market'
@@ -547,14 +703,28 @@ import { fastAnalyze } from '@/api/fast-analysis'
 import storage from 'store'
 import { ACCESS_TOKEN } from '@/store/mutation-types'
 import { loadEnabledMarketOptions, firstMarketValue } from '@/utils/marketModules'
-import FastAnalysisReport from './FastAnalysisReport.vue'
+import { resolveMarketBiasLabelKey, resolveTradeActionLabelKey } from '@/utils/fastAnalysisPresentation'
+import * as echarts from 'echarts'
+import { buildResearchChartOption, parseResearchChartBlock } from '@/utils/researchCharts.mjs'
+import ProfessionalAnalysisReport from './ProfessionalAnalysisReport.vue'
+import {
+  mergeWatchlistSuggestions,
+  sortCopilotMarkets
+} from './copilotWatchlistPresets.mjs'
+import {
+  buildContextualFollowups,
+  buildResearchStarterPrompts,
+  rankPromptsByUsage,
+  researchModes,
+  researchResponseContract
+} from './copilotResearchPrompts.mjs'
 
 let localId = 1
 
 export default {
   name: 'CopilotWorkbench',
   components: {
-    FastAnalysisReport
+    ProfessionalAnalysisReport
   },
   data () {
     return {
@@ -570,6 +740,7 @@ export default {
       messages: [],
       sessions: [],
       sessionId: null,
+      mobileSessionsOpen: false,
       sending: false,
       lastSendSignature: '',
       lastSendAt: 0,
@@ -584,7 +755,7 @@ export default {
       watchlistPrices: {},
       addWatchModalVisible: false,
       addingWatch: false,
-      addWatchMarket: 'Crypto',
+      addWatchMarket: 'USStock',
       addWatchKeyword: '',
       addWatchResults: [],
       addWatchSelected: null,
@@ -613,7 +784,15 @@ export default {
       draftContextLock: null,
       localizedDraft: null,
       printReportId: '',
-      quickToolsVisible: false
+      memoryManagerVisible: false,
+      loadingSessionMemory: false,
+      sessionMemory: { summary: {}, recent_requests: [], version: 0 },
+      expandedReports: {},
+      draftReferencedReportId: null,
+      activeResearchMode: 'research',
+      promptUsage: {},
+      savedPrompts: [],
+      loadingSavedPrompts: false
     }
   },
   watch: {
@@ -630,7 +809,7 @@ export default {
       const t = (key, fallback, values) => this.i18nText(`aiAssetAnalysis.copilot.${key}`, fallback, values)
       return {
         title: t('title', 'AI Copilot'),
-        subtitle: t('subtitle', 'Search symbols, inspect events, analyze markets, diagnose strategies, and draft code from one workspace.'),
+        subtitle: t('subtitle', this.isZh ? '在一个工作区研究标的、检查事件、比较市场并形成可验证的交易观点。' : 'Research symbols, inspect events, compare markets, and form testable trading views in one workspace.'),
         sessions: t('sessions', 'Chat History'),
         newChat: t('newChat', 'New'),
         noSessions: t('noSessions', 'No conversations yet'),
@@ -650,6 +829,19 @@ export default {
         scheduleCurrent: t('scheduleCurrent', 'Schedule analysis'),
         welcomeTitle: t('welcomeTitle', 'Control QuantDinger with plain language'),
         welcomeDesc: t('welcomeDesc', 'Ask about markets, explain logs, draft strategies, or attach a chart screenshot.'),
+        researchWelcomeTitle: t('researchWelcomeTitle', this.isZh ? '今天想研究什么？' : 'What are you researching?'),
+        researchWelcomeDesc: t('researchWelcomeDesc', this.isZh ? '分析标的、比较走势、研究事件，或制定交易计划。' : 'Analyze a symbol, compare markets, research events, or build a trading plan.'),
+        researchMode: t('researchMode', this.isZh ? '研究模式' : 'Research mode'),
+        savedPrompts: t('savedPrompts', this.isZh ? '我的常用问题' : 'Saved prompts'),
+        savedPromptsHint: t('savedPromptsHint', this.isZh ? '点击即可带入输入框' : 'Click to reuse in the composer'),
+        savePrompt: t('savePrompt', this.isZh ? '保存问题' : 'Save prompt'),
+        copyAnswer: t('copyAnswer', this.isZh ? '复制回答' : 'Copy answer'),
+        dataSourcesUsed: t('dataSourcesUsed', this.isZh ? '本次数据与工具' : 'Data and tools used'),
+        promptSaved: t('promptSaved', this.isZh ? '问题已保存' : 'Prompt saved'),
+        promptSaveFailed: t('promptSaveFailed', this.isZh ? '问题保存失败' : 'Failed to save prompt'),
+        promptDeleted: t('promptDeleted', this.isZh ? '已删除常用问题' : 'Saved prompt deleted'),
+        deleteSavedPromptConfirm: t('deleteSavedPromptConfirm', this.isZh ? '删除这个常用问题？' : 'Delete this saved prompt?'),
+        answerCopied: t('answerCopied', this.isZh ? '回答已复制' : 'Answer copied'),
         placeholder: t('placeholder', 'Example: diagnose BTC/USDT 1H trend, or upload a chart screenshot and ask whether entry risk is acceptable...'),
         uploadChart: t('uploadChart', 'Upload image'),
         send: t('send', 'Send'),
@@ -732,6 +924,55 @@ export default {
         selectSymbolFirst: t('selectSymbolFirst', 'Choose a symbol to analyze before running this tool.'),
         uploadImage: t('uploadImage', 'Upload image'),
         quickTools: t('quickTools', 'Quick tools'),
+        professionalReport: t('professionalReport', this.isZh ? '专业分析报告' : 'Professional report'),
+        professionalReportHint: t('professionalReportHint', this.isZh ? '生成含结论、交易计划和风险收益比的结构化报告' : 'Generate a structured report with verdict, plan, and risk/reward.'),
+        scheduleHint: t('scheduleHint', this.isZh ? '按指定频率复查当前标的并发送通知' : 'Re-check this symbol on a schedule and notify you.'),
+        manageMemory: t('manageMemory', this.isZh ? '对话记忆' : 'Conversation memory'),
+        manageMemoryHint: t('manageMemoryHint', this.isZh ? '查看本对话记住了什么，并管理长期偏好' : 'Review this chat memory and manage long-term preferences.'),
+        noSavedPrompts: t('noSavedPrompts', this.isZh ? '还没有保存常用问题，可在任一回答下点击“保存问题”。' : 'No saved prompts yet. Save one from any answer.'),
+        sessionMemory: t('sessionMemory', this.isZh ? '本对话记忆' : 'Session memory'),
+        sessionMemoryHint: t('sessionMemoryHint', this.isZh ? '自动压缩的任务状态，不会重复发送完整聊天记录。' : 'A compact task state; the full transcript is not resent.'),
+        longTermMemory: t('longTermMemory', this.isZh ? '长期偏好' : 'Long-term preferences'),
+        longTermMemoryHint: t('longTermMemoryHint', this.isZh ? '仅使用你确认保存的偏好和限制，可编辑或删除。' : 'Only user-approved preferences and constraints; edit or remove anytime.'),
+        clearSessionMemoryConfirm: t('clearSessionMemoryConfirm', this.isZh ? '清除本对话的摘要记忆？聊天记录会保留。' : 'Clear this session summary? The transcript will be kept.'),
+        clear: t('clear', this.isZh ? '清除' : 'Clear'),
+        target: t('target', this.isZh ? '当前标的' : 'Target'),
+        timeframe: t('timeframe', this.isZh ? '周期' : 'Timeframe'),
+        workflow: t('workflow', this.isZh ? '当前任务' : 'Workflow'),
+        constraints: t('constraints', this.isZh ? '已记住的限制' : 'Remembered constraints'),
+        noSessionMemory: t('noSessionMemory', this.isZh ? '本对话暂时没有可复用的任务状态。' : 'No reusable task state in this session yet.'),
+        startChatForMemory: t('startChatForMemory', this.isZh ? '发送第一条消息后会开始形成本对话记忆。' : 'Session memory starts after the first message.'),
+        noLongTermMemory: t('noLongTermMemory', this.isZh ? '尚未保存长期偏好。AI 发现偏好时会先征求你的确认。' : 'No long-term preferences saved. AI asks before saving one.'),
+        memoryTitle: t('memoryTitle', this.isZh ? '记忆标题' : 'Memory title'),
+        memoryContent: t('memoryContent', this.isZh ? '偏好或限制' : 'Preference or constraint'),
+        deleteMemoryConfirm: t('deleteMemoryConfirm', this.isZh ? '删除这条长期记忆？' : 'Delete this long-term memory?'),
+        memoryUpdated: t('memoryUpdated', this.isZh ? '记忆已更新' : 'Memory updated'),
+        memoryDeleted: t('memoryDeleted', this.isZh ? '记忆已删除' : 'Memory deleted'),
+        memorySaveFailed: t('memorySaveFailed', this.isZh ? '记忆保存失败' : 'Failed to save memory'),
+        lastInputTokens: t('lastInputTokens', this.isZh ? '最近输入 Token（估算）' : 'Latest input tokens (est.)'),
+        historyTurns: t('historyTurns', this.isZh ? '带入历史消息' : 'History messages'),
+        memoryItems: t('memoryItems', this.isZh ? '长期记忆条数' : 'Memory items'),
+        contextStatus: t('contextStatus', this.isZh ? '上下文状态' : 'Context status'),
+        compacted: t('compacted', this.isZh ? '已压缩' : 'Compacted'),
+        normal: t('normal', this.isZh ? '正常' : 'Normal'),
+        followingReport: t('followingReport', this.isZh ? '下一条问题将引用当前专业报告' : 'The next question will reference this professional report'),
+        viewFullReport: t('viewFullReport', this.isZh ? '查看完整报告' : 'View full report'),
+        collapseReport: t('collapseReport', this.isZh ? '收起完整报告' : 'Collapse report'),
+        confidence: t('confidence', this.isZh ? '置信度' : 'Confidence'),
+        currentPrice: t('currentPrice', this.isZh ? '当前价格' : 'Current price'),
+        riskRewardWarning: t('riskRewardWarning', this.isZh ? '风险收益比低于 1，请重点检查止盈止损计划。' : 'Risk/reward is below 1. Review the stop and target plan.'),
+        riskRewardUnavailable: t('riskRewardUnavailable', 'The report has no calculable risk/reward ratio. Review the stop and target plan.'),
+        noSessionMemoryYet: t('noSessionMemoryYet', 'No session memory yet'),
+        viewConversationMemory: t('viewConversationMemory', 'View conversation memory'),
+        rememberedState: t('rememberedState', 'Remembered: {state}'),
+        taskState: t('taskState', 'task state'),
+        marketFallback: t('marketFallback', 'market'),
+        professionalReportMessage: t('professionalReportMessage', 'Professional analysis report: {label}'),
+        sessionMemoryCleared: t('sessionMemoryCleared', 'Session memory cleared; transcript kept'),
+        reportGenerateTitle: t('reportGenerateTitle', 'Generate a professional report for {symbol}?'),
+        reportGenerateContent: t('reportGenerateContent', 'Target: {target} · Timeframe: 1D · About 30–90 seconds · Estimated cost: {cost} credits'),
+        generate: t('generate', 'Generate'),
+        reportReady: t('reportReady', 'Report ready. Expand for evidence, trading plan, and risks.'),
         hideQuickTools: t('hideQuickTools', 'Hide quick tools'),
         usedThisTurn: t('usedThisTurn', 'Used this turn'),
         imageAttachment: t('imageAttachment', 'Image attachment'),
@@ -881,6 +1122,57 @@ export default {
           }
         })
     },
+    researchQuickTasks () {
+      return this.registeredQuickTasks.filter(item => !['indicator_research', 'strategy_research', 'script_strategy'].includes(this.quickTaskKey(item)))
+    },
+    researchModeOptions () {
+      return researchModes(false).map(item => ({
+        ...item,
+        label: this.i18nText(`aiAssetAnalysis.copilot.researchModes.${item.key}`, item.label)
+      }))
+    },
+    starterPrompts () {
+      const target = this.normalizeSymbolOption(this.context)
+      const symbol = (target && target.symbol) || this.text.currentSymbol
+      const related = (this.watchlist || [])
+        .map(item => String((item && item.symbol) || '').trim())
+        .filter(item => item && item.toUpperCase() !== String(symbol).toUpperCase())
+        .slice(0, 2)
+      const comparisonItems = [symbol, ...related].filter(Boolean)
+      const comparison = typeof Intl !== 'undefined' && Intl.ListFormat
+        ? new Intl.ListFormat(String(this.$i18n?.locale || 'en-US'), { style: 'short', type: 'conjunction' }).format(comparisonItems)
+        : comparisonItems.join(', ')
+      const prompts = buildResearchStarterPrompts({
+        isZh: false,
+        target,
+        watchlist: this.watchlist,
+        activeMode: this.activeResearchMode
+      }).map(item => ({
+        ...item,
+        label: this.i18nText(`aiAssetAnalysis.copilot.starterPrompts.${item.key}.label`, item.label, { symbol, comparison }),
+        prompt: this.i18nText(`aiAssetAnalysis.copilot.starterPrompts.${item.key}.prompt`, item.prompt, { symbol, comparison })
+      }))
+      return rankPromptsByUsage(prompts, this.promptUsage).slice(0, 6)
+    },
+    lastAssistantMessage () {
+      return [...(this.messages || [])].reverse().find(item => item && item.role === 'assistant') || null
+    },
+    contextualFollowups () {
+      const message = this.lastAssistantMessage || {}
+      if (this.sending || !message || message.isThinking) return []
+      const target = this.normalizeSymbolOption(this.context)
+      const symbol = (target && target.symbol) || this.i18nText('aiAssetAnalysis.copilot.currentSymbol', 'the current symbol')
+      return buildContextualFollowups({
+        isZh: false,
+        target,
+        intent: message.meta || message.intent || '',
+        hasReport: !!message.report
+      }).map(item => ({
+        ...item,
+        label: this.i18nText(`aiAssetAnalysis.copilot.followups.${item.key}.label`, item.label, { symbol }),
+        prompt: this.i18nText(`aiAssetAnalysis.copilot.followups.${item.key}.prompt`, item.prompt, { symbol })
+      }))
+    },
     strategyTargets () {
       return [
         {
@@ -970,6 +1262,26 @@ export default {
       if (!target || !target.symbol) return this.text.contextAutoInfer
       return `${target.market}:${target.symbol}`
     },
+    hasSessionSummary () {
+      return !!(this.sessionMemory && this.sessionMemory.summary && Object.keys(this.sessionMemory.summary).length)
+    },
+    memoryTargetLabel () {
+      const target = (this.sessionMemory && this.sessionMemory.summary && this.sessionMemory.summary.selected_target) || {}
+      return [target.market, target.symbol].filter(Boolean).join(':') || '--'
+    },
+    latestContextUsage () {
+      return (this.sessionMemory && this.sessionMemory.recent_requests && this.sessionMemory.recent_requests[0]) || {}
+    },
+    sessionMemoryLabel () {
+      if (!this.sessionId) return this.text.noSessionMemoryYet
+      if (!this.hasSessionSummary) return this.text.viewConversationMemory
+      const summary = this.sessionMemory.summary || {}
+      const target = summary.selected_target || {}
+      const pieces = [target.symbol, summary.timeframe, summary.active_workflow].filter(Boolean).slice(0, 2)
+      return this.i18nText('aiAssetAnalysis.copilot.rememberedState', 'Remembered: {state}', {
+        state: pieces.join(' · ') || this.text.taskState
+      })
+    },
     selectableSymbols () {
       const map = new Map()
       ;(this.watchlist || []).forEach(item => {
@@ -1002,6 +1314,15 @@ export default {
     }
   },
   mounted () {
+    this._markdownCharts = new Map()
+    this._markdownChartObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(entries => {
+        entries.forEach(entry => {
+          const chart = echarts.getInstanceByDom(entry.target)
+          if (chart) chart.resize()
+        })
+      })
     this.loadMarketModules()
     this.seedSymbolOptions()
     this.loadBilling()
@@ -1011,12 +1332,21 @@ export default {
     this.loadAgentPreflight()
     this.loadAiSkills()
     this.loadUserMemories()
+    this.loadSavedPrompts()
+    this.loadPromptUsage()
     this.applyIncomingCopilotPrompt()
     this.$nextTick(this.resizeComposer)
+  },
+  updated () {
+    this.scheduleMarkdownCharts()
   },
   beforeDestroy () {
     if (this.symbolSearchTimer) clearTimeout(this.symbolSearchTimer)
     if (this.addWatchSearchTimer) clearTimeout(this.addWatchSearchTimer)
+    if (this._markdownChartFrame) cancelAnimationFrame(this._markdownChartFrame)
+    if (this._markdownChartObserver) this._markdownChartObserver.disconnect()
+    if (this._markdownCharts) this._markdownCharts.forEach(chart => chart.dispose())
+    this._markdownCharts = null
   },
   methods: {
     applyIncomingCopilotPrompt () {
@@ -1209,7 +1539,7 @@ export default {
     },
     async loadMarketModules () {
       const options = await loadEnabledMarketOptions({ includeFeatures: ['research'] })
-      this.markets = options.map(item => ({
+      this.markets = sortCopilotMarkets(options).map(item => ({
         value: item.value,
         label: item.label || item.value,
         i18nKey: item.i18nKey,
@@ -1240,6 +1570,8 @@ export default {
         const res = await getMembershipPlans()
         const data = res.data || {}
         this.billing = data.billing || data.billing_config || {}
+        const credits = Number(this.billing.credits)
+        if (Number.isFinite(credits)) this.$root.$emit('credits-updated', credits)
       } catch (_) {}
     },
     async loadCalendar (force = false) {
@@ -1290,10 +1622,12 @@ export default {
     async loadHistory (sessionId) {
       this.resetComposerDraft()
       this.sessionId = sessionId
+      this.mobileSessionsOpen = false
       try {
         const res = await getChatHistory({ session_id: sessionId })
         const rawMessages = Array.isArray(res.data) ? res.data : ((res.data && res.data.messages) || [])
         this.messages = this.normalizeMessages(rawMessages)
+        await this.loadSessionMemory()
         this.scrollToBottom()
       } catch (_) {}
     },
@@ -1302,11 +1636,13 @@ export default {
       const content = String(message.content || '').trim()
       if (content) return content
       if (message.report) {
-        const report = message.report || {}
+        const report = this.professionalArtifact(message.report) || {}
+        const instrument = report.instrument || {}
         const target = message.reportTarget || {}
-        const market = report.market || target.market || ''
-        const symbol = report.symbol || target.symbol || ''
-        return `Analysis report: ${[market, symbol].filter(Boolean).join(':') || 'market'}`
+        const market = instrument.market || target.market || ''
+        const symbol = instrument.canonical_symbol || instrument.symbol || target.symbol || ''
+        const label = [market, symbol].filter(Boolean).join(':') || this.text.marketFallback
+        return this.i18nText('aiAssetAnalysis.copilot.professionalReportMessage', 'Professional analysis report: {label}', { label })
       }
       if (message.reportError) return `Analysis failed: ${message.reportError}`
       return String(message.meta || '').trim()
@@ -1359,6 +1695,9 @@ export default {
       this.resetComposerDraft()
       this.sessionId = null
       this.messages = []
+      this.mobileSessionsOpen = false
+      this.sessionMemory = { summary: {}, recent_requests: [], version: 0 }
+      this.draftReferencedReportId = null
     },
     resetComposerDraft () {
       this.draft = ''
@@ -1367,7 +1706,8 @@ export default {
       this.localizedDraft = null
       this.pendingAgentTask = null
       this.monitorSetupDraft = null
-      this.quickToolsVisible = false
+      this.memoryManagerVisible = false
+      this.draftReferencedReportId = null
       this.composerHeight = this.composerMinHeight
       this.$nextTick(this.resizeComposer)
     },
@@ -1399,11 +1739,17 @@ export default {
       this.symbolSearching = true
       try {
         const params = { keyword: kw, limit: 14 }
-        if (this.context.market) params.market = this.context.market
         const res = await searchSymbols(params)
         const data = res.data || {}
         const list = Array.isArray(data) ? data : (data.results || data.symbols || data.items || [])
         this.symbolOptions = list.map(x => this.normalizeSymbolOption(x)).filter(Boolean)
+        if (!this.symbolOptions.length) {
+          const inferred = this.inferSymbolFromText(kw)
+          this.symbolOptions = [{
+            market: (inferred && inferred.market) || this.context.market || firstMarketValue(this.markets),
+            symbol: (inferred && inferred.symbol) || kw.toUpperCase()
+          }]
+        }
       } catch (_) {
         const inferred = this.inferSymbolFromText(kw)
         this.symbolOptions = [{ market: (inferred && inferred.market) || this.context.market || firstMarketValue(this.markets), symbol: kw.toUpperCase() }]
@@ -1428,7 +1774,10 @@ export default {
     },
     async openAddWatchModal () {
       this.addWatchModalVisible = true
-      this.addWatchMarket = this.context.market || this.addWatchMarket || 'Crypto'
+      const marketValues = this.markets.map(item => item.value)
+      this.addWatchMarket = marketValues.includes(this.context.market)
+        ? this.context.market
+        : (marketValues.includes(this.addWatchMarket) ? this.addWatchMarket : firstMarketValue(this.markets, 'USStock'))
       this.addWatchKeyword = ''
       this.addWatchSelected = null
       await this.loadAddWatchHotSymbols()
@@ -1479,10 +1828,11 @@ export default {
         if (seq !== this.addWatchSearchSeq || market !== this.addWatchMarket) return
         const data = res.data || {}
         const list = Array.isArray(data) ? data : (data.results || data.symbols || data.items || [])
-        this.addWatchResults = list.map(x => this.normalizeSymbolOption({ ...x, market: x.market || market })).filter(Boolean)
+        const normalized = list.map(x => this.normalizeSymbolOption({ ...x, market: x.market || market })).filter(Boolean)
+        this.addWatchResults = mergeWatchlistSuggestions(market, normalized)
       } catch (_) {
         if (seq !== this.addWatchSearchSeq || market !== this.addWatchMarket) return
-        this.addWatchResults = []
+        this.addWatchResults = mergeWatchlistSuggestions(market)
       } finally {
         if (seq === this.addWatchSearchSeq && market === this.addWatchMarket) {
           this.addWatchSearching = false
@@ -1621,6 +1971,148 @@ export default {
         if (this.$refs.composerInput) this.$refs.composerInput.focus()
       })
     },
+    selectResearchMode (mode) {
+      this.activeResearchMode = mode || 'research'
+      this.recordCopilotEvent('mode_selected', this.activeResearchMode, {
+        source: 'composer',
+        mode: this.activeResearchMode
+      })
+    },
+    useStarterPrompt (item) {
+      if (!item || !item.prompt) return
+      this.promptUsage = {
+        ...this.promptUsage,
+        [item.key]: Number(this.promptUsage[item.key] || 0) + 1
+      }
+      this.activeResearchMode = item.mode || this.activeResearchMode
+      this.recordCopilotEvent('prompt_used', item.key, {
+        source: 'welcome',
+        mode: this.activeResearchMode,
+        position: this.starterPrompts.findIndex(candidate => candidate.key === item.key)
+      })
+      this.usePrompt(item.prompt, {
+        ...(this.normalizeSymbolOption(this.context) ? { contextLock: this.context } : {})
+      })
+    },
+    useFollowupPrompt (item) {
+      if (!item || !item.prompt) return
+      this.activeResearchMode = item.mode || this.activeResearchMode
+      this.recordCopilotEvent('followup_used', item.key, {
+        source: 'followup',
+        mode: this.activeResearchMode,
+        has_report: !!(this.lastAssistantMessage && this.lastAssistantMessage.report)
+      })
+      this.usePrompt(item.prompt, {
+        ...(this.normalizeSymbolOption(this.context) ? { contextLock: this.context } : {})
+      })
+    },
+    async loadSavedPrompts () {
+      this.loadingSavedPrompts = true
+      try {
+        const res = await getSavedPrompts({ limit: 50 })
+        const data = res && res.data !== undefined ? res.data : res
+        this.savedPrompts = Array.isArray(data) ? data : []
+      } catch (_) {
+        this.savedPrompts = []
+      } finally {
+        this.loadingSavedPrompts = false
+      }
+    },
+    async loadPromptUsage () {
+      try {
+        const res = await getCopilotEventSummary()
+        const data = res && res.data !== undefined ? res.data : res
+        this.promptUsage = data && data.task_usage && typeof data.task_usage === 'object' ? data.task_usage : {}
+      } catch (_) {}
+    },
+    recordCopilotEvent (eventType, taskKey = '', metadata = {}) {
+      const target = this.normalizeSymbolOption(this.context) || {}
+      trackCopilotEvent({
+        event_type: eventType,
+        task_key: taskKey,
+        context: { market: target.market || '', symbol: target.symbol || '' },
+        metadata: {
+          ...metadata,
+          locale: this.$i18n ? this.$i18n.locale : 'zh-CN',
+          has_symbol: !!target.symbol
+        }
+      }).catch(() => {})
+    },
+    useSavedPrompt (item) {
+      if (!item || !item.prompt) return
+      const contextLock = item.context_symbol
+        ? { market: item.context_market || this.context.market, symbol: item.context_symbol }
+        : null
+      this.usePrompt(item.prompt, contextLock ? { contextLock } : {})
+      this.recordCopilotEvent('prompt_used', `saved_${item.id}`, {
+        source: 'saved_prompt',
+        mode: item.category || this.activeResearchMode
+      })
+    },
+    promptForMessage (msg) {
+      const index = (this.messages || []).indexOf(msg)
+      if (index < 0) return ''
+      for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+        const candidate = this.messages[cursor]
+        if (candidate && candidate.role === 'user' && String(candidate.content || '').trim()) {
+          return String(candidate.content).trim()
+        }
+      }
+      return ''
+    },
+    async savePromptForMessage (msg) {
+      const prompt = this.promptForMessage(msg)
+      if (!prompt) return
+      const target = this.normalizeSymbolOption(this.context) || {}
+      try {
+        const res = await savePrompt({
+          title: prompt.replace(/\s+/g, ' ').slice(0, 80),
+          prompt,
+          category: this.activeResearchMode,
+          context: { market: target.market || '', symbol: target.symbol || '' }
+        })
+        const item = res && res.data !== undefined ? res.data : res
+        if (item && item.id) this.savedPrompts = [item, ...this.savedPrompts.filter(saved => saved.id !== item.id)]
+        this.recordCopilotEvent('prompt_saved', `saved_${item && item.id ? item.id : 'new'}`, {
+          source: 'message_action',
+          mode: this.activeResearchMode
+        })
+        this.$message.success(this.text.promptSaved)
+      } catch (_) {
+        this.$message.error(this.text.promptSaveFailed)
+      }
+    },
+    async removeSavedPrompt (item) {
+      if (!item || !item.id) return
+      try {
+        await deleteSavedPrompt(item.id)
+        this.savedPrompts = this.savedPrompts.filter(saved => saved.id !== item.id)
+        this.$message.success(this.text.promptDeleted)
+      } catch (_) {
+        this.$message.error(this.text.promptSaveFailed)
+      }
+    },
+    async copyMessageContent (msg) {
+      const content = String((msg && msg.content) || '').trim()
+      if (!content) return
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(content)
+        } else {
+          const textarea = document.createElement('textarea')
+          textarea.value = content
+          textarea.style.position = 'fixed'
+          textarea.style.opacity = '0'
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textarea)
+        }
+        this.$message.success(this.text.answerCopied)
+      } catch (_) {
+        this.$message.error(this.i18nText('aiAssetAnalysis.copilot.copyFailed', 'Copy failed'))
+      }
+    },
     refreshLocalizedDraft () {
       const descriptor = this.localizedDraft
       if (!descriptor || String(this.draft || '') !== String(descriptor.lastValue || '')) {
@@ -1651,6 +2143,58 @@ export default {
         this.userMemories = (data && data.items) || []
       } catch (_) {
         this.userMemories = []
+      }
+    },
+    async loadSessionMemory () {
+      if (!this.sessionId) {
+        this.sessionMemory = { summary: {}, recent_requests: [], version: 0 }
+        return
+      }
+      this.loadingSessionMemory = true
+      try {
+        const res = await getChatSessionMemory(this.sessionId)
+        this.sessionMemory = (res && res.data) || { summary: {}, recent_requests: [], version: 0 }
+      } catch (_) {
+        this.sessionMemory = { summary: {}, recent_requests: [], version: 0 }
+      } finally {
+        this.loadingSessionMemory = false
+      }
+    },
+    async openMemoryManager () {
+      this.memoryManagerVisible = true
+      await Promise.all([this.loadUserMemories(), this.loadSessionMemory()])
+    },
+    async clearCurrentSessionMemory () {
+      if (!this.sessionId) return
+      try {
+        await clearChatSessionMemory(this.sessionId)
+        this.sessionMemory = { summary: {}, recent_requests: [], version: Number(this.sessionMemory.version || 0) + 1 }
+        this.$message.success(this.text.sessionMemoryCleared)
+      } catch (e) {
+        this.$message.error((e && e.message) || this.text.chatUnavailable)
+      }
+    },
+    async saveMemoryEdit (item) {
+      if (!item || !item.id || !String(item.title || '').trim() || !String(item.content || '').trim()) return
+      try {
+        await updateUserMemory(item.id, {
+          title: String(item.title).trim(),
+          content: String(item.content).trim(),
+          category: item.category || 'preference'
+        })
+        this.$message.success(this.text.memoryUpdated)
+      } catch (e) {
+        this.$message.error((e && e.message) || this.text.memorySaveFailed)
+      }
+    },
+    async removeLongTermMemory (item) {
+      if (!item || !item.id) return
+      try {
+        await deleteUserMemory(item.id)
+        this.userMemories = this.userMemories.filter(memory => memory.id !== item.id)
+        this.$message.success(this.text.memoryDeleted)
+      } catch (e) {
+        this.$message.error((e && e.message) || this.text.memorySaveFailed)
       }
     },
     buildPreflightGuide (task = null) {
@@ -1838,6 +2382,10 @@ export default {
         this.exportReportPdf(action.payload && action.payload.reportId)
         return
       }
+      if (action && action.type === 'share_report') {
+        this.shareReport(action.payload && action.payload.reportId)
+        return
+      }
       if (action && action.type === 'ask_about_report') {
         this.askAboutReport(action.payload && action.payload.reportId)
         return
@@ -1929,6 +2477,25 @@ export default {
     visibleMessageActions (msg) {
       const actions = Array.isArray(msg && msg.actions) ? msg.actions : []
       return actions.filter(action => action && !['generate_code', 'agent_usage'].includes(action.type))
+    },
+    messageActionLabel (action) {
+      const type = String((action && action.type) || '')
+      if (type === 'export_report_pdf') {
+        return this.i18nText('aiAssetAnalysis.copilot.exportPdf', 'Export PDF')
+      }
+      if (type === 'share_report') {
+        return this.$t('aiAssetAnalysis.copilot.shareReport')
+      }
+      if (type === 'ask_about_report') {
+        return this.i18nText('aiAssetAnalysis.copilot.askFollowup', 'Ask follow-up')
+      }
+      if (type === 'save_memory') {
+        return this.i18nText('aiAssetAnalysis.copilot.rememberPreference', 'Remember this')
+      }
+      if (type === 'create_monitor_task') {
+        return this.i18nText('aiAssetAnalysis.copilot.monitorCreateAction', 'Create task')
+      }
+      return String((action && action.label) || '')
     },
     strategyCodeForMessage (msg) {
       const action = this.workflowActionForMessage(msg)
@@ -2289,6 +2856,14 @@ export default {
       if (cnCode) return { market: 'CNStock', symbol: cnCode[1] }
       const hkCode = value.match(/(?:^|[^\d])(\d{5})(?:[^\d]|$)/)
       if (hkCode) return { market: 'HKStock', symbol: hkCode[1] }
+      const plainTicker = value.trim().match(/^[A-Z][A-Z0-9.-]{0,9}$/)
+      if (plainTicker) {
+        const symbol = plainTicker[0]
+        const cryptoBases = ['BTC', 'ETH', 'SOL', 'TON', 'HYPE', 'DOGE', 'XRP', 'BNB', 'ADA', 'AVAX']
+        return cryptoBases.includes(symbol)
+          ? { market: 'Crypto', symbol: `${symbol}/USDT` }
+          : { market: 'USStock', symbol }
+      }
       return null
     },
     commonSymbolAliases () {
@@ -2379,14 +2954,6 @@ export default {
       }
     },
     buildChatContext (message = '', resolvedSymbol = null) {
-      const recent = (this.messages || [])
-        .filter(msg => msg && msg.content)
-        .slice(-8)
-        .map(msg => ({
-          role: msg.role,
-          meta: msg.meta || '',
-          content: String(msg.content || '').slice(0, 8000)
-        }))
       const locked = resolvedSymbol && resolvedSymbol.locked ? this.normalizeSymbolOption(resolvedSymbol) : null
       const selected = this.normalizeSymbolOption(this.context)
       const mentioned = this.inferSymbolFromText(message)
@@ -2424,7 +2991,6 @@ export default {
         use_system_data_source: true,
         active_price: activePrice || null,
         agent_task: this.pendingAgentTaskContext(),
-        user_memories: (this.userMemories || []).slice(0, 12),
         economic_calendar_context: macroContext.events,
         macro_data_policy: macroContext.enabled
           ? this.i18nText(
@@ -2436,12 +3002,15 @@ export default {
           'aiAssetAnalysis.copilot.dataSourcePolicy',
           'Users may not manually choose a data source. Infer the market and symbol from natural language first, then use system data/watchlist/market context. If live data is missing, state the gap and still provide actionable next steps instead of stopping.'
         ),
-        copilot_recent_messages: recent
+        research_mode: this.activeResearchMode,
+        response_contract: this.i18nText(
+          `aiAssetAnalysis.copilot.responseContracts.${this.activeResearchMode}`,
+          researchResponseContract(this.activeResearchMode, false)
+        )
       }
     },
     async handleQuickPrompt (item) {
       if (!item) return
-      this.quickToolsVisible = false
       const activeItem = { ...item, prompt: await this.resolveSkillPrompt(item) }
       const target = this.selectedContextTarget()
       const key = this.quickTaskKey(activeItem)
@@ -2541,6 +3110,28 @@ export default {
       this.messages.push(userMsg)
       await this.executeProfessionalAnalysis(userMsg, target)
     },
+    confirmProfessionalAnalysis () {
+      const target = this.normalizeSymbolOption(this.context)
+      if (!target || !target.symbol) {
+        this.promptSelectSymbolFirst()
+        return
+      }
+      const costs = (this.agentPreflight && this.agentPreflight.costs) || (this.billing && this.billing.feature_costs) || {}
+      const cost = Number(costs.analysis || costs.ai_analysis || costs.fast_analysis || 10)
+      const targetLabel = `${target.market}:${target.symbol}`
+      this.$confirm({
+        title: this.i18nText('aiAssetAnalysis.copilot.reportGenerateTitle', 'Generate a professional report for {symbol}?', { symbol: target.symbol }),
+        content: this.i18nText('aiAssetAnalysis.copilot.reportGenerateContent', 'Target: {target} · Timeframe: 1D · About 30–90 seconds · Estimated cost: {cost} credits', { target: targetLabel, cost }),
+        okText: this.text.generate,
+        cancelText: this.text.cancel,
+        // Do not return the long-running analysis promise. Ant Design keeps a
+        // confirm modal open while onOk's returned promise is pending; the
+        // report's inline progress card is the correct place to show progress.
+        onOk: () => {
+          this.runProfessionalAnalysis()
+        }
+      })
+    },
     async executeProfessionalAnalysis (userMsg, target) {
       const assistantMsg = {
         localId: `local-${localId++}`,
@@ -2560,20 +3151,23 @@ export default {
         assistantMsg.reportLoading = false
         assistantMsg.reportError = ''
         assistantMsg.meta = this.text.analysisComplete
-        assistantMsg.actions = this.reportActions(assistantMsg)
         await this.persistCopilotMessage(userMsg, 'fast_analysis_user')
         await this.persistCopilotMessage(assistantMsg, 'fast_analysis_report')
+        assistantMsg.actions = this.reportActions(assistantMsg)
+        await this.persistCopilotMessage(assistantMsg, 'fast_analysis_report')
         this.loadSessions()
+        this.loadSessionMemory()
       } catch (e) {
         const fallback = this.i18nText('aiAssetAnalysis.copilot.analysisFailed', 'Analysis failed')
         assistantMsg.reportLoading = false
-        assistantMsg.reportError = (e && e.response && e.response.data && e.response.data.msg) || (e && e.message) || fallback
+        assistantMsg.reportError = this.professionalAnalysisError(e, fallback)
         assistantMsg.reportErrorTone = this.isInProgressError(e) ? 'warning' : 'error'
         assistantMsg.meta = fallback
       } finally {
         if (this.pendingAgentTask && this.pendingAgentTask.type === 'market_diagnosis') {
           this.clearPendingAgentTask()
         }
+        await this.loadBilling()
         this.sending = false
         this.scrollToBottom()
       }
@@ -2582,8 +3176,12 @@ export default {
       const res = await fastAnalyze({
         market: target.market,
         symbol: target.symbol,
+        exchange_id: target.exchange_id || '',
+        market_type: target.market_type || '',
+        instrument_id: target.instrument_id || '',
         language: this.$i18n ? this.$i18n.locale : 'en-US',
-        timeframe: '1D'
+        timeframe: '1D',
+        response_contract: 'professional_report_v1'
       })
       if (!res || res.code === 0) {
         const err = new Error((res && res.msg) || this.i18nText('aiAssetAnalysis.copilot.analysisFailed', 'Analysis failed'))
@@ -2591,10 +3189,19 @@ export default {
         throw err
       }
       const data = res.data || {}
+      const report = this.professionalArtifact(data)
+      if (!report) {
+        throw new Error(this.$t('fastAnalysis.professionalResponseInvalid'))
+      }
       return {
-        ...data,
-        market: data.market || target.market,
-        symbol: data.symbol || target.symbol
+        schema_version: 'professional_analysis_envelope_v1',
+        report,
+        runtime: data.runtime || {
+          memory_id: data.memory_id,
+          analysis_time_ms: data.analysis_time_ms,
+          llm_time_ms: data.llm_time_ms,
+          data_collection_time_ms: data.data_collection_time_ms
+        }
       }
     },
     isInProgressError (e) {
@@ -2602,12 +3209,128 @@ export default {
       const msg = String((data && data.msg) || (e && e.message) || '')
       return msg.toLowerCase().includes('in progress') || msg.includes('进行中') || msg.includes('处理中')
     },
+    professionalAnalysisError (e, fallback) {
+      const data = e && e.response && e.response.data
+      const raw = String((data && (data.error || data.msg)) || (e && e.message) || '').trim()
+      const normalized = raw.toLowerCase()
+      if (normalized.includes('professional_report_v1') && normalized.includes('generation failed')) {
+        return this.$t('fastAnalysis.professionalGenerationFailed')
+      }
+      if (normalized.includes('professional_report_v1') && (normalized.includes('invalid') || normalized.includes('missing'))) {
+        return this.$t('fastAnalysis.professionalResponseInvalid')
+      }
+      return raw || fallback
+    },
     reportId (msg) {
-      return String((msg && (msg.localId || msg.id)) || '')
+      return String((msg && (msg.id || msg.localId)) || '')
+    },
+    isReportExpanded (msg) {
+      return !!this.expandedReports[this.reportId(msg)]
+    },
+    toggleReportExpanded (msg) {
+      const id = this.reportId(msg)
+      this.$set(this.expandedReports, id, !this.expandedReports[id])
+    },
+    professionalArtifact (value) {
+      if (!value || typeof value !== 'object') return null
+      const candidate = value.report || value.professional_report || value
+      return candidate && ['professional_report_v1', '1.0'].includes(candidate.schema_version)
+        ? candidate
+        : null
+    },
+    reportObservation (msg, metric) {
+      const report = this.professionalArtifact(msg && msg.report)
+      const rows = report && report.evidence_snapshot && report.evidence_snapshot.observations
+      if (!Array.isArray(rows)) return null
+      const metrics = (Array.isArray(metric) ? metric : [metric]).map(value => String(value || '').toLowerCase())
+      return rows.find(item => metrics.includes(String(item && item.metric || '').toLowerCase())) || null
+    },
+    reportTargetLabel (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      const instrument = report.instrument || {}
+      const target = (msg && msg.reportTarget) || {}
+      return [instrument.market || target.market, instrument.canonical_symbol || instrument.symbol || target.symbol].filter(Boolean).join(':') || '--'
+    },
+    reportDecision (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      const profile = report.decision_profile || {}
+      const dimensions = Array.isArray(report.dimensions) ? report.dimensions : []
+      const technicalScore = Number((dimensions.find(item => item.key === 'technical') || {}).score)
+      const bias = this.$t(resolveMarketBiasLabelKey({
+        marketBias: profile.market_bias,
+        biasScore: profile.market_bias_score,
+        technicalScore
+      }))
+      const action = this.$t(resolveTradeActionLabelKey(profile.decision))
+      return `${bias} · ${action}`
+    },
+    reportDecisionClass (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      const profile = report.decision_profile || {}
+      const dimensions = Array.isArray(report.dimensions) ? report.dimensions : []
+      const technicalScore = Number((dimensions.find(item => item.key === 'technical') || {}).score)
+      const key = resolveMarketBiasLabelKey({
+        marketBias: profile.market_bias,
+        biasScore: profile.market_bias_score,
+        technicalScore
+      })
+      if (key.endsWith('Bullish')) return 'decision-buy'
+      if (key.endsWith('Bearish')) return 'decision-sell'
+      return 'decision-hold'
+    },
+    reportSummary (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      return String(report.executive_summary || (report.decision_profile && report.decision_profile.rationale) || this.text.reportReady)
+        .replace(/\s*\[(?:ev_[a-f0-9]+(?:\s*,\s*)?)+\]/gi, '')
+        .trim()
+    },
+    reportConfidence (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      return Math.round(Number((report.decision_profile && report.decision_profile.confidence) || 0))
+    },
+    reportCurrentPrice (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      const observation = this.reportObservation(msg, ['quote.price', 'current_price'])
+      const value = observation && observation.value
+      const market = report.instrument && report.instrument.market
+      return value === null || value === undefined || value === '' ? '--' : this.formatPriceValue(value, market)
+    },
+    reportRiskReward (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      if (String((report.decision_profile && report.decision_profile.decision) || '').toUpperCase() === 'HOLD') return '--'
+      const plan = report.risk_plan || {}
+      const value = plan.net_risk_reward ?? plan.gross_risk_reward
+      return value === null || value === undefined || value === '' ? '--' : Number(value).toFixed(2)
+    },
+    reportHasRrWarning (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      if (String((report.decision_profile && report.decision_profile.decision) || '').toUpperCase() === 'HOLD') return false
+      const plan = report.risk_plan || {}
+      const value = plan.net_risk_reward ?? plan.gross_risk_reward
+      const hasRatio = value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+      const warnings = Array.isArray(plan.warnings) ? plan.warnings : []
+      return warnings.includes('net_risk_reward_below_one') || (hasRatio && Number(value) < 1)
+    },
+    reportRiskRewardWarning (msg) {
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      const plan = report.risk_plan || {}
+      const value = plan.net_risk_reward ?? plan.gross_risk_reward
+      const hasRatio = value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+      if (!hasRatio) {
+        return this.text.riskRewardUnavailable
+      }
+      return this.text.riskRewardWarning
     },
     reportActions (msg) {
       const id = this.reportId(msg)
       return [
+        {
+          key: `share-report-${id}`,
+          type: 'share_report',
+          icon: 'share-alt',
+          label: this.$t('aiAssetAnalysis.copilot.shareReport'),
+          payload: { reportId: id }
+        },
         {
           key: `export-report-${id}`,
           type: 'export_report_pdf',
@@ -2623,6 +3346,48 @@ export default {
           payload: { reportId: id }
         }
       ]
+    },
+    reportMessageByReportId (reportId) {
+      const id = String(reportId || '')
+      return (this.messages || []).find(item => this.reportId(item) === id) ||
+        (this.messages || []).find(item => item && item.report && Array.isArray(item.actions) &&
+          item.actions.some(action => String(action && action.payload && action.payload.reportId) === id))
+    },
+    async copyTextToClipboard (value) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value)
+        return
+      }
+      const textarea = document.createElement('textarea')
+      textarea.value = value
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    },
+    async shareReport (reportId) {
+      const msg = this.reportMessageByReportId(reportId)
+      if (!msg || !msg.report) {
+        this.$message.warning(this.i18nText('aiAssetAnalysis.copilot.noReportData', 'No report data to share'))
+        return
+      }
+      try {
+        if (!msg.id) await this.persistCopilotMessage(msg, 'fast_analysis_report')
+        if (!msg.id) throw new Error(this.$t('aiAssetAnalysis.copilot.shareSaveFailed'))
+        const res = await createChatReportShare({
+          message_id: msg.id,
+          language: (this.$i18n && this.$i18n.locale) || 'en-US'
+        })
+        const path = res && res.data && res.data.path
+        if (!path) throw new Error((res && res.msg) || this.$t('aiAssetAnalysis.copilot.shareFailed'))
+        const url = `${window.location.origin}${window.location.pathname}#${path}`
+        await this.copyTextToClipboard(url)
+        this.$message.success(this.$t('aiAssetAnalysis.copilot.shareCopied'))
+      } catch (e) {
+        this.$message.error((e && (e.backendMessage || e.message)) || this.$t('aiAssetAnalysis.copilot.shareFailed'))
+      }
     },
     async retryProfessionalAnalysis (msg) {
       const target = msg && msg.reportTarget
@@ -2641,45 +3406,21 @@ export default {
         msg.reportError = (e && e.response && e.response.data && e.response.data.msg) || (e && e.message) || this.i18nText('aiAssetAnalysis.copilot.analysisFailed', 'Analysis failed')
         msg.reportErrorTone = this.isInProgressError(e) ? 'warning' : 'error'
       } finally {
+        await this.loadBilling()
         this.sending = false
       }
-    },
-    handleReportGenerateStrategy (result) {
-      const market = result.market || (this.context && this.context.market) || ''
-      const symbol = result.symbol || (this.context && this.context.symbol) || ''
-      const decision = result.decision || 'HOLD'
-      const tp = result.trading_plan || {}
-      const query = {
-        mode: 'create',
-        market,
-        symbol,
-        from_analysis: '1',
-        decision,
-        entry_price: tp.entry_price || tp.entryPrice || '',
-        stop_loss: tp.stop_loss || tp.stopLoss || '',
-        take_profit: tp.take_profit || tp.takeProfit || ''
-      }
-      Object.keys(query).forEach(k => { if (!query[k] && query[k] !== 0) delete query[k] })
-      this.$router.push({ path: '/strategy-center', query })
-    },
-    handleReportGoBacktest (result) {
-      const market = result.market || (this.context && this.context.market) || ''
-      const symbol = result.symbol || (this.context && this.context.symbol) || ''
-      this.$router.push({ path: '/backtest-center', query: { market, symbol } })
     },
     async exportReportPdf (reportId) {
       if (!reportId) return
       const id = String(reportId)
-      const msg = (this.messages || []).find(item => this.reportId(item) === id) ||
-        (this.messages || []).find(item => item && item.report && Array.isArray(item.actions) &&
-          item.actions.some(action => String(action && action.payload && action.payload.reportId) === id))
+      const msg = this.reportMessageByReportId(id)
       if (!msg || !msg.report) {
         this.$message.warning(this.i18nText('aiAssetAnalysis.copilot.noReportData', 'No report data to export'))
         return
       }
       try {
         const blob = await exportChatReportPdf({
-          report: msg.report,
+          report: this.professionalArtifact(msg.report),
           target: msg.reportTarget || this.context || {},
           language: (this.$i18n && this.$i18n.locale) || 'en-US'
         })
@@ -2697,14 +3438,17 @@ export default {
       }
     },
     reportPdfFilename (msg) {
-      const report = (msg && msg.report) || {}
+      const report = this.professionalArtifact(msg && msg.report) || {}
+      const instrument = report.instrument || {}
       const target = (msg && msg.reportTarget) || this.context || {}
-      const symbol = String(report.symbol || target.symbol || 'report').replace(/[\\/:*?"<>|]+/g, '_')
+      const symbol = String(instrument.canonical_symbol || instrument.symbol || target.symbol || 'report').replace(/[\\/:*?"<>|]+/g, '_')
       const date = new Date().toISOString().slice(0, 10)
       return `QuantDinger_${symbol}_${date}.pdf`
     },
-    askAboutReport (reportId) {
+    async askAboutReport (reportId) {
       const msg = (this.messages || []).find(item => this.reportId(item) === String(reportId))
+      if (msg && !msg.id) await this.persistCopilotMessage(msg, 'fast_analysis_report')
+      this.draftReferencedReportId = msg && msg.id ? Number(msg.id) : null
       const target = (msg && msg.reportTarget) || this.context
       const label = target && target.symbol ? `${target.market}:${target.symbol}` : this.i18nText('aiAssetAnalysis.copilot.thisReport', 'this report')
       this.usePrompt(this.i18nText('aiAssetAnalysis.copilot.askReportFollowup', 'Based on the diagnosis report for {label}, explain further:', { label }))
@@ -2856,7 +3600,7 @@ export default {
         attachments,
         context,
         language: this.$i18n ? this.$i18n.locale : 'zh-CN'
-      })
+      }).catch(() => null)
       const plan = res && res.data ? res.data : null
       return { plan, resolvedSymbol }
     },
@@ -2868,9 +3612,9 @@ export default {
         plan = classified.plan
         resolvedSymbol = classified.resolvedSymbol
       } catch (_) {
-        return false
+        return { handled: false, plan, resolvedSymbol }
       }
-      if (!plan || !plan.should_execute || plan.intent !== 'strategy_build') return false
+      if (!plan || !plan.should_execute || plan.intent !== 'strategy_build') return { handled: false, plan, resolvedSymbol }
       const target = this.agentTargetFromPlan(plan, contextLock || resolvedSymbol || this.context)
       if (!target || !target.symbol) {
         this.messages.push({
@@ -2883,7 +3627,7 @@ export default {
           meta: 'agent_intent:missing_symbol',
           created_at: new Date().toISOString()
         })
-        return true
+        return { handled: true, plan, resolvedSymbol }
       }
       this.context.market = target.market
       this.context.symbol = target.symbol
@@ -2905,7 +3649,7 @@ export default {
         await this.generateChartIndicatorDraft(prompt, target)
       }
       this.clearPendingAgentTask()
-      return true
+      return { handled: true, plan, resolvedSymbol }
     },
     async handlePendingStrategyAgentMessage (content, userMsg, contextLock = null) {
       const task = this.pendingAgentTask
@@ -3113,6 +3857,7 @@ export default {
           'Indicator generation service is temporarily unavailable. Please check the backend AI configuration and try again.'
         )
       } finally {
+        await this.loadBilling()
         this.generatingStrategy = false
         this.scrollToBottom()
       }
@@ -3174,6 +3919,7 @@ export default {
           'Strategy generation service is temporarily unavailable. Please check the backend AI configuration and try again.'
         )
       } finally {
+        await this.loadBilling()
         this.generatingStrategy = false
         this.scrollToBottom()
       }
@@ -3270,7 +4016,12 @@ export default {
     async sendMessage () {
       if (!this.canSend) return
       const content = this.draft.trim()
+      this.recordCopilotEvent('message_sent', this.activeResearchMode, {
+        source: 'composer',
+        mode: this.activeResearchMode
+      })
       const attachments = this.attachments.slice()
+      const referencedReportId = this.draftReferencedReportId
       const contextLock = this.draftContextLock ? { ...this.draftContextLock, locked: true } : null
       const signature = `${content}|${attachments.map(item => item.name || item.data_url || '').join(',')}`
       const now = Date.now()
@@ -3291,6 +4042,7 @@ export default {
       this.draft = ''
       this.attachments = []
       this.draftContextLock = null
+      this.draftReferencedReportId = null
       this.$nextTick(this.resizeComposer)
       this.scrollToBottom()
       if (this.pendingAgentTask && this.pendingAgentTask.type === 'monitor_setup' && await this.handleMonitorAgentMessage(content)) {
@@ -3317,27 +4069,6 @@ export default {
         this.scrollToBottom()
         return
       }
-      if (await this.handleBackendAgentIntent(content, attachments, contextLock)) {
-        this.sending = false
-        this.scrollToBottom()
-        return
-      }
-      await this.loadAgentPreflight()
-      const blockers = this.agentPreflight && Array.isArray(this.agentPreflight.blockers) ? this.agentPreflight.blockers : []
-      if (blockers.length) {
-        const guide = this.buildPreflightGuide(this.pendingAgentTask)
-        this.messages.push({
-          localId: `local-${localId++}`,
-          role: 'assistant',
-          content: guide.content,
-          actions: guide.actions,
-          meta: guide.meta
-        })
-        await this.persistCopilotMessage(this.messages[this.messages.length - 1], 'preflight_guide')
-        this.sending = false
-        this.scrollToBottom()
-        return
-      }
       const assistantMsg = {
         localId: `local-${localId++}`,
         role: 'assistant',
@@ -3348,7 +4079,39 @@ export default {
       }
       this.messages.push(assistantMsg)
       this.scrollToBottom()
-      const resolvedSymbol = contextLock || await this.resolveMessageSymbol(content)
+      const preflight = this.loadAgentPreflight()
+      let routing
+      try {
+        routing = await this.handleBackendAgentIntent(content, attachments, contextLock)
+      } catch (error) {
+        this.replacePendingAssistant(assistantMsg, { role: 'assistant', content: error.message || this.text.chatUnavailable, isThinking: false })
+        this.sending = false
+        return
+      }
+      if (routing.handled) {
+        this.messages = this.messages.filter(item => item.localId !== assistantMsg.localId)
+        this.sending = false
+        this.scrollToBottom()
+        return
+      }
+      await preflight
+      const blockers = this.agentPreflight && Array.isArray(this.agentPreflight.blockers) ? this.agentPreflight.blockers : []
+      if (blockers.length) {
+        const guide = this.buildPreflightGuide(this.pendingAgentTask)
+        const guideMessage = this.replacePendingAssistant(assistantMsg, {
+          localId: `local-${localId++}`,
+          role: 'assistant',
+          content: guide.content,
+          actions: guide.actions,
+          meta: guide.meta,
+          isThinking: false
+        })
+        await this.persistCopilotMessage(guideMessage, 'preflight_guide')
+        this.sending = false
+        this.scrollToBottom()
+        return
+      }
+      const resolvedSymbol = contextLock || routing.resolvedSymbol
       if (resolvedSymbol) {
         const normalized = this.normalizeSymbolOption(resolvedSymbol)
         if (normalized) {
@@ -3359,10 +4122,11 @@ export default {
         }
       }
       const chatContext = this.buildChatContext(content, resolvedSymbol)
+      if (routing.plan) chatContext.agent_intent = routing.plan
       const preferJsonResponse = this.isMonitorIntent(content)
       if (!preferJsonResponse) {
         try {
-          await this.sendMessageStream(content, attachments, assistantMsg, chatContext)
+          await this.sendMessageStream(content, attachments, assistantMsg, chatContext, referencedReportId)
           this.sending = false
           this.scrollToBottom()
           return
@@ -3390,6 +4154,7 @@ export default {
           message: content,
           attachments,
           context: chatContext,
+          referenced_report_id: referencedReportId,
           language: this.$i18n ? this.$i18n.locale : 'zh-CN'
         })
         if (res && res.code === 0) throw new Error(res.msg || this.text.chatUnavailable)
@@ -3402,12 +4167,14 @@ export default {
           content: data.reply || this.text.chatUnavailable,
           isThinking: false,
           actions: data.actions || [],
-          meta: data.intent ? `${data.intent} · ${data.confidence || 50}%` : ''
+          contextUsage: data.context_usage || null,
+          meta: data.intent ? `${data.intent}${Number.isFinite(data.confidence) ? ` · ${data.confidence}%` : ''}` : ''
         })
         fallbackAssistant.created_at = fallbackAssistant.created_at || new Date().toISOString()
         this.appendMemoryActions(fallbackAssistant, data.memory_candidates)
         this.appendAgentNextActions(fallbackAssistant)
         this.loadSessions()
+        this.loadSessionMemory()
       } catch (e) {
         const guide = this.buildSetupGuide(e, chatContext)
         const setupMsg = this.replacePendingAssistant(assistantMsg, {
@@ -3421,6 +4188,7 @@ export default {
         await this.persistCopilotMessage(setupMsg, 'setup_guide')
       } finally {
         this.sending = false
+        this.loadBilling()
         this.scrollToBottom()
       }
     },
@@ -3553,7 +4321,7 @@ export default {
       }))
       return { enabled, events }
     },
-    async sendMessageStream (content, attachments, assistantMsg, chatContext = null) {
+    async sendMessageStream (content, attachments, assistantMsg, chatContext = null, referencedReportId = null) {
       if (!window.fetch || !window.ReadableStream) throw new Error('Streaming is not supported')
       const language = this.$i18n ? this.$i18n.locale : 'zh-CN'
       const headers = {
@@ -3577,6 +4345,7 @@ export default {
           message: content,
           attachments,
           context: chatContext || this.buildChatContext(content),
+          referenced_report_id: referencedReportId,
           language
         })
       })
@@ -3632,6 +4401,8 @@ export default {
           error.streamHasContent = Boolean(String(assistantMsg.content || '').trim()) && !assistantMsg.isThinking
         }
         throw error
+      } finally {
+        this.loadBilling()
       }
     },
     handleStreamEvent (rawEvent, assistantMsg) {
@@ -3649,6 +4420,7 @@ export default {
         this.sessionId = payload.session_id || this.sessionId
         assistantMsg.meta = payload.intent || ''
         this.setAgentUsageActions(assistantMsg, payload.actions, payload.agent_usage)
+        assistantMsg.contextUsage = payload.context_usage || null
       } else if (eventName === 'delta') {
         if (payload.text) this.clearThinkingMessage(assistantMsg)
         assistantMsg.content += payload.text || ''
@@ -3664,10 +4436,12 @@ export default {
         this.sessionId = payload.session_id || this.sessionId
         if (payload.message_id) this.$set ? this.$set(assistantMsg, 'id', payload.message_id) : (assistantMsg.id = payload.message_id)
         assistantMsg.created_at = assistantMsg.created_at || new Date().toISOString()
-        assistantMsg.meta = payload.intent ? `${payload.intent} - ${payload.confidence || 50}%` : assistantMsg.meta
+        assistantMsg.meta = payload.intent ? `${payload.intent}${Number.isFinite(payload.confidence) ? ` · ${payload.confidence}%` : ''}` : assistantMsg.meta
         this.setAgentUsageActions(assistantMsg, payload.actions, payload.agent_usage)
         this.appendMemoryActions(assistantMsg, payload.memory_candidates)
         this.appendAgentNextActions(assistantMsg)
+        assistantMsg.contextUsage = payload.context_usage || assistantMsg.contextUsage || null
+        this.loadSessionMemory()
       } else if (eventName === 'error') {
         throw new Error(payload.msg || this.text.chatUnavailable)
       }
@@ -3712,6 +4486,18 @@ export default {
       const withTokens = source.replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
         const idx = blocks.length
         const label = lang || 'text'
+        const chartLabels = {
+          series: this.$t('aiAssetAnalysis.copilot.chartSeries'),
+          line: this.$t('aiAssetAnalysis.copilot.chartLine'),
+          bar: this.$t('aiAssetAnalysis.copilot.chartBar')
+        }
+        const chartSpec = parseResearchChartBlock(label, code, chartLabels)
+        if (chartSpec) {
+          const payload = encodeURIComponent(JSON.stringify(chartSpec))
+          const ariaLabel = this.escapeHtml(this.$t('aiAssetAnalysis.copilot.statisticalChart'))
+          blocks.push(`<figure class="qd-research-chart" data-qd-chart="${payload}" aria-label="${ariaLabel}"><div class="qd-research-chart__canvas"></div></figure>`)
+          return `\n@@CODE_BLOCK_${idx}@@\n`
+        }
         blocks.push(
           `<div class="qd-code-block">` +
           `<div class="qd-code-head"><span>${this.escapeHtml(label)}</span><button type="button" class="qd-copy-code" data-code="${encodeURIComponent(code)}">Copy</button></div>` +
@@ -3826,6 +4612,61 @@ export default {
       closeParagraph()
       closeList()
       return out.join('')
+    },
+    scheduleMarkdownCharts () {
+      if (typeof window === 'undefined' || !this.$refs.messages) return
+      if (this._markdownChartFrame) cancelAnimationFrame(this._markdownChartFrame)
+      this._markdownChartFrame = requestAnimationFrame(() => {
+        this._markdownChartFrame = 0
+        this.renderMarkdownCharts()
+      })
+    },
+    markdownChartPalette () {
+      const styles = window.getComputedStyle(this.$el)
+      const read = (name, fallback) => styles.getPropertyValue(name).trim() || fallback
+      const accent = read('--qd-accent', read('--primary-color', '#1677ff'))
+      return {
+        accent,
+        text: read('--qd-text', '#334155'),
+        muted: read('--qd-text-muted', '#64748b'),
+        border: read('--qd-border-soft', 'rgba(148, 163, 184, 0.28)'),
+        tooltip: read('--qd-panel', '#ffffff'),
+        colors: [accent, '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#64748b', '#ec4899']
+      }
+    },
+    renderMarkdownCharts () {
+      const root = this.$refs.messages
+      if (!root || typeof window === 'undefined') return
+      if (!this._markdownCharts) this._markdownCharts = new Map()
+      const nodes = Array.from(root.querySelectorAll('[data-qd-chart]'))
+      const activeNodes = new Set(nodes)
+      this._markdownCharts.forEach((chart, node) => {
+        if (activeNodes.has(node) && document.documentElement.contains(node)) return
+        if (this._markdownChartObserver) this._markdownChartObserver.unobserve(chart.getDom())
+        chart.dispose()
+        this._markdownCharts.delete(node)
+      })
+      const palette = this.markdownChartPalette()
+      const paletteKey = [palette.accent, palette.text, palette.tooltip].join('|')
+      nodes.forEach(node => {
+        const payload = node.getAttribute('data-qd-chart') || ''
+        const renderKey = `${payload}|${paletteKey}`
+        if (node.getAttribute('data-qd-chart-rendered') === renderKey) return
+        const previous = this._markdownCharts.get(node)
+        if (previous) previous.dispose()
+        const canvas = node.querySelector('.qd-research-chart__canvas')
+        if (!canvas) return
+        try {
+          const spec = JSON.parse(decodeURIComponent(payload))
+          const chart = echarts.init(canvas, null, { renderer: 'canvas' })
+          chart.setOption(buildResearchChartOption(spec, palette), true)
+          node.setAttribute('data-qd-chart-rendered', renderKey)
+          this._markdownCharts.set(node, chart)
+          if (this._markdownChartObserver) this._markdownChartObserver.observe(canvas)
+        } catch (_) {
+          node.classList.add('qd-research-chart--invalid')
+        }
+      })
     },
     async handleMessageContentClick (event) {
       const btn = event.target && event.target.closest ? event.target.closest('.qd-copy-code') : null
@@ -4060,14 +4901,19 @@ export default {
       if (pct === null) return ''
       return pct >= 0 ? 'up' : 'down'
     },
-    formatPriceValue (value) {
+    formatPriceValue (value, market = '') {
       const n = Number(value)
       if (!Number.isFinite(n) || n <= 0) return '--'
+      if (['USStock', 'HKStock'].includes(String(market))) {
+        return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      }
       if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
       if (n >= 1) return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
       return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })
     },
     formatChangePercent (price) {
+      const currentPrice = Number(price && price.price)
+      if (!Number.isFinite(currentPrice) || currentPrice <= 0) return '--'
       const pct = this.priceChangePercent(price)
       if (pct === null) return '--'
       return `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
@@ -4490,7 +5336,7 @@ export default {
 
 .context-bar {
   display: grid;
-  grid-template-columns: max-content minmax(220px, 420px);
+  grid-template-columns: max-content minmax(220px, 420px) max-content minmax(140px, 1fr);
   gap: 10px;
   align-items: center;
   justify-content: start;
@@ -4500,8 +5346,63 @@ export default {
 
 .composer-context-bar {
   width: 100%;
-  max-width: 760px;
+  max-width: none;
   margin: 0 0 8px;
+}
+
+.professional-report-button {
+  height: 32px;
+  border-color: color-mix(in srgb, var(--qd-accent) 42%, var(--qd-border));
+  background: var(--qd-accent-soft);
+  color: var(--qd-accent);
+  font-weight: 800;
+}
+
+.session-memory-status {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--qd-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.session-memory-status:hover {
+  color: var(--qd-accent);
+}
+
+.session-memory-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.referenced-report-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin: -2px 0 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.referenced-report-chip button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
 .context-status {
@@ -4830,6 +5731,106 @@ export default {
   background: var(--qd-panel);
 }
 
+.report-artifact-summary {
+  padding: 16px;
+}
+
+.report-artifact-summary__top {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 10px;
+}
+
+.report-artifact-summary__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.report-artifact-summary__top > div {
+  display: grid;
+  gap: 2px;
+}
+
+.report-artifact-summary__top span,
+.report-artifact-summary__metrics small {
+  color: var(--qd-text-muted);
+  font-size: 10px;
+}
+
+.report-artifact-summary__top strong {
+  color: var(--qd-text);
+  font-size: 14px;
+}
+
+.report-artifact-summary__top em {
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.decision-buy { background: rgba(16, 185, 129, 0.13); color: #10b981; }
+.decision-sell { background: rgba(239, 68, 68, 0.13); color: #ef4444; }
+.decision-hold, .decision-neutral { background: rgba(245, 158, 11, 0.13); color: #f59e0b; }
+
+.report-artifact-summary > p {
+  margin: 12px 0;
+  color: var(--qd-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.report-artifact-summary__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.report-artifact-summary__metrics > span {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--qd-border-soft);
+  border-radius: 7px;
+  background: var(--qd-panel-soft);
+}
+
+.report-artifact-summary__metrics strong { color: var(--qd-text); }
+.report-artifact-summary__metrics .warning strong { color: #f59e0b; }
+
+.report-artifact-summary__warning {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+  font-size: 11px;
+}
+
+.report-expand-button,
+.report-collapse-button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px;
+  border: 0;
+  border-top: 1px solid var(--qd-border-soft);
+  background: transparent;
+  color: var(--qd-accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.report-collapse-button { margin: 0; }
+
 .message.user .bubble {
   background: var(--qd-accent-soft);
 }
@@ -4954,6 +5955,29 @@ export default {
   border-bottom: 0;
 }
 
+.message-content ::v-deep .qd-research-chart {
+  width: ~"min(760px, 100%)";
+  margin: 12px 0 16px;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid var(--qd-border-soft);
+  border-radius: 10px;
+  background: var(--qd-panel);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.message-content ::v-deep .qd-research-chart__canvas {
+  width: 100%;
+  height: 320px;
+  min-height: 240px;
+}
+
+.message-content ::v-deep .qd-research-chart--invalid {
+  min-height: 88px;
+  border-style: dashed;
+  background: var(--qd-panel-soft);
+}
+
 .message-content ::v-deep a {
   color: var(--qd-accent);
   text-decoration: none;
@@ -5027,6 +6051,20 @@ export default {
   white-space: pre;
 }
 
+@media (max-width: 760px) {
+  .message-content ::v-deep .qd-research-chart {
+    width: 100%;
+    margin-right: 0;
+    margin-left: 0;
+    padding: 4px;
+  }
+
+  .message-content ::v-deep .qd-research-chart__canvas {
+    height: 260px;
+    min-height: 220px;
+  }
+}
+
 .message-meta {
   margin-top: 8px;
   color: var(--qd-text-subtle);
@@ -5048,16 +6086,45 @@ export default {
 }
 
 .agent-usage {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
   margin-top: 9px;
   padding-top: 9px;
   border-top: 1px solid var(--qd-border-soft);
 }
 
-.agent-usage-title,
+.agent-usage summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--qd-text-subtle);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  list-style: none;
+  user-select: none;
+}
+
+.agent-usage summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-usage summary::after {
+  content: '›';
+  font-size: 14px;
+  transform: rotate(90deg);
+  transition: transform 0.18s;
+}
+
+.agent-usage[open] summary::after {
+  transform: rotate(-90deg);
+}
+
+.agent-usage-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .agent-usage-chip {
   display: inline-flex;
   align-items: center;
@@ -5067,10 +6134,6 @@ export default {
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;
-}
-
-.agent-usage-title {
-  color: var(--qd-text-subtle);
 }
 
 .agent-usage-chip {
@@ -6664,6 +7727,305 @@ body.realdark .copilot-workbench .empty-mini,
 </style>
 
 <style lang="less">
+.utility-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+
+  > button {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 2px 9px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fafcff;
+    color: #243247;
+    cursor: pointer;
+    text-align: left;
+
+    > span {
+      display: grid;
+      grid-row: span 2;
+      place-items: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      background: rgba(82, 196, 26, 0.12);
+      color: #52c41a;
+    }
+
+    strong { font-size: 13px; }
+    em { color: #8492a6; font-size: 11px; font-style: normal; line-height: 1.35; }
+    &:hover { border-color: #52c41a; }
+    &:disabled { cursor: not-allowed; opacity: 0.48; }
+  }
+}
+
+.utility-empty {
+  padding: 18px;
+  border: 1px dashed #dbe3ec;
+  border-radius: 8px;
+  color: #8492a6;
+  font-size: 12px;
+  text-align: center;
+}
+
+.session-memory-panel,
+.long-term-memory-panel {
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #fafcff;
+}
+
+.long-term-memory-panel { margin-top: 12px; }
+
+.memory-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  > div { display: grid; gap: 3px; }
+  strong { color: #243247; }
+  span { color: #8492a6; font-size: 11px; }
+}
+
+.session-memory-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  > span {
+    display: grid;
+    gap: 2px;
+    min-width: 120px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: #fff;
+  }
+
+  small { color: #8492a6; }
+  strong { color: #243247; }
+}
+
+.memory-constraints {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+
+  em {
+    padding: 4px 7px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+    font-size: 11px;
+    font-style: normal;
+  }
+}
+
+.context-telemetry {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+
+  span { display: grid; gap: 2px; padding: 7px; border-radius: 6px; background: #fff; }
+  small { color: #8492a6; font-size: 10px; }
+  strong { color: #243247; font-size: 12px; }
+}
+
+.memory-editor-list { display: grid; gap: 10px; }
+.memory-editor-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(220px, 1fr) max-content;
+  gap: 8px;
+  align-items: start;
+
+  > div:last-child { display: flex; gap: 6px; }
+}
+
+body.dark,
+body.realdark,
+.theme-dark {
+  .utility-tool-grid > button,
+  .session-memory-panel,
+  .long-term-memory-panel,
+  .session-memory-summary > span,
+  .context-telemetry span {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: #171717;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .memory-section-head strong,
+  .session-memory-summary strong,
+  .context-telemetry strong { color: rgba(255, 255, 255, 0.88); }
+  .utility-empty { border-color: rgba(255, 255, 255, 0.14); }
+}
+
+.saved-prompt-library {
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.saved-prompt-library__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #243247;
+}
+
+.saved-prompt-library__head span {
+  color: #8492a6;
+  font-size: 12px;
+}
+
+.saved-prompt-library__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 208px;
+  overflow-y: auto;
+}
+
+.saved-prompt-library__item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fafcff;
+}
+
+.saved-prompt-library__item > button {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  flex-direction: column;
+  color: #243247;
+  cursor: pointer;
+  text-align: left;
+}
+
+.saved-prompt-library__item > button strong,
+.saved-prompt-library__item > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.left-rail .saved-prompt-library {
+  margin-bottom: 0;
+  padding-bottom: 12px;
+  border-bottom: 0;
+}
+
+.left-rail .saved-prompt-library__head {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.left-rail .saved-prompt-library__list {
+  grid-template-columns: 1fr;
+  grid-auto-rows: min-content;
+  align-content: start;
+  max-height: 196px;
+}
+
+.left-rail .saved-prompt-library__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+  border-color: var(--qd-border-soft);
+  background: var(--qd-panel-soft);
+  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s, transform 0.18s;
+}
+
+.left-rail .saved-prompt-library__item:hover {
+  border-color: var(--qd-accent-border);
+  background: var(--qd-panel);
+  box-shadow: 0 6px 18px var(--qd-accent-weak);
+  transform: translateY(-1px);
+}
+
+.left-rail .saved-prompt-card {
+  padding: 9px 10px;
+}
+
+.saved-prompt-delete {
+  width: 28px;
+  height: 28px;
+  align-self: center;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 5px;
+  color: #94a3b8;
+  background: transparent;
+  cursor: pointer;
+}
+
+.saved-prompt-delete:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.saved-prompt-library__item > button span {
+  margin-top: 3px;
+  color: #8492a6;
+  font-size: 11px;
+}
+
+body.dark .saved-prompt-library,
+body.realdark .saved-prompt-library,
+.theme-dark .saved-prompt-library {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark .saved-prompt-library__head,
+body.realdark .saved-prompt-library__head,
+.theme-dark .saved-prompt-library__head,
+body.dark .saved-prompt-library__item > button,
+body.realdark .saved-prompt-library__item > button,
+.theme-dark .saved-prompt-library__item > button {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+body.dark .saved-prompt-library__item,
+body.realdark .saved-prompt-library__item,
+.theme-dark .saved-prompt-library__item {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #171717;
+}
+
+body.dark .saved-prompt-delete,
+body.realdark .saved-prompt-delete,
+.theme-dark .saved-prompt-delete {
+  color: rgba(255, 255, 255, 0.52);
+}
+
+@media (max-width: 640px) {
+  .saved-prompt-library__list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .copilot-modal {
   --qd-panel: #ffffff;
   --qd-panel-soft: #f7fafd;
@@ -7068,5 +8430,529 @@ body.realdark .copilot-modal,
   .strategy-example-row .anticon {
     color: var(--qd-accent) !important;
   }
+}
+
+/* Research-first prompt experience (Kavout-inspired, QuantDinger-native). */
+.copilot-workbench .welcome {
+  max-width: 980px;
+}
+
+.copilot-workbench .welcome-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  max-width: 900px;
+  margin: 24px auto 0;
+}
+
+.copilot-workbench .welcome-prompts button.research-prompt-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px;
+  width: auto !important;
+  height: auto !important;
+  min-height: 38px !important;
+  padding: 8px 14px !important;
+  border: 1px solid var(--qd-border) !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--qd-panel) 92%, transparent) !important;
+  box-shadow: none !important;
+  color: var(--qd-text) !important;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  transition: border-color 0.18s, background 0.18s, color 0.18s, transform 0.18s;
+}
+
+.copilot-workbench .welcome-prompts button.research-prompt-pill .anticon {
+  color: var(--qd-accent);
+  font-size: 14px;
+}
+
+.copilot-workbench .welcome-prompts button.research-prompt-pill:hover {
+  border-color: var(--qd-accent-border);
+  background: var(--qd-accent-soft);
+  box-shadow: none;
+  color: var(--qd-accent);
+  transform: translateY(-1px);
+}
+
+.saved-prompt-preview {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 860px;
+  margin: 16px auto 0;
+}
+
+.saved-prompt-preview__label,
+.saved-prompt-preview button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--qd-text-muted);
+  font-size: 12px;
+}
+
+.saved-prompt-preview button {
+  border: 1px dashed var(--qd-border);
+  cursor: pointer;
+}
+
+.saved-prompt-preview button:hover {
+  border-color: var(--qd-accent-border);
+  color: var(--qd-accent);
+  background: var(--qd-accent-soft);
+}
+
+.followup-suggestions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 9px 16px 0;
+  overflow-x: auto;
+  background: var(--qd-panel);
+  scrollbar-width: thin;
+}
+
+.followup-suggestions button,
+.research-mode-bar button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--qd-border-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--qd-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: border-color 0.18s, background 0.18s, color 0.18s;
+}
+
+.followup-suggestions button:hover,
+.research-mode-bar button:hover,
+.research-mode-bar button.active {
+  border-color: var(--qd-accent-border);
+  background: var(--qd-accent-soft);
+  color: var(--qd-accent);
+}
+
+.research-mode-bar {
+  display: flex;
+  gap: 7px;
+  margin: 8px 0 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.research-mode-bar::-webkit-scrollbar {
+  display: none;
+}
+
+body.dark .copilot-workbench .welcome-prompts button.research-prompt-pill,
+body.realdark .copilot-workbench .welcome-prompts button.research-prompt-pill,
+.theme-dark .copilot-workbench .welcome-prompts button.research-prompt-pill {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  color: #dce4ef !important;
+}
+
+body.dark .copilot-workbench .message-actions button,
+body.realdark .copilot-workbench .message-actions button,
+.theme-dark .copilot-workbench .message-actions button {
+  border-color: rgba(82, 196, 26, 0.26) !important;
+  background: rgba(82, 196, 26, 0.075) !important;
+  color: #a8dc85 !important;
+}
+
+body.dark .copilot-workbench .message-actions button:hover,
+body.realdark .copilot-workbench .message-actions button:hover,
+.theme-dark .copilot-workbench .message-actions button:hover {
+  border-color: rgba(82, 196, 26, 0.5) !important;
+  background: rgba(82, 196, 26, 0.13) !important;
+  color: #c2ef9f !important;
+}
+
+body.dark .followup-suggestions,
+body.realdark .followup-suggestions,
+.theme-dark .followup-suggestions {
+  background: #101010;
+}
+
+/* The two rails share the same row tracks so their lower utility panels align. */
+@media (min-width: 1281px) {
+  .copilot-workbench > .left-rail,
+  .copilot-workbench > .right-rail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(250px, 36%);
+    gap: 12px;
+  }
+
+  .copilot-workbench .sessions-panel,
+  .copilot-workbench .watch-panel,
+  .copilot-workbench .monitor-panel,
+  .copilot-workbench .saved-prompt-library {
+    min-height: 0;
+    height: auto;
+    margin: 0;
+    flex: none;
+  }
+
+  .copilot-workbench .saved-prompt-library {
+    display: flex;
+    padding-bottom: 13px;
+    flex-direction: column;
+  }
+
+  .copilot-workbench .saved-prompt-library__list,
+  .copilot-workbench .monitor-list {
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+  }
+
+  .copilot-workbench .saved-prompt-library__list {
+    flex: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .copilot-workbench .welcome-prompts {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .copilot-workbench .welcome-prompts button.research-prompt-pill {
+    justify-content: flex-start;
+    width: 100%;
+    border-radius: 10px;
+    text-align: left;
+  }
+}
+
+/* Keep the research canvas usable on smaller desktop and tablet viewports. */
+@media (max-width: 1280px) {
+  .copilot-workbench {
+    grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) !important;
+  }
+
+  .copilot-workbench > .right-rail {
+    display: none !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .copilot-workbench {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .copilot-workbench > .left-rail,
+  .copilot-workbench > .right-rail {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .utility-tool-grid,
+  .context-telemetry {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-editor-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mobile-sessions-trigger,
+.mobile-rail-close,
+.mobile-rail-backdrop {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .mobile-sessions-trigger {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 6px;
+    min-height: 32px;
+    margin: 0 0 10px;
+    padding: 5px 10px;
+    border: 1px solid var(--qd-accent-border);
+    border-radius: 8px;
+    background: var(--qd-accent-soft);
+    color: var(--qd-text);
+    cursor: pointer;
+  }
+
+  .mobile-rail-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1003;
+    display: block;
+    background: rgba(0, 0, 0, 0.56);
+  }
+
+  .copilot-workbench > .left-rail.mobile-open {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 1004;
+    display: flex !important;
+    width: 88vw;
+    max-width: 340px;
+    padding: 46px 10px 10px;
+    overflow-y: auto;
+    background: var(--qd-bg);
+    box-shadow: 18px 0 44px rgba(0, 0, 0, 0.24);
+  }
+
+  .mobile-rail-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    display: inline-grid;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--qd-border);
+    border-radius: 8px;
+    background: var(--qd-panel);
+    color: var(--qd-text);
+    cursor: pointer;
+  }
+
+  .copilot-workbench > .left-rail.mobile-open .sessions-panel {
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 640px) {
+  .copilot-workbench .messages {
+    padding: 12px 8px 18px;
+  }
+
+  .copilot-workbench .message.report-message .avatar {
+    display: none;
+  }
+
+  .copilot-workbench .message.report-message.assistant .bubble,
+  .copilot-workbench .message.report-message .copilot-report-card {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+}
+</style>
+
+<style scoped lang="less">
+/* Subtle visual polish without changing the existing workbench layout. */
+.copilot-workbench .rail-panel,
+.copilot-workbench .chat-panel {
+  border-radius: 10px;
+}
+
+.copilot-workbench .rail-panel {
+  padding: 12px;
+}
+
+.copilot-workbench .panel-head {
+  min-height: 30px;
+  margin-bottom: 10px;
+  padding-bottom: 9px;
+  border-bottom-color: var(--qd-border-soft);
+}
+
+.copilot-workbench .panel-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copilot-workbench .session-row,
+.copilot-workbench .watch-card,
+.copilot-workbench .monitor-card,
+.copilot-workbench .saved-prompt-library__item {
+  border-radius: 8px;
+  transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+}
+
+.copilot-workbench .session-row:hover,
+.copilot-workbench .watch-card:hover,
+.copilot-workbench .saved-prompt-library__item:hover {
+  transform: translateY(-1px);
+}
+
+.copilot-workbench .session-row.active,
+.copilot-workbench .watch-card.active {
+  box-shadow: inset 2px 0 0 var(--qd-accent);
+}
+
+.copilot-workbench .watch-main {
+  min-height: 54px;
+  padding: 8px 7px 8px 10px;
+}
+
+.copilot-workbench .watch-price {
+  font-variant-numeric: tabular-nums;
+}
+
+.copilot-workbench .chat-hero {
+  border-bottom: 1px solid var(--qd-border-soft);
+}
+
+.copilot-workbench .messages {
+  position: relative;
+  isolation: isolate;
+}
+
+.copilot-workbench .messages::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--qd-accent) 9%, transparent), transparent 33%),
+    linear-gradient(color-mix(in srgb, var(--qd-accent) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--qd-accent) 3%, transparent) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.92), rgba(0, 0, 0, 0.32) 72%, transparent);
+  pointer-events: none;
+}
+
+.copilot-workbench .welcome > .anticon {
+  border: 1px solid color-mix(in srgb, var(--qd-accent) 34%, transparent);
+  background: color-mix(in srgb, var(--qd-accent) 13%, var(--qd-panel));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--qd-accent) 16%, transparent);
+}
+
+.copilot-workbench .welcome-prompts {
+  gap: 9px;
+  max-width: 900px;
+}
+
+.copilot-workbench .welcome-prompts button.research-prompt-pill {
+  min-height: 38px !important;
+  padding: 8px 13px !important;
+  border-color: color-mix(in srgb, var(--qd-accent) 24%, var(--qd-border)) !important;
+  background: color-mix(in srgb, var(--qd-panel) 94%, transparent) !important;
+}
+
+.copilot-workbench .welcome-prompts button.research-prompt-pill:hover {
+  border-color: color-mix(in srgb, var(--qd-accent) 54%, var(--qd-border)) !important;
+  background: color-mix(in srgb, var(--qd-accent) 10%, var(--qd-panel)) !important;
+}
+
+.copilot-workbench .composer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--qd-border-soft);
+  box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.copilot-workbench .composer-context-bar {
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.copilot-workbench .hero-symbol-picker ::v-deep .ant-select-selection,
+.copilot-workbench .professional-report-button,
+.copilot-workbench .session-memory-status {
+  min-height: 34px;
+  border-radius: 8px;
+}
+
+.copilot-workbench .research-mode-bar {
+  gap: 6px;
+  margin: 8px 0;
+  padding-bottom: 1px;
+}
+
+.copilot-workbench .research-mode-bar button {
+  min-height: 30px;
+  border-color: var(--qd-border-soft);
+  background: var(--qd-panel-soft);
+}
+
+.copilot-workbench .research-mode-bar button.active {
+  border-color: color-mix(in srgb, var(--qd-accent) 46%, var(--qd-border));
+  background: color-mix(in srgb, var(--qd-accent) 11%, var(--qd-panel));
+}
+
+.copilot-workbench .composer textarea {
+  border-radius: 9px;
+  background: var(--qd-panel-soft);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.copilot-workbench .composer textarea:focus {
+  border-color: color-mix(in srgb, var(--qd-accent) 58%, var(--qd-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qd-accent) 11%, transparent);
+}
+
+.copilot-workbench .composer-actions ::v-deep .ant-btn,
+.copilot-workbench .add-watch ::v-deep .ant-btn {
+  height: 34px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+body.dark .copilot-workbench .messages,
+body.realdark .copilot-workbench .messages,
+.theme-dark .copilot-workbench .messages {
+  background: #080908 !important;
+}
+
+body.dark .copilot-workbench .messages::before,
+body.realdark .copilot-workbench .messages::before,
+.theme-dark .copilot-workbench .messages::before {
+  background:
+    radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--qd-accent) 12%, transparent), transparent 34%),
+    linear-gradient(rgba(82, 196, 26, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(82, 196, 26, 0.025) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+}
+
+body.dark .copilot-workbench .session-row,
+body.dark .copilot-workbench .watch-card,
+body.dark .copilot-workbench .monitor-card,
+body.realdark .copilot-workbench .session-row,
+body.realdark .copilot-workbench .watch-card,
+body.realdark .copilot-workbench .monitor-card,
+.theme-dark .copilot-workbench .session-row,
+.theme-dark .copilot-workbench .watch-card,
+.theme-dark .copilot-workbench .monitor-card {
+  background: #121312 !important;
+}
+
+body.dark .copilot-workbench .composer,
+body.realdark .copilot-workbench .composer,
+.theme-dark .copilot-workbench .composer {
+  background: #0c0d0c !important;
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.16);
+}
+
+body.dark .copilot-workbench .composer textarea,
+body.realdark .copilot-workbench .composer textarea,
+.theme-dark .copilot-workbench .composer textarea,
+body.dark .copilot-workbench .research-mode-bar button,
+body.realdark .copilot-workbench .research-mode-bar button,
+.theme-dark .copilot-workbench .research-mode-bar button {
+  background: #111311 !important;
 }
 </style>
