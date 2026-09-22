@@ -21,9 +21,22 @@ test('universe member requests are cached and stale responses cannot replace the
   assert.match(universeLibrarySource, /requestId === this\.memberRequestId && this\.selected/)
 })
 
-test('universe actions keep readable styles and block an unnamed personal universe', () => {
+test('universe actions keep readable styles and require a named non-empty personal universe', () => {
   assert.match(universeLibrarySource, /class="universe-create-button"/)
   assert.match(universeLibrarySource, /class="universe-apply-button"/)
-  assert.match(universeLibrarySource, /:ok-button-props="\{ props: \{ disabled: !canCreateUniverse \} \}"/)
-  assert.match(universeLibrarySource, /canCreateUniverse \(\) \{[\s\S]*?createForm\.name/)
+  assert.match(universeLibrarySource, /:ok-button-props="\{ props: \{ disabled: !canSaveUniverse \} \}"/)
+  assert.match(universeLibrarySource, /canSaveUniverse \(\) \{[\s\S]*?createForm\.name[\s\S]*?createForm\.members/)
+})
+
+test('personal universes expose edit, member removal, and pool deletion controls', () => {
+  assert.match(universeLibrarySource, /@click="openEdit\(selected\)"/)
+  assert.match(universeLibrarySource, /@confirm="removeMember\(member\)"/)
+  assert.match(universeLibrarySource, /@confirm="deletePersonalUniverse\(selected\)"/)
+  assert.match(universeLibrarySource, /replaceUniverseMembers\(this\.selected\.id, nextMembers\)/)
+  assert.match(universeLibrarySource, /await deleteUniverse\(item\.id\)/)
+})
+
+test('personal universe editor enforces one selected market', () => {
+  assert.match(universeLibrarySource, /markets: \['USStock', 'CNStock', 'HKStock', 'Crypto'\]/)
+  assert.match(universeLibrarySource, /if \(prefix !== this\.createForm\.market\) throw new Error\(this\.\$t\('universeManager\.memberMarketMismatch'\)\)/)
 })

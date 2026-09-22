@@ -1,5 +1,14 @@
 <template>
   <div class="broker-panel" :class="{ 'theme-dark': isDarkTheme }">
+    <div v-if="broker.id === 'alpaca'" class="bp-account-selector">
+      <label>{{ $t('brokerAccounts.selectAccount') }}</label>
+      <a-select :value="credentialId" :disabled="loading" :placeholder="$t('brokerAccounts.selectAccount')" @change="value => $emit('select-account', value)">
+        <a-select-option v-for="account in accounts" :key="account.id" :value="Number(account.id)">
+          {{ account.name }} · {{ account.api_key_hint }} · #{{ account.id }}
+        </a-select-option>
+      </a-select>
+      <a-button :disabled="loading" @click="openConnectForm"><a-icon type="plus" /> {{ $t('brokerAccounts.addAccount') }}</a-button>
+    </div>
     <!-- Connection summary -->
     <div class="bp-status-card" :class="connectionStateClass">
       <div class="bp-status-left">
@@ -22,6 +31,7 @@
             </span>
           </div>
           <div class="bp-badge-row">
+            <a-tag v-if="broker.id === 'alpaca' && isConnected" :color="status.paper ? 'blue' : 'orange'">{{ $t(status.paper ? 'brokerAccounts.paperAccount' : 'brokerAccounts.liveAccount') }}</a-tag>
             <a-tag v-for="badge in broker.badges" :key="badge" :color="badgeColor(badge)" class="bp-badge">
               {{ $t('brokerAccounts.badges.' + badge) }}
             </a-tag>
@@ -70,20 +80,21 @@
 
       <!-- Account overview -->
       <a-tab-pane key="account" :tab="$t('brokerAccounts.tabAccount')" :disabled="!isConnected">
-        <broker-account-card :broker-id="broker.id" :is-dark-theme="isDarkTheme" />
+        <broker-account-card :key="refreshVersion" :broker-id="broker.id" :credential-id="credentialId" :is-dark-theme="isDarkTheme" />
       </a-tab-pane>
 
       <!-- Positions -->
       <a-tab-pane key="positions" :tab="$t('brokerAccounts.tabPositions')" :disabled="!isConnected">
-        <broker-positions-table :broker-id="broker.id" :is-dark-theme="isDarkTheme" />
+        <broker-positions-table :key="refreshVersion" :broker-id="broker.id" :credential-id="credentialId" :is-dark-theme="isDarkTheme" />
       </a-tab-pane>
 
       <!-- Recent orders -->
       <a-tab-pane key="orders" :tab="$t('brokerAccounts.tabOrders')" :disabled="!isConnected">
         <broker-orders-table
+          :key="refreshVersion"
           :broker-id="broker.id"
+          :credential-id="credentialId"
           :is-dark-theme="isDarkTheme"
-          @cancel="orderId => $emit('cancel-order', orderId)"
         />
       </a-tab-pane>
     </a-tabs>
@@ -113,6 +124,9 @@ export default {
   components: { AlpacaConnectForm, IbkrConnectForm, BrokerAccountCard, BrokerPositionsTable, BrokerOrdersTable, ProviderLogo },
   props: {
     broker: { type: Object, required: true },
+    accounts: { type: Array, default: () => [] },
+    credentialId: { type: Number, default: null },
+    refreshVersion: { type: Number, default: 0 },
     status: { type: Object, default: () => null },
     loading: { type: Boolean, default: false },
     isDarkTheme: { type: Boolean, default: false },
@@ -120,7 +134,7 @@ export default {
   },
   data () {
     return {
-      innerTab: 'connect',
+      innerTab: this.status && this.status.connected ? 'account' : 'connect',
       refreshing: false
     }
   },
@@ -155,6 +169,9 @@ export default {
     }
   },
   methods: {
+    openConnectForm () {
+      this.innerTab = 'connect'
+    },
     badgeColor (badge) {
       const map = {
         zero_commission: 'green',
@@ -180,6 +197,21 @@ export default {
 </script>
 
 <style lang="less" scoped>
+.bp-account-selector {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  > label {
+    flex: 0 0 auto;
+    margin: 0;
+    color: #475569;
+    font-weight: 500;
+    line-height: 32px;
+  }
+  .ant-select { flex: 1; min-width: 220px; max-width: 560px; }
+}
+.theme-dark .bp-account-selector > label { color: rgba(255, 255, 255, 0.72); }
 .broker-panel {
   display: flex;
   flex-direction: column;

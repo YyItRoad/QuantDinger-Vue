@@ -9,11 +9,15 @@ const marketApi = {
   // AI chat (optional)
   ChatMessage: '/api/ai/chat/message',
   ExportChatReportPdf: '/api/ai/chat/report/pdf',
+  ShareChatReport: '/api/ai/chat/report/share',
   GetChatHistory: '/api/ai/chat/history',
   GetChatSessions: '/api/ai/chat/sessions',
   DeleteChatSession: '/api/ai/chat/sessions',
   SaveChatHistory: '/api/ai/chat/history/save',
   SaveCopilotMessage: '/api/ai/chat/message/local',
+  PromptLibrary: '/api/ai/prompt-library',
+  CopilotEvents: '/api/ai/events',
+  CopilotEventSummary: '/api/ai/events/summary',
   AgentPreflight: '/api/ai/agent/preflight',
   AgentIntent: '/api/ai/agent/intent',
   AiSkills: '/api/ai/skills',
@@ -82,6 +86,21 @@ export function exportChatReportPdf (parameter) {
   })
 }
 
+export function createChatReportShare (parameter) {
+  return request({
+    url: marketApi.ShareChatReport,
+    method: 'post',
+    data: parameter
+  })
+}
+
+export function getSharedChatReport (token) {
+  return request({
+    url: `${marketApi.ShareChatReport}/${encodeURIComponent(token)}`,
+    method: 'get'
+  })
+}
+
 export function getChatHistory (parameter) {
   return request({
     url: marketApi.GetChatHistory,
@@ -118,6 +137,44 @@ export function saveCopilotMessage (parameter) {
     url: marketApi.SaveCopilotMessage,
     method: 'post',
     data: parameter
+  })
+}
+
+export function getSavedPrompts (parameter) {
+  return request({
+    url: marketApi.PromptLibrary,
+    method: 'get',
+    params: parameter
+  })
+}
+
+export function savePrompt (parameter) {
+  return request({
+    url: marketApi.PromptLibrary,
+    method: 'post',
+    data: parameter
+  })
+}
+
+export function deleteSavedPrompt (promptId) {
+  return request({
+    url: `${marketApi.PromptLibrary}/${promptId}`,
+    method: 'delete'
+  })
+}
+
+export function trackCopilotEvent (parameter) {
+  return request({
+    url: marketApi.CopilotEvents,
+    method: 'post',
+    data: parameter
+  })
+}
+
+export function getCopilotEventSummary () {
+  return request({
+    url: marketApi.CopilotEventSummary,
+    method: 'get'
   })
 }
 
@@ -201,6 +258,28 @@ export function saveUserMemory (parameter) {
 export function deleteUserMemory (memoryId) {
   return request({
     url: `${marketApi.UserMemory}/${memoryId}`,
+    method: 'delete'
+  })
+}
+
+export function updateUserMemory (memoryId, parameter) {
+  return request({
+    url: `${marketApi.UserMemory}/${memoryId}`,
+    method: 'patch',
+    data: parameter
+  })
+}
+
+export function getChatSessionMemory (sessionId) {
+  return request({
+    url: `${marketApi.GetChatSessions}/${sessionId}/memory`,
+    method: 'get'
+  })
+}
+
+export function clearChatSessionMemory (sessionId) {
+  return request({
+    url: `${marketApi.GetChatSessions}/${sessionId}/memory`,
     method: 'delete'
   })
 }

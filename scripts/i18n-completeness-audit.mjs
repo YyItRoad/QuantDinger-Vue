@@ -9,6 +9,7 @@ import {
 import generatedOverrides, {
   verifiedSameTranslations
 } from '../src/locales/generated-locale-overrides.js'
+import { verifiedSameUiMessages } from '../src/locales/reviewed-ui-overrides.js'
 
 const root = resolve(process.cwd())
 const langDir = join(root, 'src', 'locales', 'lang')
@@ -37,7 +38,10 @@ const coverage = []
 
 for (const localeName of Object.keys(localeTargets)) {
   const locale = finalMessages(localeName)
-  const verifiedSame = new Set(verifiedSameTranslations[localeName] || [])
+  const verifiedSame = new Set([
+    ...(verifiedSameTranslations[localeName] || []),
+    ...verifiedSameUiMessages
+  ])
   const missing = []
   const placeholderMismatches = []
   const untranslated = []

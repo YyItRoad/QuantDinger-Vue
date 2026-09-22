@@ -1,9 +1,5 @@
 <template>
   <div class="main">
-    <div class="auth-intro">
-      <div class="desc">AI driven quantitative insights for global markets</div>
-    </div>
-
     <div class="auth-card">
       <!-- OAuth Token Handler (invisible) -->
       <div v-if="oauthProcessing" class="oauth-processing">
@@ -368,24 +364,70 @@
 
         <!-- Legal Agreement -->
         <div class="legal-wrap">
-          <div class="legal-header">
-            <div class="legal-title">{{ $t('user.login.legal.title') }}</div>
-            <a class="legal-toggle" @click="showLegal = !showLegal">
-              {{ showLegal ? $t('user.login.legal.collapse') : $t('user.login.legal.view') }}
-            </a>
-          </div>
-          <div v-show="showLegal" class="legal-content">
-            {{ $t('user.login.legal.content') }}
-          </div>
           <div class="legal-agree">
             <a-checkbox v-model="legalAgreed">
-              {{ $t('user.login.legal.agree') }}
+              <span>{{ $t('user.login.legal.agreePrefix') }}</span>
+              <a class="policy-link" @click.stop.prevent="legalModalVisible = true">
+                {{ $t('user.login.legal.title') }}
+              </a>
+              <span>{{ $t('user.login.legal.and') }}</span>
+              <a class="policy-link" @click.stop.prevent="privacyModalVisible = true">
+                {{ $t('user.login.privacy.title') }}
+              </a>
             </a-checkbox>
             <div v-if="legalError" class="legal-error">{{ $t('user.login.legal.required') }}</div>
           </div>
         </div>
       </div>
     </div>
+
+    <a-modal
+      v-model="legalModalVisible"
+      :footer="null"
+      :width="620"
+      :bodyStyle="{ '--login-accent': themeAccent }"
+      wrapClassName="policy-modal-wrap"
+      centered
+    >
+      <template slot="title">
+        <span class="policy-modal-title" :style="{ '--login-accent': themeAccent }">
+          <a-icon type="file-protect" />
+          <span>{{ $t('user.login.legal.title') }}</span>
+        </span>
+      </template>
+      <div class="policy-modal-content">
+        <p>{{ $t('user.login.legal.content') }}</p>
+      </div>
+      <div class="policy-modal-actions">
+        <a-button type="primary" @click="legalModalVisible = false">
+          {{ $t('common.close') }}
+        </a-button>
+      </div>
+    </a-modal>
+
+    <a-modal
+      v-model="privacyModalVisible"
+      :footer="null"
+      :width="620"
+      :bodyStyle="{ '--login-accent': themeAccent }"
+      wrapClassName="policy-modal-wrap"
+      centered
+    >
+      <template slot="title">
+        <span class="policy-modal-title" :style="{ '--login-accent': themeAccent }">
+          <a-icon type="safety-certificate" />
+          <span>{{ $t('user.login.privacy.title') }}</span>
+        </span>
+      </template>
+      <div class="policy-modal-content">
+        <p>{{ privacyPolicyContent }}</p>
+      </div>
+      <div class="policy-modal-actions">
+        <a-button type="primary" @click="privacyModalVisible = false">
+          {{ $t('common.close') }}
+        </a-button>
+      </div>
+    </a-modal>
 
     <!-- MFA Login Modal -->
     <a-modal
@@ -422,12 +464,36 @@
     <!-- Reset Password Modal -->
     <a-modal
       v-model="showResetModal"
-      :title="$t('user.resetPassword.title') || 'Reset Password'"
       :footer="null"
-      :width="420"
+      :width="460"
       :destroyOnClose="true"
+      :bodyStyle="{ '--login-accent': themeAccent }"
+      wrapClassName="reset-password-modal-wrap"
+      centered
       @cancel="resetResetModal"
     >
+      <template slot="title">
+        <span class="reset-modal-title" :style="{ '--login-accent': themeAccent }">
+          <a-icon type="key" />
+          <span class="reset-modal-heading">
+            <strong>{{ $t('user.resetPassword.title') }}</strong>
+            <small>{{ resetModalSubtitle }}</small>
+          </span>
+        </span>
+      </template>
+
+      <div v-if="resetStep < 3" class="reset-stepper">
+        <div :class="['reset-step', { active: resetStep === 1, done: resetStep > 1 }]">
+          <span>1</span>
+          <strong>{{ $t('user.resetPassword.stepVerify') }}</strong>
+        </div>
+        <div :class="['reset-step-line', { active: resetStep > 1 }]"></div>
+        <div :class="['reset-step', { active: resetStep === 2 }]">
+          <span>2</span>
+          <strong>{{ $t('user.resetPassword.stepSecure') }}</strong>
+        </div>
+      </div>
+
       <!-- Step 1: Email & Code -->
       <a-form
         v-if="resetStep === 1"
@@ -436,6 +502,7 @@
         @submit="handleResetVerify"
       >
         <a-alert v-if="resetError" type="error" showIcon style="margin-bottom: 24px;" :message="resetError" />
+        <p class="reset-step-copy">{{ $t('user.resetPassword.verifyHint') }}</p>
 
         <a-form-item>
           <a-input
@@ -512,6 +579,7 @@
           <span>{{ $t('user.resetPassword.resettingFor') || 'Resetting for' }}:</span>
           <strong>{{ resetEmail }}</strong>
         </div>
+        <p class="reset-step-copy">{{ $t('user.resetPassword.passwordHint') }}</p>
 
         <a-form-item>
           <a-popover
@@ -655,7 +723,7 @@
 </template>
 
 <script>
-import { mapActions } from 'vuex'
+import { mapActions, mapState } from 'vuex'
 import { timeFix } from '@/utils/util'
 import { getSecurityConfig, issueTurnstileClearance, sendVerificationCode, register, resetPassword, loginWithCode, getGoogleOAuthUrl, getGitHubOAuthUrl, verifyLoginMfa } from '@/api/auth'
 import Turnstile from '@/components/Turnstile/index.vue'
@@ -671,7 +739,8 @@ export default {
   data () {
     return {
       activeTab: 'login',
-      showLegal: false,
+      legalModalVisible: false,
+      privacyModalVisible: false,
       legalAgreed: true,
       legalError: false,
 
@@ -749,6 +818,22 @@ export default {
     }
   },
   computed: {
+    ...mapState({
+      brandConfig: state => state.brand.config,
+      appColor: state => state.app.color
+    }),
+    themeAccent () {
+      return this.appColor || '#faad14'
+    },
+    privacyPolicyContent () {
+      const legal = this.brandConfig && this.brandConfig.legal
+      return (legal && legal.privacy_policy_text) || this.$t('user.login.privacy.content')
+    },
+    resetModalSubtitle () {
+      if (this.resetStep === 2) return this.$t('user.resetPassword.passwordHint')
+      if (this.resetStep === 3) return this.$t('user.resetPassword.successSubtitle')
+      return this.$t('user.resetPassword.verifyHint')
+    },
     hasOAuth () {
       return this.securityConfig.oauth_google_enabled || this.securityConfig.oauth_github_enabled
     },
@@ -1734,39 +1819,46 @@ export default {
   }
 
   .legal-wrap {
-    margin-top: 20px;
+    margin-top: 18px;
     padding-top: 16px;
-    border-top: 1px dashed #f0f0f0;
-
-    .legal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      line-height: 20px;
-    }
-    .legal-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: rgba(0, 0, 0, 0.75);
-    }
-    .legal-toggle {
-      font-size: 12px;
-      color: var(--primary-color, #1890ff);
-      cursor: pointer;
-    }
-    .legal-content {
-      margin-top: 8px;
-      font-size: 12px;
-      color: rgba(0, 0, 0, 0.45);
-      line-height: 1.7;
-      white-space: pre-wrap;
-    }
+    border-top: 1px solid #ececea;
 
     .legal-agree {
-      margin-top: 10px;
       display: flex;
       flex-direction: column;
       gap: 6px;
+      color: #61615d;
+      font-size: 12px;
+      line-height: 1.65;
+
+      .ant-checkbox-wrapper {
+        display: inline-flex;
+        align-items: flex-start;
+        white-space: normal;
+      }
+
+      .ant-checkbox {
+        margin-top: 3px;
+      }
+
+      .ant-checkbox + span {
+        display: inline;
+        padding-left: 8px;
+      }
+
+      .policy-link {
+        margin: 0 3px;
+        color: #22221f;
+        font-weight: 600;
+        text-decoration: underline;
+        text-decoration-color: #c9c9c3;
+        text-underline-offset: 3px;
+
+        &:hover {
+          color: var(--login-accent, #faad14);
+          text-decoration-color: currentColor;
+        }
+      }
     }
 
     .legal-error {
@@ -1847,7 +1939,7 @@ export default {
   .ant-modal-header {
     padding: 18px 22px;
     border-bottom: 1px solid #edf2f7;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    background: #ffffff;
   }
 
   .ant-modal-title {
@@ -1866,9 +1958,7 @@ export default {
 
   .ant-modal-body {
     padding: 24px 24px 26px;
-    background:
-      radial-gradient(circle at 18% 0%, rgba(82, 196, 26, 0.08), transparent 34%),
-      #ffffff;
+    background: #ffffff;
   }
 }
 
@@ -1926,6 +2016,319 @@ export default {
   max-width: 320px;
   text-align: center;
 }
+
+.main {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+
+  .auth-card {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 26px 30px 24px;
+    background: #fff;
+    border: 1px solid #dededb;
+    border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(16, 16, 16, 0.08);
+
+    ::v-deep .ant-tabs-bar {
+      margin-bottom: 24px;
+      border-bottom-color: #ececea;
+    }
+
+    ::v-deep .ant-tabs-nav {
+      width: 100%;
+    }
+
+    ::v-deep .ant-tabs-nav > div {
+      display: flex;
+      width: 100%;
+    }
+
+    ::v-deep .ant-tabs-tab {
+      flex: 1 1 0;
+      margin: 0;
+      padding: 4px 12px 15px;
+      color: #8b8b87;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    ::v-deep .ant-tabs-tab:hover,
+    ::v-deep .ant-tabs-tab-active {
+      color: #171717;
+    }
+
+    ::v-deep .ant-tabs-ink-bar {
+      height: 2px;
+      background: var(--login-accent, #faad14);
+    }
+
+    ::v-deep .ant-form-item {
+      margin-bottom: 16px;
+    }
+
+    ::v-deep .ant-input,
+    ::v-deep .ant-input-affix-wrapper,
+    ::v-deep .ant-input-password,
+    ::v-deep .ant-input-password .ant-input {
+      min-height: 46px;
+      color: #191919 !important;
+      background: #fbfbfa !important;
+      border-color: #d8d8d4 !important;
+      border-radius: 6px;
+    }
+
+    ::v-deep .ant-input:hover,
+    ::v-deep .ant-input-affix-wrapper:hover,
+    ::v-deep .ant-input-password:hover {
+      border-color: #999 !important;
+    }
+
+    ::v-deep .ant-input:focus,
+    ::v-deep .ant-input-affix-wrapper-focused,
+    ::v-deep .ant-input-affix-wrapper:focus,
+    ::v-deep .ant-input-password:focus-within {
+      border-color: #1b1b1b !important;
+      box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08) !important;
+    }
+
+    ::v-deep .ant-input::placeholder,
+    ::v-deep .ant-input-password .ant-input::placeholder {
+      color: #a2a2a0 !important;
+    }
+
+    ::v-deep .ant-input-prefix,
+    ::v-deep .ant-input-suffix,
+    ::v-deep .ant-input-password-icon,
+    ::v-deep .ant-input-password .anticon {
+      color: #8a8a86 !important;
+    }
+
+    ::v-deep .ant-alert {
+      border-radius: 6px;
+    }
+
+    ::v-deep .ant-checkbox-checked .ant-checkbox-inner {
+      background: #171717;
+      border-color: #171717;
+    }
+
+    ::v-deep .ant-checkbox:hover .ant-checkbox-inner,
+    ::v-deep .ant-checkbox-input:focus + .ant-checkbox-inner {
+      border-color: #171717;
+    }
+
+    ::v-deep .ant-btn-default {
+      min-height: 42px;
+      color: #3c3c39 !important;
+      background: #fff !important;
+      border-color: #d8d8d4 !important;
+      border-radius: 6px;
+    }
+
+    ::v-deep .ant-btn-default:hover,
+    ::v-deep .ant-btn-default:focus {
+      color: #111 !important;
+      border-color: #8d8d88 !important;
+    }
+  }
+
+  .oauth-processing {
+    padding: 64px 0;
+
+    p {
+      color: #777;
+    }
+  }
+
+  .auth-form {
+    .submit-button {
+      height: 46px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 650;
+      background: #171717;
+      border-color: #171717;
+      border-radius: 6px;
+      box-shadow: none;
+
+      &:hover,
+      &:focus {
+        color: #171717;
+        background: var(--login-accent, #faad14);
+        border-color: var(--login-accent, #faad14);
+      }
+    }
+  }
+
+  .login-method-switch {
+    justify-content: stretch;
+    gap: 4px;
+    margin-bottom: 20px;
+    padding: 4px;
+    background: #f2f2f0;
+    border-radius: 7px;
+
+    .ant-divider {
+      display: none;
+    }
+
+    a {
+      flex: 1 1 0;
+      padding: 8px 10px;
+      color: #7d7d79;
+      line-height: 20px;
+      text-align: center;
+      border: 0;
+      border-radius: 5px;
+
+      &:hover {
+        color: #171717;
+      }
+
+      &.active {
+        color: #171717;
+        font-weight: 650;
+        background: #fff;
+        border: 0;
+        box-shadow: 0 1px 4px rgba(16, 16, 16, 0.08);
+      }
+    }
+  }
+
+  .auth-links {
+    margin-top: 14px;
+    text-align: right;
+
+    a {
+      color: #5d5d59;
+
+      &:hover {
+        color: #111;
+        text-decoration: none;
+      }
+    }
+  }
+
+  .code-login-hint {
+    color: #858581;
+
+    .anticon {
+      color: color-mix(in srgb, var(--login-accent, #faad14) 72%, #171717);
+    }
+  }
+
+  .oauth-section {
+    margin-top: 24px;
+
+    .ant-divider {
+      margin: 0 0 16px;
+      color: #858581;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+
+      &::before,
+      &::after {
+        border-top-color: #dededb;
+      }
+    }
+
+    .oauth-buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+
+      .oauth-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        min-height: 46px;
+        padding: 0 16px;
+        color: #272724 !important;
+        font-size: 14px;
+        font-weight: 600;
+        background: #fff !important;
+        border-color: #d8d8d4 !important;
+        border-radius: 6px;
+        box-shadow: 0 1px 2px rgba(16, 16, 16, 0.03);
+        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+
+        .oauth-icon,
+        .anticon {
+          flex: 0 0 auto;
+          width: 18px;
+          height: 18px;
+          font-size: 18px;
+        }
+
+        &:hover {
+          color: #111 !important;
+          background: #f7f7f5 !important;
+          border-color: #9b9b96 !important;
+          box-shadow: 0 5px 14px rgba(16, 16, 16, 0.08);
+          transform: translateY(-1px);
+        }
+
+        &:focus {
+          color: #111 !important;
+          border-color: var(--login-accent, #faad14) !important;
+          box-shadow: 0 0 0 3px color-mix(in srgb, var(--login-accent, #faad14) 16%, transparent);
+        }
+      }
+
+      .github-btn .anticon {
+        color: #1f2328;
+      }
+    }
+  }
+
+  .legal-wrap {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid #ececea;
+
+    .legal-agree {
+      color: #545450;
+    }
+  }
+}
+
+@media (max-width: 576px) {
+  .main {
+    .auth-card {
+      padding: 22px 18px 20px;
+      border-radius: 8px;
+      box-shadow: 0 12px 34px rgba(16, 16, 16, 0.07);
+    }
+
+    .auth-code-row {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 8px;
+
+      > .ant-col {
+        flex: 1 1 auto;
+        width: auto;
+        padding: 0 !important;
+      }
+
+      > .ant-col:last-child {
+        flex: 0 0 104px;
+      }
+    }
+
+    .oauth-buttons {
+      flex-direction: column;
+    }
+  }
+}
 </style>
 
 <style lang="less">
@@ -1944,7 +2347,7 @@ export default {
   .ant-modal-header {
     padding: 18px 22px;
     border-bottom: 1px solid #edf2f7;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    background: #ffffff !important;
   }
 
   .ant-modal-title,
@@ -1982,9 +2385,7 @@ export default {
   .ant-modal-body {
     padding: 24px 24px 26px;
     color: #111827 !important;
-    background:
-      radial-gradient(circle at 18% 0%, rgba(82, 196, 26, 0.08), transparent 34%),
-      #ffffff !important;
+    background: #ffffff !important;
   }
 }
 
@@ -1995,15 +2396,411 @@ html body .ant-modal-wrap.turnstile-modal-wrap {
   }
 
   .ant-modal-header {
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+    background: #ffffff !important;
     border-bottom-color: #edf2f7 !important;
   }
 
   .ant-modal-body {
-    background:
-      radial-gradient(circle at 18% 0%, rgba(82, 196, 26, 0.08), transparent 34%),
-      #ffffff !important;
+    background: #ffffff !important;
     color: #111827 !important;
+  }
+}
+
+.policy-modal-wrap,
+.reset-password-modal-wrap {
+  .ant-modal {
+    max-width: calc(100vw - 32px);
+  }
+
+  .ant-modal-content {
+    overflow: hidden;
+    color: #171717;
+    background: #fff;
+    border: 1px solid #e5e5e1;
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(16, 16, 16, 0.18);
+  }
+
+  .ant-modal-header {
+    padding: 20px 24px;
+    background: #fff;
+    border-bottom: 1px solid #ececea;
+  }
+
+  .ant-modal-title {
+    color: #171717;
+  }
+
+  .ant-modal-close {
+    color: #777773;
+  }
+
+  .ant-modal-close:hover {
+    color: #171717;
+  }
+
+  .ant-modal-body {
+    padding: 24px;
+    color: #171717;
+    background: #fff;
+  }
+
+  .ant-input,
+  .ant-input-affix-wrapper {
+    min-height: 44px;
+    border-color: #d8d8d4;
+    border-radius: 6px;
+  }
+
+  .ant-input:focus,
+  .ant-input-affix-wrapper:focus,
+  .ant-input-affix-wrapper-focused,
+  .ant-input-password:focus-within {
+    border-color: #1b1b1b;
+    box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+  }
+
+  .ant-btn {
+    min-height: 42px;
+    border-radius: 6px;
+  }
+
+  .ant-btn-primary {
+    color: #fff;
+    background: #171717;
+    border-color: #171717;
+    box-shadow: none;
+  }
+
+  .ant-btn-primary:hover,
+  .ant-btn-primary:focus {
+    color: #fff;
+    background: #30302e;
+    border-color: #30302e;
+  }
+}
+
+.policy-modal-wrap {
+  .policy-modal-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    font-size: 17px;
+    font-weight: 700;
+  }
+
+  .policy-modal-title .anticon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    color: var(--login-accent, #faad14);
+    background: color-mix(in srgb, var(--login-accent, #faad14) 11%, #fff);
+    border: 1px solid color-mix(in srgb, var(--login-accent, #faad14) 24%, #fff);
+    border-radius: 8px;
+  }
+
+  .policy-modal-content {
+    max-height: 52vh;
+    padding-right: 10px;
+    overflow-y: auto;
+    color: #575753;
+    font-size: 14px;
+    line-height: 1.85;
+    white-space: pre-line;
+  }
+
+  .policy-modal-content p {
+    margin: 0;
+  }
+
+  .policy-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin: 22px -24px -24px;
+    padding: 16px 24px;
+    background: #fafaf8;
+    border-top: 1px solid #ececea;
+  }
+
+  .policy-modal-actions .ant-btn {
+    min-width: 88px;
+  }
+}
+
+.reset-password-modal-wrap {
+  .reset-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .reset-modal-title > .anticon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    color: var(--login-accent, #faad14);
+    background: color-mix(in srgb, var(--login-accent, #faad14) 11%, #fff);
+    border: 1px solid color-mix(in srgb, var(--login-accent, #faad14) 24%, #fff);
+    border-radius: 9px;
+  }
+
+  .reset-modal-heading {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .reset-modal-heading strong {
+    color: #171717;
+    font-size: 17px;
+    line-height: 1.35;
+  }
+
+  .reset-modal-heading small {
+    overflow: hidden;
+    color: #858581;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reset-stepper {
+    display: grid;
+    grid-template-columns: max-content 1fr max-content;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 22px;
+    padding: 14px 16px;
+    background: #f7f7f5;
+    border: 1px solid #ececea;
+    border-radius: 8px;
+  }
+
+  .reset-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #969690;
+  }
+
+  .reset-step > span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: #777773;
+    font-size: 11px;
+    font-weight: 700;
+    background: #fff;
+    border: 1px solid #d8d8d4;
+    border-radius: 50%;
+  }
+
+  .reset-step strong {
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
+  .reset-step.active,
+  .reset-step.done {
+    color: #22221f;
+  }
+
+  .reset-step.active > span,
+  .reset-step.done > span {
+    color: #171717;
+    background: color-mix(in srgb, var(--login-accent, #faad14) 15%, #fff);
+    border-color: var(--login-accent, #faad14);
+  }
+
+  .reset-step-line {
+    height: 1px;
+    background: #d8d8d4;
+  }
+
+  .reset-step-line.active {
+    background: var(--login-accent, #faad14);
+  }
+
+  .reset-step-copy {
+    margin: -2px 0 18px;
+    color: #6f6f6a;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .ant-form-item {
+    margin-bottom: 16px;
+  }
+
+  .auth-code-row .ant-btn {
+    color: #2f2f2c;
+    background: #f7f7f5;
+    border-color: #d8d8d4;
+  }
+
+  .submit-button {
+    min-height: 46px;
+    font-weight: 650;
+  }
+
+  .email-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    background: #f7f7f5;
+    border: 1px solid #ececea;
+    border-radius: 7px;
+  }
+
+  .email-display span {
+    color: #858581;
+    font-size: 12px;
+  }
+
+  .email-display strong {
+    overflow-wrap: anywhere;
+    color: #252522;
+    font-size: 13px;
+    text-align: right;
+  }
+
+  .auth-links {
+    margin-top: 14px;
+    text-align: center;
+  }
+
+  .auth-links a {
+    color: #575753;
+    font-size: 13px;
+  }
+
+  .auth-links a:hover {
+    color: #171717;
+  }
+
+  .success-panel {
+    padding: 0;
+  }
+
+  .success-panel .ant-result {
+    padding: 18px 10px 8px;
+  }
+
+  .success-panel .ant-result-icon > .anticon {
+    color: var(--login-accent, #52c41a);
+  }
+}
+
+html body .ant-modal-wrap.policy-modal-wrap,
+html body .ant-modal-wrap.reset-password-modal-wrap {
+  .ant-modal-content,
+  .ant-modal-header,
+  .ant-modal-body {
+    color: #171717 !important;
+    background: #fff !important;
+  }
+
+  .ant-modal-header {
+    border-bottom-color: #ececea !important;
+  }
+
+  .ant-modal-title {
+    color: #171717 !important;
+  }
+
+  .ant-input,
+  .ant-input-affix-wrapper,
+  .ant-input-password {
+    color: #252522 !important;
+    background: #fff !important;
+    border-color: #d8d8d4 !important;
+  }
+
+  .ant-input::placeholder {
+    color: #a2a29c !important;
+  }
+
+  .ant-input-prefix .anticon,
+  .ant-input-suffix .anticon {
+    color: #8b8b86 !important;
+  }
+
+  .policy-modal-title > span,
+  .reset-modal-heading > strong {
+    color: #171717 !important;
+  }
+
+  .reset-modal-heading > small {
+    color: #858581 !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .policy-modal-wrap,
+  .reset-password-modal-wrap {
+    .ant-modal-header,
+    .ant-modal-body {
+      padding-left: 18px;
+      padding-right: 18px;
+    }
+  }
+
+  .policy-modal-wrap .policy-modal-actions {
+    margin-right: -18px;
+    margin-left: -18px;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .reset-password-modal-wrap {
+    .reset-step strong {
+      display: none;
+    }
+
+    .auth-code-row {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 8px;
+    }
+
+    .auth-code-row > .ant-col {
+      flex: 1 1 auto;
+      width: auto;
+      padding: 0 !important;
+    }
+
+    .auth-code-row > .ant-col:last-child {
+      flex: 0 0 108px;
+    }
+  }
+}
+
+body.userLayout #userLayout {
+  .auth-card .ant-tabs-tab-active,
+  .auth-card .ant-tabs-tab-active:hover,
+  .auth-card .ant-tabs-tab:hover {
+    color: #171717 !important;
+  }
+
+  .auth-card .ant-input:focus,
+  .auth-card .ant-input-affix-wrapper-focused,
+  .auth-card .ant-input-password:focus-within {
+    border-color: #1b1b1b !important;
+    box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08) !important;
   }
 }
 </style>

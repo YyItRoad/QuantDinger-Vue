@@ -28,3 +28,10 @@ vite-dev*.log
 *.sln
 *.sw*
 package-lock.json
+
+# Local design review and visual QA artifacts
+/audits/
+/design-qa*
+/screenshots/
+/playwright-report/
+/test-results/

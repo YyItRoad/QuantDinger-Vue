@@ -47,7 +47,18 @@ export default {
   },
   data () {
     return {
-      credits: null
+      credits: null,
+      creditsLoading: false,
+      creditsRefreshTimer: null,
+      lastCreditsLoadAt: 0
+    }
+  },
+  watch: {
+    'currentUser.credits': {
+      immediate: true,
+      handler (credits) {
+        this.applyCredits(credits)
+      }
     }
   },
   computed: {
@@ -59,24 +70,51 @@ export default {
     }
   },
   mounted () {
-    this.loadCredits()
+    this.loadCredits(true)
     this.$root.$on('credits-updated', this.handleCreditsUpdated)
+    window.addEventListener('focus', this.handleWindowFocus)
+    document.addEventListener('visibilitychange', this.handleVisibilityChange)
+    this.creditsRefreshTimer = window.setInterval(this.refreshVisibleCredits, 60 * 1000)
   },
   beforeDestroy () {
     this.$root.$off('credits-updated', this.handleCreditsUpdated)
+    window.removeEventListener('focus', this.handleWindowFocus)
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    if (this.creditsRefreshTimer) window.clearInterval(this.creditsRefreshTimer)
   },
   methods: {
-    handleCreditsUpdated (credits) {
+    applyCredits (credits) {
       const value = Number(credits)
-      if (Number.isFinite(value)) this.credits = value
+      if (!Number.isFinite(value)) return false
+      this.credits = value
+      this.lastCreditsLoadAt = Date.now()
+      return true
     },
-    async loadCredits () {
+    handleCreditsUpdated (credits) {
+      this.applyCredits(credits)
+    },
+    handleWindowFocus () {
+      this.loadCredits()
+    },
+    handleVisibilityChange () {
+      if (document.visibilityState === 'visible') this.loadCredits()
+    },
+    refreshVisibleCredits () {
+      if (document.visibilityState === 'visible') this.loadCredits(true)
+    },
+    async loadCredits (force = false) {
+      if (this.creditsLoading) return
+      if (!force && Date.now() - this.lastCreditsLoadAt < 10 * 1000) return
+      this.creditsLoading = true
       try {
         const res = await getMembershipPlans()
         if (res && res.code === 1 && res.data && res.data.billing) {
-          this.credits = res.data.billing.credits || 0
+          this.applyCredits(res.data.billing.credits)
         }
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        this.creditsLoading = false
+      }
     },
     handleProfile () {
       this.$router.push({ name: 'Profile' }).catch(() => {})

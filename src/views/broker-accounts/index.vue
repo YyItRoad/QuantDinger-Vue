@@ -107,8 +107,12 @@
         />
         <broker-panel
           v-if="selectedBroker"
-          :key="selectedBroker.id"
+          ref="brokerPanel"
+          :key="selectedBroker.id + ':' + (alpacaCredentialId || '')"
           :broker="selectedBroker"
+          :accounts="alpacaAccounts"
+          :credential-id="selectedBroker.id === 'alpaca' ? alpacaCredentialId : null"
+          :refresh-version="refreshVersion"
           :status="connectionMap[selectedBroker.id]"
           :loading="loadingMap[selectedBroker.id]"
           :is-dark-theme="isDarkTheme"
@@ -116,8 +120,8 @@
           @connect="payload => handleConnect(selectedBroker.id, payload)"
           @disconnect="() => handleDisconnect(selectedBroker.id)"
           @refresh="() => loadOne(selectedBroker.id)"
+          @select-account="selectAlpacaAccount"
           @place-order="payload => handlePlaceOrder(selectedBroker.id, payload)"
-          @cancel-order="orderId => handleCancelOrder(selectedBroker.id, orderId)"
         />
         <crypto-exchange-accounts-card
           v-else
@@ -163,7 +167,11 @@ export default {
       activeBroker: 'alpaca',
       activeProvider: 'alpaca',
       connectionMap: {},
+      alpacaAccounts: [],
+      alpacaCredentialId: null,
+      refreshVersion: 0,
       loadingMap: {},
+      requestVersions: {},
       cryptoCredentialItems: [],
       refreshing: false,
       signupModalVisible: false,
@@ -223,6 +231,9 @@ export default {
         return
       }
       this.selectProvider(key)
+      this.$nextTick(() => {
+        if (this.$refs.brokerPanel) this.$refs.brokerPanel.openConnectForm()
+      })
     },
     openCryptoAdd () {
       this.activeProvider = 'crypto:binance'
@@ -282,6 +293,8 @@ export default {
       }
     },
     async loadOne (id) {
+      const version = (this.requestVersions[id] || 0) + 1
+      this.$set(this.requestVersions, id, version)
       // SaaS / cloud deployments disable IBKR (no local TWS/Gateway
       // reachable). Skip the network call entirely so users don't
       // see the bilingual rejection payload in DevTools or as an error toast.
@@ -292,14 +305,34 @@ export default {
       }
       this.$set(this.loadingMap, id, true)
       try {
-        const res = await broker[id].status()
+        if (id === 'alpaca') {
+          const response = await broker.alpaca.accounts()
+          if (this.requestVersions[id] !== version) return
+          const payload = response && response.data
+          this.alpacaAccounts = Array.isArray(payload) ? payload : (payload && payload.data) || []
+          if (!this.alpacaAccounts.some(item => Number(item.id) === this.alpacaCredentialId)) {
+            this.alpacaCredentialId = this.alpacaAccounts.length ? Number(this.alpacaAccounts[0].id) : null
+          }
+        }
+        const res = await broker[id].status(this.accountParams(id))
+        if (this.requestVersions[id] !== version) return
         const normalized = this.normalizeStatus(id, res)
         this.$set(this.connectionMap, id, normalized)
+        this.refreshVersion += 1
       } catch (e) {
+        if (this.requestVersions[id] !== version) return
         this.$set(this.connectionMap, id, { connected: false, error: e && e.message })
       } finally {
-        this.$set(this.loadingMap, id, false)
+        if (this.requestVersions[id] === version) this.$set(this.loadingMap, id, false)
       }
+    },
+    accountParams (id) {
+      return id === 'alpaca' && this.alpacaCredentialId ? { credential_id: this.alpacaCredentialId } : {}
+    },
+    selectAlpacaAccount (credentialId) {
+      this.alpacaCredentialId = Number(credentialId)
+      this.$set(this.connectionMap, 'alpaca', { connected: false })
+      this.loadOne('alpaca')
     },
     normalizeStatus (id, res) {
       if (!res) return { connected: false }
@@ -322,6 +355,10 @@ export default {
       try {
         const res = await broker[id].connect(payload)
         if (res && (res.success || (res.data && res.data.success))) {
+          if (id === 'alpaca') {
+            const status = (res.data && res.data.data) || res.data || {}
+            this.alpacaCredentialId = Number(status.credential_id) || null
+          }
           this.$message.success(this.$t('brokerAccounts.connectSuccess'))
           await this.loadOne(id)
         } else {
@@ -337,7 +374,7 @@ export default {
     async handleDisconnect (id) {
       this.$set(this.loadingMap, id, true)
       try {
-        await broker[id].disconnect()
+        await broker[id].disconnect(this.accountParams(id))
         this.$message.success(this.$t('brokerAccounts.disconnectSuccess'))
         this.$set(this.connectionMap, id, { connected: false })
       } catch (e) {
@@ -348,7 +385,7 @@ export default {
     },
     async handlePlaceOrder (id, payload) {
       try {
-        const res = await broker[id].placeOrder(payload)
+        const res = await broker[id].placeOrder({ ...payload, ...this.accountParams(id) })
         if (res && (res.success || (res.data && res.data.success))) {
           this.$message.success(this.$t('brokerAccounts.orderPlaced'))
           return true
@@ -362,7 +399,7 @@ export default {
     },
     async handleCancelOrder (id, orderId) {
       try {
-        const res = await broker[id].cancelOrder(orderId)
+        const res = await broker[id].cancelOrder(orderId, this.accountParams(id))
         if (res && (res.success || (res.data && res.data.success))) {
           this.$message.success(this.$t('brokerAccounts.orderCancelled'))
         }
@@ -389,16 +426,22 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 20px;
+  gap: 16px;
+  min-height: 40px;
+  margin-bottom: 10px;
 }
 
 .ba-header-text {
-  max-width: 720px;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 16px;
+  min-width: 0;
 }
 
 .ba-title {
-  font-size: 26px;
+  flex: 0 0 auto;
+  font-size: 20px;
   font-weight: 750;
   color: #182338;
   display: flex;
@@ -407,30 +450,33 @@ export default {
   letter-spacing: -0.02em;
 
   .anticon {
-    font-size: 24px;
+    font-size: 19px;
     color: var(--primary-color, #1890ff);
   }
 }
 
 .ba-subtitle {
-  margin-top: 6px;
-  font-size: 14px;
-  line-height: 1.6;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
   color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ba-header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
 .ba-health {
-  padding-right: 16px;
+  padding-right: 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border-right: 1px solid #e6eaf0;
   white-space: nowrap;
 }
@@ -445,7 +491,7 @@ export default {
   align-items: center;
   gap: 7px;
   color: var(--primary-color-active, #389e0d);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -704,9 +750,10 @@ export default {
   }
 
   .ba-header {
-    align-items: flex-start;
+    align-items: center;
   }
 
+  .ba-subtitle,
   .ba-health {
     display: none;
   }
@@ -723,7 +770,12 @@ export default {
   }
 
   .ba-header {
+    align-items: stretch;
     flex-direction: column;
+  }
+
+  .ba-header-text {
+    width: 100%;
   }
 
   .ba-header-actions {

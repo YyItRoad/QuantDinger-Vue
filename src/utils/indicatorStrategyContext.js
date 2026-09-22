@@ -5,7 +5,11 @@ export function resolveIndicatorStrategyContext (context = {}, route = {}, confi
   const requestedMarketType = String(context.market_type || route.market_type || config.market_type || 'spot').trim().toLowerCase()
   const marketType = requestedMarketType === 'swap' ? 'swap' : 'spot'
   const timeframe = String(context.timeframe || route.timeframe || config.timeframe || '').trim()
-  let instrument = String(context.instrument_id || route.instrument_id || '').trim()
+  let instrument = String(context.instrument || route.instrument || '').trim()
+  const storedInstrumentId = String(context.instrument_id || route.instrument_id || '').trim()
+  if (!instrument && /^(?:CNStock|Crypto|Forex|Future|Futures|USStock|HKStock):/i.test(storedInstrumentId)) {
+    instrument = storedInstrumentId
+  }
 
   if (!instrument && symbol) {
     if (/^(?:CNStock|Crypto|Forex|Future|Futures|USStock):/i.test(symbol)) {

@@ -7,12 +7,23 @@ import copilotOverrides from './copilot-overrides'
 import profileSecurityMessages from './lang/profile-security'
 import brokerAccountWorkspaceMessages from './lang/broker-account-workspace'
 import strategyV2Messages from './lang/strategy-v2'
+import fundamentalSyncMessages from './lang/fundamental-sync'
 import strategyLiveRiskMessages from './lang/strategy-live-risk'
 import robotBuilderMessages from './lang/robot-builder-overrides'
+import billingPaymentMessages from './billing-payment-overrides'
+import adminOrderMessages from './admin-order-overrides'
 import strategyTradeRecordMessages from './lang/strategy-trade-records'
 import positionManagerMessages from './lang/position-manager'
 import marketStateMessages from './lang/market-state'
+import aiDecisionFilterMessages from './ai-decision-filter-overrides'
 import generatedLocaleOverrides from './generated-locale-overrides'
+import uxOverrides from './ux-overrides'
+import copilotCallsiteOverrides from './copilot-callsite-overrides'
+import reviewedUiOverrides from './reviewed-ui-overrides'
+import professionalReportOverrides from './professional-report-overrides'
+import backtestRangeOverrides from './backtest-range-overrides'
+import settingsResearchOverrides from './settings-research-overrides'
+import strategyBuilderOverrides from './strategy-builder-overrides'
 
 Vue.use(VueI18n)
 
@@ -25,12 +36,23 @@ const messages = {
     ...(profileSecurityMessages[defaultLang] || {}),
     ...(brokerAccountWorkspaceMessages[defaultLang] || {}),
     ...(strategyV2Messages[defaultLang] || {}),
+    ...(fundamentalSyncMessages[defaultLang] || {}),
     ...(strategyLiveRiskMessages[defaultLang] || {}),
     ...(robotBuilderMessages[defaultLang] || {}),
+    ...(billingPaymentMessages[defaultLang] || {}),
+    ...(adminOrderMessages[defaultLang] || {}),
     ...(strategyTradeRecordMessages[defaultLang] || {}),
     ...(positionManagerMessages[defaultLang] || {}),
     ...marketStateMessages(defaultLang),
-    ...(generatedLocaleOverrides[defaultLang] || {})
+    ...(aiDecisionFilterMessages[defaultLang] || {}),
+    ...(uxOverrides[defaultLang] || {}),
+    ...(copilotCallsiteOverrides[defaultLang] || {}),
+    ...(generatedLocaleOverrides[defaultLang] || {}),
+    ...(reviewedUiOverrides[defaultLang] || {}),
+    ...(professionalReportOverrides[defaultLang] || {}),
+    ...(backtestRangeOverrides[defaultLang] || {}),
+    ...(settingsResearchOverrides[defaultLang] || {}),
+    ...(strategyBuilderOverrides[defaultLang] || {})
   }
 }
 
@@ -102,12 +124,23 @@ function mergeLocaleOverrides (lang) {
     ...(profileSecurityMessages[lang] || {}),
     ...(brokerAccountWorkspaceMessages[lang] || {}),
     ...(strategyV2Messages[lang] || {}),
+    ...(fundamentalSyncMessages[lang] || {}),
     ...(strategyLiveRiskMessages[lang] || {}),
     ...(robotBuilderMessages[lang] || {}),
+    ...(billingPaymentMessages[lang] || {}),
+    ...(adminOrderMessages[lang] || {}),
     ...(strategyTradeRecordMessages[lang] || {}),
     ...(positionManagerMessages[lang] || {}),
     ...marketStateMessages(lang),
-    ...(generatedLocaleOverrides[lang] || {})
+    ...(aiDecisionFilterMessages[lang] || {}),
+    ...(uxOverrides[lang] || {}),
+    ...(copilotCallsiteOverrides[lang] || {}),
+    ...(generatedLocaleOverrides[lang] || {}),
+    ...(reviewedUiOverrides[lang] || {}),
+    ...(professionalReportOverrides[lang] || {}),
+    ...(backtestRangeOverrides[lang] || {}),
+    ...(settingsResearchOverrides[lang] || {}),
+    ...(strategyBuilderOverrides[lang] || {})
   }
   i18n.setLocaleMessage(lang, {
     ...(i18n.getLocaleMessage(lang) || {}),
@@ -132,12 +165,24 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(copilotOverrides[lang] || {}),
       ...(profileSecurityMessages[lang] || {}),
       ...(brokerAccountWorkspaceMessages[lang] || {}),
+      ...(strategyV2Messages[lang] || {}),
+      ...(fundamentalSyncMessages[lang] || {}),
       ...(strategyLiveRiskMessages[lang] || {}),
       ...(robotBuilderMessages[lang] || {}),
+      ...(billingPaymentMessages[lang] || {}),
+      ...(adminOrderMessages[lang] || {}),
       ...(strategyTradeRecordMessages[lang] || {}),
       ...(positionManagerMessages[lang] || {}),
       ...marketStateMessages(lang),
-      ...(generatedLocaleOverrides[lang] || {})
+      ...(aiDecisionFilterMessages[lang] || {}),
+      ...(uxOverrides[lang] || {}),
+      ...(copilotCallsiteOverrides[lang] || {}),
+      ...(generatedLocaleOverrides[lang] || {}),
+      ...(reviewedUiOverrides[lang] || {}),
+      ...(professionalReportOverrides[lang] || {}),
+      ...(backtestRangeOverrides[lang] || {}),
+      ...(settingsResearchOverrides[lang] || {}),
+      ...(strategyBuilderOverrides[lang] || {})
     })
     i18n.setLocaleMessage(lang, locale)
     loadedLanguages.push(lang)

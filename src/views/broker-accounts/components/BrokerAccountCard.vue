@@ -22,6 +22,7 @@
 import { broker } from '@/api/broker'
 
 function num (v) {
+  if (v === null || v === undefined || v === '') return null
   const n = Number(v)
   return isFinite(n) ? n : null
 }
@@ -37,6 +38,7 @@ export default {
   name: 'BrokerAccountCard',
   props: {
     brokerId: { type: String, required: true },
+    credentialId: { type: Number, default: null },
     isDarkTheme: { type: Boolean, default: false }
   },
   data () {
@@ -56,12 +58,12 @@ export default {
       const ccy = i.currency || i.account_currency || 'USD'
       if (this.brokerId === 'alpaca') {
         return [
-          { key: 'equity', label: this.$t('brokerAccounts.kpi.equity'), value: money(i.equity || i.portfolio_value, ccy) },
+          { key: 'equity', label: this.$t('brokerAccounts.kpi.equity'), value: money(i.equity != null ? i.equity : i.portfolio_value, ccy) },
           { key: 'cash', label: this.$t('brokerAccounts.kpi.cash'), value: money(i.cash, ccy) },
           { key: 'bp', label: this.$t('brokerAccounts.kpi.buyingPower'), value: money(i.buying_power, ccy), tone: 'accent' },
-          { key: 'positions', label: this.$t('brokerAccounts.kpi.positionsCount'), value: String(i.position_count || i.positions_count || '--') },
-          { key: 'daytrades', label: this.$t('brokerAccounts.kpi.dayTrades'), value: String(i.daytrade_count || '--') },
-          { key: 'status', label: this.$t('brokerAccounts.kpi.accountStatus'), value: String(i.status || 'ACTIVE'), tone: 'positive' }
+          { key: 'positions', label: this.$t('brokerAccounts.kpi.positionsCount'), value: i.position_count != null ? String(i.position_count) : '--' },
+          { key: 'fills', label: this.$t('brokerAccounts.kpi.recentFills'), value: i.recent_filled_order_count != null ? String(i.recent_filled_order_count) : '--', sub: this.$t('brokerAccounts.kpi.recentFillsHint', { limit: i.recent_order_limit || 100 }) },
+          { key: 'status', label: this.$t('brokerAccounts.kpi.accountStatus'), value: String(i.status || '--'), tone: i.status === 'ACTIVE' ? 'positive' : '' }
         ]
       }
       if (this.brokerId === 'ibkr') {
@@ -87,12 +89,14 @@ export default {
     async load () {
       this.loading = true
       try {
-        const res = await broker[this.brokerId].account()
+        const res = await broker[this.brokerId].account(this.credentialId ? { credential_id: this.credentialId } : {})
+        if (res && res.success === false) throw new Error('brokerAccounts.accountLoadFailed')
         const payload = (res && (res.data || res)) || {}
         const inner = payload.data && typeof payload.data === 'object' ? payload.data : payload
         this.info = inner && Object.keys(inner).length ? inner : null
       } catch (_) {
         this.info = null
+        this.$message.error(this.$t('brokerAccounts.accountLoadFailed'))
       } finally {
         this.loading = false
       }

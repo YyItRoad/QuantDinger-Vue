@@ -223,62 +223,98 @@
   }
 }
 
-:global {
-  .basic-layout-wrapper--multi-tab .ant-layout-content {
-    --qd-multi-tab-height: 36px;
-  }
+/*
+ * Multi-tab is part of the route viewport, not extra page content. Keep the
+ * document at one viewport and give every route the exact remaining height.
+ * Long pages scroll inside the route shell; full-screen workspaces opt into
+ * 100% below. This also remains correct when pages are cached by keep-alive.
+ */
+.basic-layout-wrapper--multi-tab .ant-layout-content,
+.basic-layout-wrapper--multi-tab .ant-pro-basicLayout-content {
+  --qd-multi-tab-height: 36px;
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100vh - 64px) !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 64px) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
 
-  .basic-layout-wrapper--multi-tab .basic-route-view-shell {
-    margin-top: 0;
-  }
+.basic-layout-wrapper--multi-tab .ant-pro-basicLayout-children-content-wrap,
+.basic-layout-wrapper--multi-tab .ant-pro-grid-content {
+  display: flex !important;
+  flex: 1 1 0 !important;
+  flex-direction: column !important;
+  width: 100%;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
 
-  .basic-layout-wrapper--multi-tab .ant-pro-basicLayout-content,
-  .basic-layout-wrapper--multi-tab .ant-layout-content {
-    margin: 0 !important;
-    padding: 0 !important;
-  }
+.basic-layout-wrapper--multi-tab .ant-pro-multi-tab {
+  flex: 0 0 var(--qd-multi-tab-height, 36px);
+  margin: 0;
+}
 
-  .basic-layout-wrapper--multi-tab .ant-pro-multi-tab {
-    margin: 0;
-  }
+.basic-layout-wrapper--multi-tab .basic-route-view-shell {
+  --qd-route-viewport-height: calc(100vh - 100px);
+  flex: 1 1 0 !important;
+  width: 100%;
+  height: 0 !important;
+  min-height: 0;
+  max-height: 100%;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
 
-  .basic-layout-wrapper--multi-tab .basic-route-view-shell:has(.indicator-ide) {
-    margin-top: 0;
-  }
+.basic-layout-wrapper--multi-tab .route-view-cache-host {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
 
-  .basic-layout-wrapper--multi-tab .ai-asset-analysis-page {
-    min-height: calc(100vh - 112px);
-  }
+.basic-layout-wrapper--multi-tab .indicator-ide,
+.basic-layout-wrapper--multi-tab .strategy-ide-shell {
+  --ide-shell-height: 100%;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden;
+}
 
-  .basic-layout-wrapper--multi-tab .copilot-workbench {
-    height: calc(100vh - 100px);
-  }
+.basic-layout-wrapper--multi-tab .indicator-ide .ide-left {
+  top: 0;
+}
 
-  .basic-layout-wrapper--multi-tab .indicator-ide {
-    --ide-shell-height: calc(100vh - 64px - var(--qd-multi-tab-height, 36px));
-  }
+.basic-layout-wrapper--multi-tab .ai-asset-analysis-page {
+  display: flex;
+  flex-direction: column;
+  height: var(--qd-route-viewport-height, 100%);
+  min-height: 0 !important;
+  max-height: 100%;
+  overflow: hidden;
+}
 
-  .basic-layout-wrapper--multi-tab .indicator-ide .ide-left {
-    top: var(--qd-multi-tab-height, 36px);
-  }
+.basic-layout-wrapper--multi-tab .ai-asset-analysis-page .workspace-card {
+  flex: 1 1 0;
+  min-height: 0;
+  margin-bottom: 0;
+}
 
-  .basic-layout-wrapper--multi-tab .ant-pro-multi-tab {
-    flex: 0 0 var(--qd-multi-tab-height, 36px);
-  }
+.basic-layout-wrapper--multi-tab .ai-asset-analysis-page .workspace-card > .ant-card-body,
+.basic-layout-wrapper--multi-tab .ai-asset-analysis-page .ai-analysis-container.embedded {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
 
-  @supports selector(:has(*)) {
-    .basic-layout-wrapper--multi-tab .ant-layout-content:has(.indicator-ide),
-    .basic-layout-wrapper--multi-tab .ant-pro-basicLayout-content:has(.indicator-ide) {
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-
-    .basic-layout-wrapper--multi-tab .ant-layout-content:has(.indicator-ide) .ant-pro-multi-tab,
-    .basic-layout-wrapper--multi-tab .ant-pro-basicLayout-content:has(.indicator-ide) .ant-pro-multi-tab {
-      margin: 0;
-    }
-
-  }
+body.qd-code-ai-resizing,
+body.qd-code-ai-resizing * {
+  cursor: row-resize !important;
 }
 
 /* Dark header. */

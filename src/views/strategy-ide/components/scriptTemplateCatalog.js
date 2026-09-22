@@ -60,6 +60,164 @@ export function percentParamToRatio (value) {
   return n
 }
 
+export function formatStrategyInstrument (config = {}) {
+  const market = String(config.market_category || config.market || 'Crypto').trim() || 'Crypto'
+  const symbol = String(config.symbol || '').trim().toUpperCase()
+  if (!symbol) return ''
+  if (market !== 'Crypto') return `${market}:${symbol}`
+  const marketType = String(config.market_type || config.marketType || 'spot').toLowerCase() === 'swap' ? 'swap' : 'spot'
+  return `Crypto:${symbol}@${marketType}`
+}
+
+function replacePrimaryTimeframeReferences (source, previousTimeframe, nextTimeframe) {
+  const previous = String(previousTimeframe || '').trim().toLowerCase()
+  const next = String(nextTimeframe || '').trim()
+  if (!next) return source
+
+  const subscribed = new Set(
+    Array.from(source.matchAll(/context\.subscribe\([^)]*?frequency\s*=\s*["']([^"']+)["']/g))
+      .map(match => String(match[1] || '').trim().toLowerCase())
+      .filter(Boolean)
+  )
+  const shouldReplace = value => {
+    const normalized = String(value || '').trim().toLowerCase()
+    if (!normalized) return false
+    if (previous && normalized === previous) return true
+    return subscribed.size === 1 && !subscribed.has(normalized)
+  }
+  const replaceLiteral = (match, prefix, quote, value) => (
+    shouldReplace(value) ? `${prefix}${JSON.stringify(next)}` : match
+  )
+
+  let updated = source.replace(
+    /(\bget_history\s*\(\s*[^,]+,\s*)(["'])([^"']+)\2/g,
+    replaceLiteral
+  )
+  updated = updated.replace(
+    /(\b(?:get_history|data\.history)\s*\([^)]*?\bfrequency\s*=\s*)(["'])([^"']+)\2/g,
+    replaceLiteral
+  )
+  return updated
+}
+
+export function applyStrategyRuntimeConfigToCode (code, config = {}) {
+  const source = String(code || '')
+  const instrument = formatStrategyInstrument(config)
+  const timeframe = String(config.timeframe || '').trim()
+  const exchangeId = String(config.exchange_id || '').trim()
+  const tradeDirection = String(config.trade_direction || '').trim().toLowerCase()
+  if (!source) return source
+
+  let next = source
+  if (instrument) {
+    const quotedInstrument = `"${instrument}"`
+    next = next.replace(/(^\s*INSTRUMENT\s*=\s*)["'][^"']+["']/m, `$1${quotedInstrument}`)
+    next = next.replace(/(^\s*g\.symbol\s*=\s*)["'][^"']+["']/m, `$1${quotedInstrument}`)
+    next = next.replace(
+      /(context\.set_universe\(\s*(?:instruments\s*=\s*)?\[\s*)["'][^"']+["'](\s*\]\s*\))/m,
+      `$1${quotedInstrument}$2`
+    )
+    next = next.replace(
+      /(context\.set_benchmark\(\s*)["'][^"']+["'](\s*\))/m,
+      `$1${JSON.stringify(config.market_category === 'Crypto' ? `Crypto:${String(config.symbol || '').trim().toUpperCase()}@spot` : instrument)}$2`
+    )
+  }
+  if (timeframe) {
+    const previousTimeframe = extractStrategyRuntimeConfigFromCode(source).timeframe
+    next = replacePrimaryTimeframeReferences(next, previousTimeframe, timeframe)
+    next = next.replace(/(^\s*TIMEFRAME\s*=\s*)["'][^"']+["']/m, `$1${JSON.stringify(timeframe)}`)
+    next = next.replace(
+      /(context\.subscribe\([^)]*?frequency\s*=\s*)["'][^"']+["']/m,
+      `$1${JSON.stringify(timeframe)}`
+    )
+    next = next.replace(/(^\s*#\s*timeframe\s*:\s*)[^\s#]+/im, `$1${timeframe}`)
+  }
+  if (exchangeId) {
+    next = next.replace(/(^\s*(?:g\.)?(?:exchange_id|exchangeId|exchange)\s*=\s*)["'][^"']+["']/m, `$1${JSON.stringify(exchangeId)}`)
+    next = next.replace(/(context\.set_exchange\(\s*)["'][^"']+["'](\s*\))/m, `$1${JSON.stringify(exchangeId)}$2`)
+  }
+  if (['long', 'short', 'both'].includes(tradeDirection)) {
+    next = next.replace(/(^\s*g\.trade_direction\s*=\s*)["'][^"']+["']/m, `$1${JSON.stringify(tradeDirection)}`)
+    next = next.replace(/(^\s*#\s*trade_direction\s*:\s*)[^\s#]+/im, `$1${tradeDirection}`)
+  }
+  return next
+}
+
+export function extractStrategyRuntimeConfigFromCode (code) {
+  const source = String(code || '')
+  const instrumentMatch = source.match(/^\s*INSTRUMENT\s*=\s*["']([^"']+)["']/m) ||
+    source.match(/^\s*g\.symbol\s*=\s*["']([^"']+)["']/m) ||
+    source.match(/context\.set_universe\(\s*(?:instruments\s*=\s*)?\[\s*["']([^"']+)["']/m)
+  const timeframeMatch = source.match(/^\s*TIMEFRAME\s*=\s*["']([^"']+)["']/m) ||
+    source.match(/context\.subscribe\([^)]*?frequency\s*=\s*["']([^"']+)["']/m) ||
+    source.match(/^\s*#\s*timeframe\s*:\s*([^\s#]+)/im)
+  const exchangeMatch = source.match(/^\s*(?:g\.)?(?:exchange_id|exchangeId|exchange)\s*=\s*["']([^"']+)["']/m) ||
+    source.match(/context\.set_exchange\(\s*["']([^"']+)["']/m)
+  const directionMatch = source.match(/^\s*g\.trade_direction\s*=\s*["'](long|short|both)["']/im) ||
+    source.match(/^\s*#\s*trade_direction\s*:\s*(long|short|both)\b/im)
+  const instrument = String((instrumentMatch && instrumentMatch[1]) || '').trim()
+  const match = instrument.match(/^([^:]+):(.+)$/i)
+  const result = {}
+  if (match) {
+    const productMatch = match[2].match(/^(.*)@(spot|swap)$/i)
+    result.market_category = match[1]
+    result.symbol = String(productMatch ? productMatch[1] : match[2]).toUpperCase()
+    result.market_type = match[1] === 'Crypto' ? String((productMatch && productMatch[2]) || 'spot').toLowerCase() : 'spot'
+  }
+  if (timeframeMatch && timeframeMatch[1]) result.timeframe = String(timeframeMatch[1]).trim()
+  if (exchangeMatch && exchangeMatch[1]) result.exchange_id = String(exchangeMatch[1]).trim().toLowerCase()
+  if (directionMatch && directionMatch[1]) result.trade_direction = String(directionMatch[1]).trim().toLowerCase()
+  return result
+}
+
+export function strategyCodeUsesExplicitExchange (code) {
+  return /\b(?:exchange_id|exchangeId|exchange)\b\s*=|\bset_exchange\s*\(/i.test(String(code || ''))
+}
+
+const SOURCE_OWNED_EXECUTION_KEYS = [
+  'strategy_family',
+  'executor_type',
+  'executor_config',
+  'executor_preview',
+  'bot_type',
+  'bot_params'
+]
+
+export function strategyCodeOwnsExecutionConfig (code) {
+  const match = String(code || '').match(/^\s*GRID_TEMPLATE_VERSION\s*=\s*(\d+)\s*$/m)
+  return Boolean(match && Number(match[1]) >= 7)
+}
+
+export function sanitizeRuntimeConfigForSource (config = {}, code = '') {
+  const next = { ...(config && typeof config === 'object' ? config : {}) }
+  if (!strategyCodeOwnsExecutionConfig(code)) return next
+  SOURCE_OWNED_EXECUTION_KEYS.forEach(key => delete next[key])
+  return next
+}
+
+export function extractStrategyRuntimeContractFromCode (code) {
+  const source = String(code || '')
+  const config = extractStrategyRuntimeConfigFromCode(source)
+  const instrumentMatch = source.match(/^\s*INSTRUMENT\s*=\s*["']([^"']+)["']/m) ||
+    source.match(/^\s*g\.symbol\s*=\s*["']([^"']+)["']/m) ||
+    source.match(/context\.set_universe\(\s*(?:instruments\s*=\s*)?\[\s*["']([^"']+)["']/m)
+  const instrument = String((instrumentMatch && instrumentMatch[1]) || '')
+  const hasInstrument = Boolean(instrumentMatch && config.symbol)
+  const hasProduct = hasInstrument && config.market_category === 'Crypto' && /@(spot|swap)$/i.test(instrument)
+  const hasTimeframe = Boolean(config.timeframe)
+  const hasExchange = Boolean(config.exchange_id && strategyCodeUsesExplicitExchange(source))
+  const hasDirection = Boolean(config.trade_direction)
+  return {
+    config,
+    hasInstrument,
+    hasProduct,
+    hasTimeframe,
+    hasExchange,
+    hasDirection,
+    hasControls: hasInstrument || hasTimeframe || hasExchange || hasDirection
+  }
+}
+
 function parsePythonLiteral (raw) {
   const text = String(raw == null ? '' : raw).trim()
   if (!text) return ''

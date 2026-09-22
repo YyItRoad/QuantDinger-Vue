@@ -48,54 +48,62 @@
     />
 
     <a-row :gutter="16" style="margin-top: 16px;">
-      <a-col :xs="24" :md="8">
-        <a-card :bordered="false" class="plan-card">
-          <div class="plan-title">{{ $t('billing.plan.monthly') }}</div>
-          <div class="plan-price">
-            ${{ plans.monthly.price_usd }}
-            <span class="plan-unit">/ {{ $t('billing.perMonth') }}</span>
-          </div>
-          <div class="plan-benefit">
-            +{{ plans.monthly.credits_once }} {{ $t('billing.credits') }}
-          </div>
-          <a-button type="primary" block :loading="purchasing === 'monthly'" @click="buy('monthly')">
-            {{ $t('billing.buyNow') }}
-          </a-button>
-        </a-card>
-      </a-col>
-
-      <a-col :xs="24" :md="8">
-        <a-card :bordered="false" class="plan-card highlight">
-          <div class="plan-title">{{ $t('billing.plan.yearly') }}</div>
-          <div class="plan-price">
-            ${{ plans.yearly.price_usd }}
-            <span class="plan-unit">/ {{ $t('billing.perYear') }}</span>
-          </div>
-          <div class="plan-benefit">
-            +{{ plans.yearly.credits_once }} {{ $t('billing.credits') }}
-          </div>
-          <a-button type="primary" block :loading="purchasing === 'yearly'" @click="buy('yearly')">
-            {{ $t('billing.buyNow') }}
-          </a-button>
-        </a-card>
-      </a-col>
-
-      <a-col :xs="24" :md="8">
-        <a-card :bordered="false" class="plan-card">
-          <div class="plan-title">{{ $t('billing.plan.lifetime') }}</div>
-          <div class="plan-price">
-            ${{ plans.lifetime.price_usd }}
-            <span class="plan-unit">{{ $t('billing.once') }}</span>
-          </div>
-          <div class="plan-benefit">
-            {{ $t('billing.lifetimeMonthly') }} +{{ plans.lifetime.credits_monthly }} {{ $t('billing.credits') }}
-          </div>
-          <a-button type="primary" block :loading="purchasing === 'lifetime'" @click="buy('lifetime')">
-            {{ $t('billing.buyNow') }}
-          </a-button>
+      <a-col v-for="plan in planItems" :key="plan.code" :xs="24" :sm="12" :lg="planColumnSpan">
+        <a-card :bordered="false" class="plan-card" :class="{ highlight: plan.is_popular }">
+          <a-tag v-if="plan.is_popular" color="gold" class="popular-badge">{{ tr('billing.popular', 'Popular') }}</a-tag>
+          <div class="plan-title">{{ planDisplayName(plan) }}</div>
+          <div class="plan-price">${{ plan.price_usd }} <span class="plan-unit">{{ plan.is_lifetime ? $t('billing.once') : `/ ${plan.duration_days} ${tr('billing.days', 'days')}` }}</span></div>
+          <div class="plan-benefit" v-if="plan.credits_once">+{{ plan.credits_once }} {{ $t('billing.credits') }}</div>
+          <div class="plan-benefit" v-else-if="plan.credits_monthly">{{ $t('billing.lifetimeMonthly') }} +{{ plan.credits_monthly }} {{ $t('billing.credits') }}</div>
+          <div class="plan-benefit" v-else>{{ plan.description }}</div>
+          <a-button type="primary" block :loading="purchasing === plan.code" @click="buy(plan.code)">{{ $t('billing.buyNow') }}</a-button>
         </a-card>
       </a-col>
     </a-row>
+
+    <a-modal
+      v-model="methodPickerVisible"
+      :title="tr('billing.paymentMethod', 'Select payment method')"
+      :footer="null"
+      wrapClassName="payment-method-picker-wrap"
+      width="520px"
+    >
+      <div class="payment-picker-intro">{{ tr('billing.paymentMethodHint', 'Choose a secure payment method for this order') }}</div>
+      <div class="payment-methods">
+        <button
+          v-for="method in availablePaymentMethods"
+          :key="method.code"
+          type="button"
+          class="payment-method-card"
+          :class="`method-${method.code.toLowerCase()}`"
+          @click="choosePaymentMethod(method.code)"
+        >
+          <span class="payment-brand" aria-hidden="true">
+            <svg v-if="method.code === 'USDT'" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path d="M17.9 17.9v-.003c-.1.008-.6.04-1.8.04-1 0-1.5-.028-1.7-.04v.004c-3.4-.15-5.9-.74-5.9-1.44 0-.7 2.5-1.29 5.9-1.44v2.3c.2.013.7.05 1.7.05 1.2 0 1.6-.04 1.8-.05v-2.3c3.4.15 5.9.74 5.9 1.44 0 .7-2.5 1.29-5.9 1.44zm0-3.12V12.7h5v-2.4H9.2v2.4h5v2.08c-3.8.18-6.7.93-6.7 1.83s2.9 1.65 6.7 1.83v6.56h3.6v-6.56c3.8-.18 6.7-.93 6.7-1.83s-2.8-1.65-6.6-1.83z" fill="#fff"/></svg>
+            <svg v-else-if="method.code === 'USDC'" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#2775CA"/><circle
+              cx="16"
+              cy="16"
+              r="10.5"
+              fill="none"
+              stroke="#fff"
+              stroke-width="1.8"
+            /><path d="M18.9 12.7c-.4-1-1.3-1.5-2.7-1.5-1.6 0-2.7.8-2.7 2s.9 1.7 2.8 2.1c2.3.5 3.4 1.3 3.4 3.2 0 1.7-1.3 2.9-3.3 3.1V24h-1.5v-2.4c-1.8-.2-3-1-3.7-2.5l1.8-.9c.5 1.1 1.5 1.7 3 1.7 1.2 0 2.1-.5 2.1-1.4 0-.8-.7-1.2-2.6-1.7-2.4-.5-3.5-1.5-3.5-3.4 0-1.8 1.2-3.1 3-3.5V7.6h1.5v2.2c1.8.2 3.1 1 3.8 2.3l-1.4.6z" fill="#fff"/></svg>
+            <span v-else class="stripe-mark">S</span>
+          </span>
+          <span class="payment-method-copy">
+            <strong>{{ paymentMethodTitle(method.code) }}</strong>
+            <small>{{ paymentMethodDescription(method.code) }}</small>
+            <span v-if="method.code === 'STRIPE'" class="card-brand-list" aria-hidden="true">
+              <span class="visa-chip">VISA</span>
+              <span class="mastercard-chip"><i></i><i></i><b>Mastercard</b></span>
+              <span class="stripe-chip">stripe</span>
+            </span>
+          </span>
+          <a-icon class="payment-method-arrow" type="right" />
+        </button>
+        <a-empty v-if="availablePaymentMethods.length === 0" :description="tr('billing.noPaymentMethod', 'No payment method is configured for this plan')" />
+      </div>
+    </a-modal>
 
     <!-- Chain Picker Modal (v3.0.6+) -->
     <a-modal
@@ -122,7 +130,7 @@
               type="warning"
               show-icon
               :message="$t('billing.usdt.noChainsTitle') || 'No payment networks configured'"
-              :description="$t('billing.usdt.noChainsDesc') || 'Ask the administrator to set USDT_*_ADDRESS in the server .env so a network can be used here.'"
+              :description="tr('billing.cryptoNoChainsDesc', `Ask the administrator to configure a ${selectedCurrency} receiving address.`, { currency: selectedCurrency })"
             />
           </div>
           <div v-else class="chain-options">
@@ -165,7 +173,7 @@
       </div>
     </a-modal>
 
-    <!-- USDT Pay Modal -->
+    <!-- Stablecoin Pay Modal -->
     <a-modal
       v-model="usdtModalVisible"
       :title="null"
@@ -176,16 +184,24 @@
       width="600px"
       @cancel="closeUsdtModal"
     >
-      <div v-if="usdtOrder" class="usdt-checkout">
+      <div v-if="usdtOrder" class="usdt-checkout" :class="{ 'currency-usdc': activeCurrency === 'USDC' }">
         <!-- Custom Header -->
         <div class="checkout-header">
           <div class="header-left">
-            <div class="usdt-logo">
-              <svg viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path d="M17.9 17.9v-.003c-.1.008-.6.04-1.8.04-1 0-1.5-.028-1.7-.04v.004c-3.4-.15-5.9-.74-5.9-1.44 0-.7 2.5-1.29 5.9-1.44v2.3c.2.013.7.05 1.7.05 1.2 0 1.6-.04 1.8-.05v-2.3c3.4.15 5.9.74 5.9 1.44 0 .7-2.5 1.29-5.9 1.44zm0-3.12V12.7h5v-2.4H9.2v2.4h5v2.08c-3.8.18-6.7.93-6.7 1.83s2.9 1.65 6.7 1.83v6.56h3.6v-6.56c3.8-.18 6.7-.93 6.7-1.83s-2.8-1.65-6.6-1.83z" fill="#fff"/></svg>
+            <div class="stablecoin-logo">
+              <svg v-if="activeCurrency === 'USDC'" viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="16" fill="#2775CA"/><circle
+                cx="16"
+                cy="16"
+                r="10.5"
+                fill="none"
+                stroke="#fff"
+                stroke-width="1.8"
+              /><path d="M18.9 12.7c-.4-1-1.3-1.5-2.7-1.5-1.6 0-2.7.8-2.7 2s.9 1.7 2.8 2.1c2.3.5 3.4 1.3 3.4 3.2 0 1.7-1.3 2.9-3.3 3.1V24h-1.5v-2.4c-1.8-.2-3-1-3.7-2.5l1.8-.9c.5 1.1 1.5 1.7 3 1.7 1.2 0 2.1-.5 2.1-1.4 0-.8-.7-1.2-2.6-1.7-2.4-.5-3.5-1.5-3.5-3.4 0-1.8 1.2-3.1 3-3.5V7.6h1.5v2.2c1.8.2 3.1 1 3.8 2.3l-1.4.6z" fill="#fff"/></svg>
+              <svg v-else viewBox="0 0 32 32" width="28" height="28"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path d="M17.9 17.9v-.003c-.1.008-.6.04-1.8.04-1 0-1.5-.028-1.7-.04v.004c-3.4-.15-5.9-.74-5.9-1.44 0-.7 2.5-1.29 5.9-1.44v2.3c.2.013.7.05 1.7.05 1.2 0 1.6-.04 1.8-.05v-2.3c3.4.15 5.9.74 5.9 1.44 0 .7-2.5 1.29-5.9 1.44zm0-3.12V12.7h5v-2.4H9.2v2.4h5v2.08c-3.8.18-6.7.93-6.7 1.83s2.9 1.65 6.7 1.83v6.56h3.6v-6.56c3.8-.18 6.7-.93 6.7-1.83s-2.8-1.65-6.6-1.83z" fill="#fff"/></svg>
             </div>
             <div class="header-text">
-              <div class="header-title">{{ $t('billing.usdt.title') }}</div>
-              <div class="header-desc">{{ $t('billing.usdt.hintDesc') }}</div>
+              <div class="header-title">{{ activeCurrency }} {{ tr('billing.cryptoPayment', 'payment') }}</div>
+              <div class="header-desc">{{ tr('billing.cryptoPaymentHint', `Pay the exact ${activeCurrency} amount on the selected network`, { currency: activeCurrency }) }}</div>
             </div>
           </div>
           <a-button type="link" class="close-btn" @click="closeUsdtModal">
@@ -215,13 +231,13 @@
           <!-- QR Section -->
           <div class="qr-section">
             <div class="qr-frame" :class="{ 'qr-confirmed': usdtOrder.status === 'confirmed' }">
-              <img :src="usdtQrUrl" alt="USDT QR" />
+              <img :src="usdtQrUrl" :alt="`${activeCurrency} QR`" />
             </div>
             <div class="qr-amount">
               <span class="amt-number">
                 <span class="amt-base">{{ amountParts.base }}</span><span class="amt-suffix">{{ amountParts.suffix }}</span>
               </span>
-              <span class="amt-currency">USDT</span>
+              <span class="amt-currency">{{ activeCurrency }}</span>
             </div>
             <div class="qr-chain">
               <a-tag color="green">{{ usdtOrder.chain }}</a-tag>
@@ -261,7 +277,7 @@
               <div class="amt-box">
                 <code class="amt-text">
                   <span>{{ amountParts.base }}</span><span class="amt-suffix-inline">{{ amountParts.suffix }}</span>
-                  <span class="amt-currency-inline"> USDT</span>
+                  <span class="amt-currency-inline"> {{ activeCurrency }}</span>
                 </code>
                 <a-tooltip :title="$t('billing.usdt.copyAmount')">
                   <a-button size="small" class="copy-btn" @click="copyText(usdtOrder.amount_usdt)">
@@ -329,7 +345,7 @@
 
 <script>
 import { mapState } from 'vuex'
-import { getMembershipPlans, listUsdtChains, createUsdtOrder, getUsdtOrder } from '@/api/billing'
+import { getMembershipPlans, listCryptoChains, createCryptoOrder, getCryptoOrder, createStripeCheckout } from '@/api/billing'
 
 export default {
   name: 'BillingPage',
@@ -339,6 +355,20 @@ export default {
     }),
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
+    },
+    planItems () {
+      return Object.values(this.plans || {}).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+    },
+    planColumnSpan () {
+      const count = Math.max(1, Math.min(4, this.planItems.length))
+      return Math.floor(24 / count)
+    },
+    activeCurrency () {
+      return (this.usdtOrder && this.usdtOrder.currency) || this.selectedCurrency || 'USDT'
+    },
+    availablePaymentMethods () {
+      const plan = this.plans && this.plans[this.pendingPlan]
+      return (this.paymentMethods || []).filter(method => method.code !== 'STRIPE' || (plan && plan.stripe_enabled))
     },
     usdtQrUrl () {
       const text = this.getUsdtQrText()
@@ -419,6 +449,7 @@ export default {
       usdtModalVisible: false,
       usdtOrder: null,
       usdtPollingTimer: null,
+      usdtPollingGeneration: 0,
       usdtRefreshing: false,
       // Chain picker state (v3.0.6+)
       chainPickerVisible: false,
@@ -428,26 +459,49 @@ export default {
       selectedChain: null,
       pendingPlan: null,
       creatingOrder: false,
+      methodPickerVisible: false,
+      paymentMethods: [],
+      selectedCurrency: 'USDT',
       billing: {
         credits: 0,
         is_vip: false,
         is_lifetime: false,
         vip_expires_at: null
       },
-      plans: {
-        monthly: { price_usd: 19.9, credits_once: 500 },
-        yearly: { price_usd: 199, credits_once: 8000 },
-        lifetime: { price_usd: 499, credits_monthly: 800 }
-      }
+      plans: {}
     }
   },
   created () {
     this.load()
+    if (this.$route.query.payment === 'stripe_success') {
+      this.$message.success(this.tr('billing.stripeSuccess', 'Payment completed. Credits will refresh after Stripe confirms it.'))
+      window.setTimeout(() => this.load(), 2000)
+    }
   },
   beforeDestroy () {
     this.stopUsdtPolling()
   },
   methods: {
+    tr (key, fallback, params) {
+      const translated = this.$t(key, params)
+      return translated && translated !== key ? translated : fallback
+    },
+    paymentMethodTitle (code) {
+      const titles = {
+        USDT: this.tr('billing.methodUsdtTitle', 'USDT stablecoin'),
+        USDC: this.tr('billing.methodUsdcTitle', 'USDC stablecoin'),
+        STRIPE: this.tr('billing.methodStripeTitle', 'Card payment')
+      }
+      return titles[code] || code
+    },
+    paymentMethodDescription (code) {
+      const descriptions = {
+        USDT: this.tr('billing.methodUsdtDesc', 'Transfer from a crypto wallet on supported networks'),
+        USDC: this.tr('billing.methodUsdcDesc', 'Circle stablecoin on Ethereum or Solana'),
+        STRIPE: this.tr('billing.methodStripeDesc', 'Visa, Mastercard and other cards, securely processed by Stripe')
+      }
+      return descriptions[code] || ''
+    },
     async load () {
       this.loading = true
       try {
@@ -455,6 +509,7 @@ export default {
         if (res && res.code === 1 && res.data) {
           this.plans = res.data.plans || this.plans
           this.billing = res.data.billing || this.billing
+          this.paymentMethods = res.data.payment_methods || []
         } else {
           this.$message.error(res?.msg || 'Load failed')
         }
@@ -468,22 +523,61 @@ export default {
       if (!v && v !== 0) return '0'
       return Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
     },
+    planDisplayName (plan) {
+      const key = `billing.plan.${plan.code}`
+      const translated = this.$t(key)
+      return translated && translated !== key ? translated : (plan.name || plan.code)
+    },
     formatDate (dateStr) {
       if (!dateStr) return ''
       return new Date(dateStr).toLocaleDateString()
     },
     async buy (plan) {
-      // v3.0.6+: open the chain picker first; the order is created only
-      // after the user has chosen a network. We need to load the chain
-      // list every time so newly-enabled chains show up without a refresh.
       this.purchasing = plan
       this.pendingPlan = plan
+      this.methodPickerVisible = true
+      this.purchasing = ''
+    },
+
+    async choosePaymentMethod (method) {
+      this.methodPickerVisible = false
+      if (method === 'STRIPE') {
+        // Open synchronously while the click still carries a browser user gesture.
+        // Waiting for the API first causes Safari and other browsers to block it.
+        const checkoutWindow = window.open('about:blank', '_blank')
+        if (!checkoutWindow) {
+          this.$message.warning(this.tr('billing.stripePopupBlocked', 'Please allow pop-ups to open the secure card payment page.'))
+          return
+        }
+        checkoutWindow.opener = null
+        this.purchasing = this.pendingPlan
+        try {
+          const res = await createStripeCheckout(this.pendingPlan)
+          if (res && res.code === 1 && res.data && res.data.checkout_url) {
+            if (checkoutWindow.closed) {
+              this.$message.warning(this.tr('billing.stripePopupBlocked', 'Please allow pop-ups to open the secure card payment page.'))
+              return
+            }
+            checkoutWindow.location.replace(res.data.checkout_url)
+            return
+          }
+          checkoutWindow.close()
+          this.$message.error(res?.msg || this.$t('billing.purchaseFailed'))
+        } catch (e) {
+          checkoutWindow.close()
+          this.$message.error(e?.response?.data?.msg || this.$t('billing.purchaseFailed'))
+        } finally {
+          this.purchasing = ''
+        }
+        return
+      }
+      this.selectedCurrency = method
       this.selectedChain = null
       this.chainsLoadError = ''
       this.chainsLoading = true
       this.chainPickerVisible = true
       try {
-        const res = await listUsdtChains()
+        const res = await listCryptoChains(method)
         if (res && res.code === 1 && res.data && Array.isArray(res.data.chains)) {
           this.availableChains = res.data.chains
           // Preselect the first "recommended" chain; if none, the first one.
@@ -513,7 +607,7 @@ export default {
       if (!this.pendingPlan || !this.selectedChain) return
       this.creatingOrder = true
       try {
-        const res = await createUsdtOrder(this.pendingPlan, this.selectedChain)
+        const res = await createCryptoOrder(this.pendingPlan, this.selectedChain, this.selectedCurrency)
         if (res && res.code === 1 && res.data) {
           this.usdtOrder = res.data
           this.usdtModalVisible = true
@@ -610,10 +704,13 @@ export default {
 
     async refreshUsdtOrder () {
       if (!this.usdtOrder || !this.usdtOrder.order_id) return
+      const generation = this.usdtPollingGeneration
+      const orderId = this.usdtOrder.order_id
       this.usdtRefreshing = true
       try {
-        const res = await getUsdtOrder(this.usdtOrder.order_id, true)
+        const res = await getCryptoOrder(orderId, true)
         if (res && res.code === 1 && res.data) {
+          if (generation !== this.usdtPollingGeneration || !this.usdtOrder || this.usdtOrder.order_id !== orderId) return
           this.usdtOrder = res.data
           const status = this.usdtOrder.status
           if (status === 'confirmed') {
@@ -640,6 +737,7 @@ export default {
     },
 
     stopUsdtPolling () {
+      this.usdtPollingGeneration += 1
       if (this.usdtPollingTimer) {
         clearInterval(this.usdtPollingTimer)
         this.usdtPollingTimer = null
@@ -649,6 +747,7 @@ export default {
     closeUsdtModal () {
       this.usdtModalVisible = false
       this.stopUsdtPolling()
+      this.usdtOrder = null
     }
   }
 }
@@ -691,10 +790,12 @@ export default {
   }
 
   .plan-card {
+    position: relative;
     border-radius: 10px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     margin-top: 12px;
     &.highlight { border: 1px solid rgba(24, 144, 255, 0.35); }
+    .popular-badge { position: absolute; top: 12px; right: 12px; }
     .plan-title {
       font-weight: 700;
       font-size: 16px;
@@ -717,6 +818,11 @@ export default {
       color: rgba(0, 0, 0, 0.65);
       font-weight: 600;
     }
+  }
+
+  .payment-methods {
+    display: grid;
+    gap: 12px;
   }
 
   &.theme-dark {
@@ -750,6 +856,97 @@ export default {
 
 <style lang="less">
 /* ===== Modal Wrapper ===== */
+.payment-method-picker-wrap {
+  .ant-modal-content {
+    overflow: hidden;
+    border-radius: 16px;
+  }
+  .ant-modal-header {
+    padding: 20px 22px 12px;
+    border-bottom: 0;
+  }
+  .ant-modal-title { font-size: 18px; font-weight: 800; }
+  .ant-modal-body { padding: 0 22px 22px; }
+  .payment-picker-intro {
+    margin-bottom: 14px;
+    color: rgba(0, 0, 0, 0.5);
+    font-size: 13px;
+  }
+  .payment-methods { display: grid; gap: 12px; }
+  .payment-method-card {
+    width: 100%;
+    min-height: 88px;
+    padding: 14px 16px;
+    border: 1px solid #e8ebf0;
+    border-radius: 14px;
+    background: #fff;
+    color: rgba(0, 0, 0, 0.85);
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) 18px;
+    align-items: center;
+    gap: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s, transform .2s;
+    &:hover {
+      border-color: var(--primary-color, #52c41a);
+      box-shadow: 0 8px 24px rgba(20, 30, 45, .09);
+      transform: translateY(-1px);
+    }
+  }
+  .payment-brand {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f7fa;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .04);
+    svg { width: 34px; height: 34px; }
+  }
+  .method-stripe .payment-brand { background: #635bff; }
+  .stripe-mark { color: #fff; font-size: 25px; font-weight: 900; font-style: italic; }
+  .payment-method-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    strong { font-size: 15px; line-height: 1.3; }
+    small { color: rgba(0, 0, 0, .48); font-size: 12px; line-height: 1.45; }
+  }
+  .payment-method-arrow { color: rgba(0, 0, 0, .28); }
+  .card-brand-list { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+  .visa-chip { color: #1a1f71; font-size: 12px; font-weight: 900; font-style: italic; letter-spacing: -.04em; }
+  .mastercard-chip {
+    display: inline-flex; align-items: center; position: relative; padding-left: 18px;
+    i { position: absolute; width: 13px; height: 13px; border-radius: 50%; left: 0; background: #eb001b; }
+    i + i { left: 7px; background: rgba(247, 158, 27, .88); }
+    b { color: rgba(0,0,0,.6); font-size: 10px; font-weight: 700; }
+  }
+  .stripe-chip { color: #635bff; font-size: 11px; font-weight: 800; }
+}
+
+body.dark .payment-method-picker-wrap,
+body.realdark .payment-method-picker-wrap {
+  .ant-modal-content, .ant-modal-header { background: #1c1c1c; }
+  .ant-modal-title { color: rgba(255,255,255,.92); }
+  .payment-picker-intro { color: rgba(255,255,255,.5); }
+  .payment-method-card {
+    background: #242424;
+    border-color: rgba(255,255,255,.1);
+    color: rgba(255,255,255,.92);
+    &:hover { border-color: var(--primary-color, #52c41a); box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  }
+  .payment-brand { background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .method-stripe .payment-brand { background: #635bff; }
+  .payment-method-copy small { color: rgba(255,255,255,.5); }
+  .payment-method-arrow { color: rgba(255,255,255,.3); }
+  .visa-chip { color: #7fa4ff; }
+  .mastercard-chip b { color: rgba(255,255,255,.58); }
+  .stripe-chip { color: #a8a4ff; }
+}
+
 .usdt-pay-modal-wrap {
   .ant-modal-header { display: none; }
   .ant-modal-body { padding: 0 !important; }
@@ -769,7 +966,7 @@ export default {
       display: flex;
       align-items: center;
       gap: 12px;
-      .usdt-logo {
+      .stablecoin-logo {
         width: 40px; height: 40px; border-radius: 50%;
         background: rgba(255,255,255,0.18);
         display: flex; align-items: center; justify-content: center;
@@ -784,6 +981,15 @@ export default {
       color: rgba(255,255,255,0.8) !important;
       font-size: 18px;
       &:hover { color: #fff !important; }
+    }
+  }
+
+  &.currency-usdc {
+    .checkout-header { background: linear-gradient(135deg, #2775ca 0%, #1557a0 100%); }
+    .checkout-steps .step-item {
+      .dot-pulse { background: rgba(39, 117, 202, .35); }
+      .step-line.filled { background: #2775ca; }
+      &.active .dot-inner { background: #2775ca; }
     }
   }
 
@@ -1165,6 +1371,9 @@ body.dark .usdt-checkout,
 body.realdark .usdt-checkout {
   .checkout-header {
     background: linear-gradient(135deg, #1a7a5a 0%, #145c45 100%);
+  }
+  &.currency-usdc .checkout-header {
+    background: linear-gradient(135deg, #225f9f 0%, #164575 100%);
   }
   .checkout-steps {
     .step-item {

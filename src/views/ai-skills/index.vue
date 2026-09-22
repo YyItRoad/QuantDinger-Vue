@@ -160,9 +160,6 @@ export default {
     }
   },
   computed: {
-    isZh () {
-      return String(this.$i18n?.locale || navigator.language || 'zh-CN').toLowerCase().startsWith('zh')
-    },
     text () {
       const t = key => this.$t(`aiSkills.${key}`)
       return {
@@ -254,11 +251,11 @@ export default {
       }
     },
     async loadSkills () {
-      const res = await getAiSkills({ language: this.isZh ? 'zh-CN' : 'en-US', include_disabled: this.showDisabled ? 1 : 0 })
+      const res = await getAiSkills({ language: this.$i18n?.locale || 'en-US', include_disabled: this.showDisabled ? 1 : 0 })
       this.registry = res.data || res
     },
     async loadTools () {
-      const res = await getAiTools({ language: this.isZh ? 'zh-CN' : 'en-US' })
+      const res = await getAiTools({ language: this.$i18n?.locale || 'en-US' })
       this.toolsRegistry = res.data || res
     },
     riskColor (risk) {
@@ -272,7 +269,7 @@ export default {
     },
     async toggleSkill (record, checked) {
       try {
-        await updateAiSkill(record.id, { enabled: checked, language: this.isZh ? 'zh-CN' : 'en-US' })
+        await updateAiSkill(record.id, { enabled: checked, language: this.$i18n?.locale || 'en-US' })
         this.$message.success(this.$t('aiSkills.updated'))
         await this.loadSkills()
       } catch (e) {
@@ -318,7 +315,7 @@ export default {
       }
       this.installing = true
       try {
-        await installAiSkill({ skill: payload, language: this.isZh ? 'zh-CN' : 'en-US' })
+        await installAiSkill({ skill: payload, language: this.$i18n?.locale || 'en-US' })
         this.$message.success(this.$t('aiSkills.installedSuccess'))
         this.activeTab = 'skills'
         await this.loadSkills()

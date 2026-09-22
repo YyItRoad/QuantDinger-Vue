@@ -8,6 +8,10 @@ export function createUniverse (data) {
   return request({ url: '/api/universes', method: 'post', data })
 }
 
+export function deleteUniverse (universeId) {
+  return request({ url: `/api/universes/${universeId}`, method: 'delete' })
+}
+
 export function getUniverseMembers (universeId, params = {}) {
   return request({ url: `/api/universes/${universeId}/members`, method: 'get', params })
 }

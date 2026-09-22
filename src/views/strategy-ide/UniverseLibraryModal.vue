@@ -85,6 +85,25 @@
             </div>
             <div class="universe-detail__actions">
               <a-button
+                v-if="isEditable(selected)"
+                icon="edit"
+                @click="openEdit(selected)"
+              >
+                {{ $t('universeManager.manageMembers') }}
+              </a-button>
+              <a-popconfirm
+                v-if="isDeletable(selected)"
+                :title="$t('universeManager.deleteConfirm')"
+                :ok-text="$t('universeManager.delete')"
+                :cancel-text="$t('universeManager.cancel')"
+                ok-type="danger"
+                @confirm="deletePersonalUniverse(selected)"
+              >
+                <a-button icon="delete" type="danger" :loading="deletingUniverseId === selected.id">
+                  {{ $t('universeManager.delete') }}
+                </a-button>
+              </a-popconfirm>
+              <a-button
                 type="primary"
                 icon="check"
                 class="universe-apply-button"
@@ -122,13 +141,24 @@
             <a-spin :spinning="membersLoading">
               <div v-if="members.length" class="universe-member-table-wrap">
                 <table class="universe-member-table">
-                  <thead><tr><th>{{ $t('universeManager.symbol') }}</th><th>{{ $t('universeManager.memberName') }}</th><th>{{ $t('universeManager.market') }}</th><th>{{ $t('universeManager.weight') }}</th></tr></thead>
+                  <thead><tr><th>{{ $t('universeManager.symbol') }}</th><th>{{ $t('universeManager.memberName') }}</th><th>{{ $t('universeManager.market') }}</th><th>{{ $t('universeManager.weight') }}</th><th v-if="isEditable(selected)" class="universe-member-table__action">{{ $t('universeManager.actions') }}</th></tr></thead>
                   <tbody>
                     <tr v-for="member in members.slice(0, 100)" :key="`${member.market}:${member.symbol}`">
                       <td><code>{{ member.symbol }}</code></td>
                       <td>{{ member.name || '-' }}</td>
                       <td>{{ marketLabel(member.market) }}</td>
                       <td>{{ member.weight == null ? '-' : member.weight }}</td>
+                      <td v-if="isEditable(selected)" class="universe-member-table__action">
+                        <a-popconfirm
+                          :title="$t('universeManager.removeMemberConfirm', { symbol: member.symbol })"
+                          :ok-text="$t('universeManager.delete')"
+                          :cancel-text="$t('universeManager.cancel')"
+                          ok-type="danger"
+                          @confirm="removeMember(member)"
+                        >
+                          <a-button type="link" size="small" icon="delete" :loading="removingMemberKey === memberKey(member)">{{ $t('universeManager.remove') }}</a-button>
+                        </a-popconfirm>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -143,42 +173,43 @@
 
     <a-modal
       :visible="showCreate"
-      :title="$t('universeManager.create')"
-      :confirm-loading="creating"
-      :ok-button-props="{ props: { disabled: !canCreateUniverse } }"
+      :title="editingUniverseId ? $t('universeManager.editMembers') : $t('universeManager.create')"
+      :confirm-loading="saving"
+      :ok-button-props="{ props: { disabled: !canSaveUniverse } }"
       :ok-text="$t('universeManager.save')"
       :cancel-text="$t('universeManager.cancel')"
       :wrap-class-name="isDark ? 'universe-create-modal universe-create-modal--dark' : 'universe-create-modal'"
-      @ok="createPersonalUniverse"
-      @cancel="showCreate = false"
+      @ok="savePersonalUniverse"
+      @cancel="closeEditor"
     >
       <a-form-item
         :label="$t('universeManager.name')"
-        :validate-status="createTouched && !canCreateUniverse ? 'error' : ''"
-        :help="createTouched && !canCreateUniverse ? $t('universeManager.nameRequired') : ''"
+        :validate-status="createTouched && !String(createForm.name || '').trim() ? 'error' : ''"
+        :help="createTouched && !String(createForm.name || '').trim() ? $t('universeManager.nameRequired') : ''"
         required
       >
         <a-input
           id="universe-create-name"
           ref="createNameInput"
           v-model="createForm.name"
+          :disabled="!!editingUniverseId"
           aria-required="true"
           @input="createTouched = true"
         />
       </a-form-item>
       <label class="universe-create-label" for="universe-create-market">{{ $t('universeManager.market') }}</label>
-      <a-select id="universe-create-market" v-model="createForm.market" class="universe-create-full">
+      <a-select id="universe-create-market" v-model="createForm.market" :disabled="!!editingUniverseId" class="universe-create-full">
         <a-select-option v-for="market in markets" :key="market" :value="market">{{ marketLabel(market) }}</a-select-option>
       </a-select>
       <label class="universe-create-label" for="universe-create-members">{{ $t('universeManager.members') }}</label>
-      <a-textarea id="universe-create-members" v-model="createForm.members" :rows="8" :placeholder="createForm.market === 'Mixed' ? $t('universeManager.mixedPlaceholder') : $t('universeManager.placeholder')" />
+      <a-textarea id="universe-create-members" v-model="createForm.members" :rows="8" :placeholder="$t('universeManager.placeholder')" />
       <small>{{ $t('universeManager.memberHint') }}</small>
     </a-modal>
   </a-modal>
 </template>
 
 <script>
-import { createUniverse, getUniverseMembers, getUniverses } from '@/api/universe'
+import { createUniverse, deleteUniverse, getUniverseMembers, getUniverses, replaceUniverseMembers } from '@/api/universe'
 
 export default {
   name: 'UniverseLibraryModal',
@@ -193,7 +224,9 @@ export default {
       loading: false,
       loaded: false,
       membersLoading: false,
-      creating: false,
+      saving: false,
+      deletingUniverseId: 0,
+      removingMemberKey: '',
       universes: [],
       members: [],
       memberCache: Object.create(null),
@@ -202,8 +235,9 @@ export default {
       search: '',
       scopeFilter: 'all',
       marketFilter: 'all',
-      markets: ['USStock', 'CNStock', 'HKStock', 'Crypto', 'Mixed'],
+      markets: ['USStock', 'CNStock', 'HKStock', 'Crypto'],
       showCreate: false,
+      editingUniverseId: 0,
       createTouched: false,
       createForm: { name: '', market: 'USStock', members: '' }
     }
@@ -219,8 +253,8 @@ export default {
         return !query || `${this.universeLabel(item)} ${item.code} ${item.market}`.toLowerCase().includes(query)
       })
     },
-    canCreateUniverse () {
-      return Boolean(String(this.createForm.name || '').trim())
+    canSaveUniverse () {
+      return Boolean(String(this.createForm.name || '').trim() && String(this.createForm.members || '').trim())
     }
   },
   watch: {
@@ -245,6 +279,11 @@ export default {
   methods: {
     unwrap (res) {
       return res && Object.prototype.hasOwnProperty.call(res, 'data') ? res.data : res
+    },
+    errorText (error, fallbackKey) {
+      const code = error && error.backendMessage
+      const translated = code ? this.$t(code) : ''
+      return (translated && translated !== code) ? translated : (code || (error && error.message) || this.$t(fallbackKey))
     },
     async loadUniverses (preferredId = undefined) {
       this.loading = true
@@ -333,43 +372,116 @@ export default {
     useUniverse (item) {
       this.$emit('use', { ...item, name: this.universeLabel(item) })
     },
+    isEditable (item) {
+      return Boolean(this.isDeletable(item) && item.market !== 'Mixed')
+    },
+    isDeletable (item) {
+      return Boolean(item && !item.is_system && item.universe_type === 'manual')
+    },
+    memberKey (member) {
+      return [member.market, member.symbol, member.exchange_id, member.market_type, member.instrument_id].map(value => String(value || '')).join(':')
+    },
     openCreate () {
       this.createForm = { name: '', market: 'USStock', members: '' }
+      this.editingUniverseId = 0
       this.createTouched = false
       this.showCreate = true
       this.$nextTick(() => {
         if (this.$refs.createNameInput && this.$refs.createNameInput.focus) this.$refs.createNameInput.focus()
       })
     },
+    openEdit (item) {
+      this.editingUniverseId = Number(item.id)
+      this.createForm = {
+        name: this.universeLabel(item),
+        market: item.market,
+        members: this.members.map(member => member.symbol).join('\n')
+      }
+      this.createTouched = false
+      this.showCreate = true
+    },
+    closeEditor () {
+      this.showCreate = false
+      this.editingUniverseId = 0
+      this.createTouched = false
+    },
     parseMembers () {
       return String(this.createForm.members || '').split(/\r?\n/).map(value => value.trim()).filter(Boolean).map(value => {
-        if (this.createForm.market !== 'Mixed') return { market: this.createForm.market, symbol: value }
         const separator = value.indexOf(':')
-        if (separator <= 0) throw new Error(this.$t('universeManager.mixedFormatError'))
-        return { market: value.slice(0, separator).trim(), symbol: value.slice(separator + 1).trim() }
+        if (separator > 0) {
+          const prefix = value.slice(0, separator).trim()
+          if (this.markets.includes(prefix)) {
+            if (prefix !== this.createForm.market) throw new Error(this.$t('universeManager.memberMarketMismatch'))
+            value = value.slice(separator + 1).trim()
+          }
+        }
+        return { market: this.createForm.market, symbol: value }
       })
     },
-    async createPersonalUniverse () {
+    async savePersonalUniverse () {
       this.createTouched = true
-      if (!String(this.createForm.name || '').trim()) return
-      this.creating = true
+      if (!this.canSaveUniverse) return
+      this.saving = true
       try {
-        const created = this.unwrap(await createUniverse({
-          name: this.createForm.name.trim(),
-          market: this.createForm.market,
-          universeType: 'manual',
-          members: this.parseMembers()
-        }))
-        this.showCreate = false
+        const members = this.parseMembers()
+        let preferredId = this.editingUniverseId
+        if (this.editingUniverseId) {
+          await replaceUniverseMembers(this.editingUniverseId, members)
+          this.$delete(this.memberCache, String(this.editingUniverseId))
+        } else {
+          const created = this.unwrap(await createUniverse({
+            name: this.createForm.name.trim(),
+            market: this.createForm.market,
+            universeType: 'manual',
+            members
+          }))
+          preferredId = created && created.id
+        }
+        this.closeEditor()
         this.search = ''
         this.scopeFilter = 'personal'
         this.marketFilter = 'all'
-        await this.loadUniverses(created && created.id)
+        await this.loadUniverses(preferredId)
         this.$message.success(this.$t('universeManager.saved'))
       } catch (error) {
-        this.$message.error(error.backendMessage || error.message || this.$t('universeManager.saveFailed'))
+        this.$message.error(this.errorText(error, 'universeManager.saveFailed'))
       } finally {
-        this.creating = false
+        this.saving = false
+      }
+    },
+    async removeMember (member) {
+      if (!this.isEditable(this.selected)) return
+      const key = this.memberKey(member)
+      this.removingMemberKey = key
+      try {
+        const nextMembers = this.members.filter(item => this.memberKey(item) !== key)
+        await replaceUniverseMembers(this.selected.id, nextMembers)
+        this.members = nextMembers
+        this.$set(this.memberCache, String(this.selected.id), nextMembers)
+        this.$set(this.selected, 'member_count', nextMembers.length)
+        this.$message.success(this.$t('universeManager.memberRemoved'))
+      } catch (error) {
+        this.$message.error(this.errorText(error, 'universeManager.saveFailed'))
+      } finally {
+        this.removingMemberKey = ''
+      }
+    },
+    async deletePersonalUniverse (item) {
+      if (!this.isDeletable(item)) return
+      this.deletingUniverseId = item.id
+      try {
+        await deleteUniverse(item.id)
+        const wasApplied = Number(this.selectedUniverseId) === Number(item.id)
+        this.$delete(this.memberCache, String(item.id))
+        this.selected = null
+        this.members = []
+        if (wasApplied) this.$emit('deleted', item)
+        await this.loadUniverses()
+        this.$message.success(this.$t('universeManager.deleted'))
+      } catch (error) {
+        this.$message.error(this.errorText(error, 'universeManager.deleteFailed'))
+      } finally {
+        this.deletingUniverseId = 0
       }
     }
   }
@@ -388,6 +500,8 @@ export default {
 .universe-library-modal--dark{.ant-modal-content,.ant-modal-header,.ant-modal-body{border-color:rgba(255,255,255,.08);background:#141414}.ant-modal-title,.ant-modal-close,.universe-library-intro strong,.universe-card__name,.universe-detail__heading h3,.universe-detail__section h4,.universe-detail__facts strong{color:rgba(255,255,255,.9)}.universe-library-intro,.universe-library-workspace,.universe-library-list,.universe-card,.universe-detail,.universe-detail__facts>div,.universe-member-table-wrap{border-color:rgba(255,255,255,.09)}.universe-library-intro,.universe-library-list,.universe-detail__facts>div{background:#181818}.universe-card,.universe-detail{background:#1d1d1d}.universe-card__stats strong,.universe-library-intro span,.universe-detail__heading p,.universe-detail__facts span{color:rgba(255,255,255,.52)}.ant-input,.ant-select-selection,.ant-btn:not(.ant-btn-primary){border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.82);background:#202020}.ant-alert-info{border-color:rgba(24,144,255,.28);background:rgba(24,144,255,.1)}.ant-alert-message,.ant-empty-description{color:rgba(255,255,255,.72)}.universe-member-table th{color:rgba(255,255,255,.58);background:#242424}.universe-member-table th,.universe-member-table td{border-color:rgba(255,255,255,.08)}}
 .universe-library-dropdown--dark{color:rgba(255,255,255,.82);background:#202020}.universe-library-dropdown--dark .ant-select-dropdown-menu-item{color:rgba(255,255,255,.78)}.universe-library-dropdown--dark .ant-select-dropdown-menu-item:hover,.universe-library-dropdown--dark .ant-select-dropdown-menu-item-active,.universe-library-dropdown--dark .ant-select-dropdown-menu-item-selected{color:#fff;background:#303030}.universe-create-modal--dark .ant-modal-content,.universe-create-modal--dark .ant-modal-header,.universe-create-modal--dark .ant-modal-body,.universe-create-modal--dark .ant-modal-footer{border-color:rgba(255,255,255,.1);color:rgba(255,255,255,.82);background:#181818}.universe-create-modal--dark .ant-modal-title,.universe-create-modal--dark .universe-create-label{color:rgba(255,255,255,.9)}.universe-create-modal--dark .ant-input,.universe-create-modal--dark .ant-select-selection{border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.82);background:#202020}
 .universe-detail__section-head>div{min-width:0}.universe-detail__section-head h4{margin-bottom:4px}.universe-detail__section-head p{margin:0;color:#8a94a6;font-size:11px}.universe-detail__section-head+pre{margin-top:10px}.universe-library-modal--dark .universe-detail__section-head p{color:rgba(255,255,255,.52)}
+.universe-member-table__action{width:94px;text-align:right!important;white-space:nowrap}.universe-member-table__action .ant-btn-link{padding-right:0;padding-left:0}
+.universe-detail__actions{flex-wrap:wrap;justify-content:flex-end}
 .universe-library-modal {
   .ant-modal {
     top: 16px;

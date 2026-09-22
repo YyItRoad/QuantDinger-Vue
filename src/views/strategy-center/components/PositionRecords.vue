@@ -7,7 +7,13 @@
         type="warning"
         show-icon
         :message="reconciliationMessage"
-      />
+      >
+        <template slot="description">
+          <a-button type="link" size="small" @click="openOwnershipRepair">
+            {{ $t('strategyCenter.positionOwnership.resolveNow') }}
+          </a-button>
+        </template>
+      </a-alert>
       <div v-if="executionMode === 'live'" class="ownership-toolbar">
         <span>{{ $t('strategyCenter.positionOwnership.summary') }}</span>
         <a-button size="small" icon="safety-certificate" @click="openOwnershipRepair">
@@ -29,7 +35,7 @@
         :pagination="false"
         size="small"
         rowKey="id"
-        :scroll="{ x: 960 }"
+        :scroll="{ x: compact ? 1060 : 1260 }"
       >
         <template slot="symbol" slot-scope="text, record">
           <strong>{{ record.symbol || text }}</strong>
@@ -51,9 +57,20 @@
         <template slot="size" slot-scope="text, record">
           {{ parseFloat(record.size || text || 0).toFixed(4) }}
         </template>
-        <template slot="notional" slot-scope="text, record">
-          <span v-if="getNotional(record) > 0">${{ getNotional(record).toFixed(2) }}</span>
+        <template slot="positionCost" slot-scope="text, record">
+          <span v-if="getPositionCost(record) > 0">{{ formatMoney(getPositionCost(record)) }}</span>
           <span v-else>--</span>
+        </template>
+        <template slot="marketValue" slot-scope="text, record">
+          <span v-if="getMarketValue(record) > 0">{{ formatMoney(getMarketValue(record)) }}</span>
+          <span v-else>--</span>
+        </template>
+        <template slot="valueSummary" slot-scope="text, record">
+          <span class="position-value-summary">
+            <span>{{ formatMoney(getPositionCost(record)) }}</span>
+            <a-icon type="arrow-right" />
+            <strong>{{ formatMoney(getMarketValue(record)) }}</strong>
+          </span>
         </template>
         <template slot="unrealizedPnl" slot-scope="text, record">
           <span :class="{ 'profit': parseFloat(record.unrealized_pnl || text || 0) > 0, 'loss': parseFloat(record.unrealized_pnl || text || 0) < 0 }">
@@ -93,7 +110,7 @@
       v-model="ownershipVisible"
       :title="$t('strategyCenter.positionOwnership.title')"
       :footer="null"
-      :width="920"
+      :width="1120"
       destroy-on-close
     >
       <a-alert
@@ -101,7 +118,13 @@
         type="warning"
         show-icon
         :message="$t('strategyCenter.positionOwnership.riskTitle')"
-        :description="$t('strategyCenter.positionOwnership.riskDescription')"
+        :description="$t(ownershipExchangeId === 'alpaca' ? 'strategyCenter.positionOwnership.alpacaRiskDescription' : 'strategyCenter.positionOwnership.riskDescription')"
+      />
+      <a-alert
+        class="ownership-risk-alert"
+        type="info"
+        show-icon
+        :message="$t(ownershipExchangeId === 'alpaca' ? 'strategyCenter.positionOwnership.alpacaHelp' : 'strategyCenter.positionOwnership.toleranceHelp')"
       />
       <a-table
         :columns="ownershipColumns"
@@ -110,7 +133,7 @@
         :pagination="false"
         row-key="rowKey"
         size="small"
-        :scroll="{ x: 860 }"
+        :scroll="{ x: 960 }"
       >
         <template slot="ownershipSide" slot-scope="text, record">
           <a-tag :color="record.side === 'long' ? 'green' : 'red'">
@@ -120,42 +143,47 @@
         <template slot="ownershipQty" slot-scope="text">
           {{ formatOwnershipQty(text) }}
         </template>
+        <template slot="ownershipDifference" slot-scope="text, record">
+          <span :class="{ 'text-danger': Number(text) < -Number(record.tolerance || 0) }">
+            {{ formatOwnershipQty(text) }}
+          </span>
+          <div v-if="record.difference_quote != null">{{ $t(ownershipExchangeId === 'alpaca' ? 'strategyCenter.positionOwnership.alpacaQuoteDifference' : 'strategyCenter.positionOwnership.quoteDifference', { value: formatSignedMoney(record.difference_quote) }) }}</div>
+        </template>
+        <template slot="ownershipAllocations" slot-scope="text, record">
+          <a-popover v-if="record.allocations && record.allocations.length" :title="$t('strategyCenter.positionOwnership.relatedStrategies')">
+            <template slot="content">
+              <div v-for="allocation in record.allocations" :key="allocation.strategy_id">
+                {{ allocation.strategy_name }} #{{ allocation.strategy_id }} · {{ formatOwnershipQty(allocation.quantity) }}
+              </div>
+            </template>
+            <a>{{ formatOwnershipQty(text) }} <a-icon type="info-circle" /></a>
+          </a-popover>
+          <span v-else>{{ formatOwnershipQty(text) }}</span>
+        </template>
         <template slot="ownershipStatus" slot-scope="text, record">
           <a-tag :color="record.status === 'ok' ? 'green' : 'orange'">
             {{ record.status === 'ok' ? $t('strategyCenter.positionOwnership.normal') : $t('strategyCenter.positionOwnership.blocked') }}
           </a-tag>
         </template>
-        <template slot="ownershipMode" slot-scope="text, record">
-          {{ record.coexistence_mode === 'advanced' ? $t('strategyCenter.positionOwnership.advanced') : $t('strategyCenter.positionOwnership.strict') }}
-        </template>
         <template slot="ownershipActions" slot-scope="text, record">
-          <a-popconfirm
-            v-if="ownershipAdvancedAvailable && (record.coexistence_mode !== 'advanced' || Math.abs(Number(record.unknown_qty || 0)) > Number(record.tolerance || 0))"
-            :title="$t('strategyCenter.positionOwnership.protectConfirm')"
-            :ok-text="$t('strategyCenter.positionOwnership.protectManual')"
-            :cancel-text="$t('common.cancel')"
-            @confirm="repairOwnership(record, 'protect_manual')"
-          >
-            <a-button type="link" size="small" :loading="ownershipRepairKey === record.rowKey">
-              {{ $t('strategyCenter.positionOwnership.protectManual') }}
-            </a-button>
-          </a-popconfirm>
-          <a-popconfirm
-            v-else-if="record.coexistence_mode === 'advanced'"
-            :title="$t('strategyCenter.positionOwnership.strictConfirm')"
-            :ok-text="$t('strategyCenter.positionOwnership.useStrict')"
-            :cancel-text="$t('common.cancel')"
-            @confirm="repairOwnership(record, 'strict_mode')"
-          >
-            <a-button type="link" size="small" :loading="ownershipRepairKey === record.rowKey">
-              {{ $t('strategyCenter.positionOwnership.useStrict') }}
-            </a-button>
-          </a-popconfirm>
-          <a-button type="link" size="small" @click="repairOwnership(record, 'recheck')">
+          <span v-if="record.repair_kind === 'allocation_shortfall'">
+            <a-tooltip :title="$t('strategyCenter.positionOwnership.shortfallHelp')">
+              <a-tag color="red">{{ $t('strategyCenter.positionOwnership.shortfall') }}</a-tag>
+            </a-tooltip>
+          </span>
+          <a-button v-else type="link" size="small" @click="repairOwnership(record, 'recheck')">
             {{ $t('strategyCenter.positionOwnership.recheck') }}
           </a-button>
         </template>
       </a-table>
+      <a-alert
+        v-if="ownershipRows.some(row => row.repair_kind === 'allocation_shortfall')"
+        class="ownership-risk-alert"
+        type="warning"
+        show-icon
+        :message="$t('strategyCenter.positionOwnership.shortfall')"
+        :description="$t('strategyCenter.positionOwnership.shortfallHelp')"
+      />
     </a-modal>
   </div>
 </template>
@@ -211,7 +239,7 @@ export default {
       ownershipVisible: false,
       ownershipLoading: false,
       ownershipRepairKey: '',
-      ownershipAdvancedAvailable: false,
+      ownershipExchangeId: '',
       ownershipRows: [],
       pollingTimer: null,
       positionPoller: null
@@ -224,15 +252,13 @@ export default {
     },
     reconciliationMessage () {
       const status = String((this.reconciliation && this.reconciliation.status) || '')
-      const notes = (this.reconciliation && this.reconciliation.notes) || []
-      const detail = Array.isArray(notes) && notes.length ? ` (${notes.slice(0, 2).join('; ')})` : ''
       const messageKeys = {
         account_only: 'trading-assistant.positions.reconciliation.accountOnly',
         strategy_only: 'trading-assistant.positions.reconciliation.strategyOnly',
         mismatch: 'trading-assistant.positions.reconciliation.mismatch',
         error: 'trading-assistant.positions.reconciliation.error'
       }
-      return messageKeys[status] ? `${this.$t(messageKeys[status])}${detail}` : ''
+      return messageKeys[status] ? this.$t(messageKeys[status]) : ''
     },
     columns () {
       if (this.compact) {
@@ -259,14 +285,13 @@ export default {
             scopedSlots: { customRender: 'size' }
           },
           {
-            title: this.$t('trading-assistant.table.notional'),
-            dataIndex: 'notional',
-            key: 'notional',
-            width: 132,
-            scopedSlots: { customRender: 'notional' }
+            title: `${this.$t('trading-assistant.table.positionCost')} / ${this.$t('trading-assistant.table.marketValue')}`,
+            key: 'value_summary',
+            width: 210,
+            scopedSlots: { customRender: 'valueSummary' }
           },
           {
-            title: `${this.$t('trading-assistant.table.entryPrice')} / ${this.$t('trading-assistant.table.currentPrice')}`,
+            title: `${this.$t('trading-assistant.table.averageEntryPrice')} / ${this.$t('trading-assistant.table.currentPrice')}`,
             key: 'price_summary',
             width: 190,
             scopedSlots: { customRender: 'priceSummary' }
@@ -308,14 +333,21 @@ export default {
           scopedSlots: { customRender: 'size' }
         },
         {
-          title: this.$t('trading-assistant.table.notional'),
-          dataIndex: 'notional',
-          key: 'notional',
-          width: 130,
-          scopedSlots: { customRender: 'notional' }
+          title: this.$t('trading-assistant.table.positionCost'),
+          dataIndex: 'position_cost',
+          key: 'position_cost',
+          width: 140,
+          scopedSlots: { customRender: 'positionCost' }
         },
         {
-          title: this.$t('trading-assistant.table.entryPrice'),
+          title: this.$t('trading-assistant.table.marketValue'),
+          dataIndex: 'market_value',
+          key: 'market_value',
+          width: 140,
+          scopedSlots: { customRender: 'marketValue' }
+        },
+        {
+          title: this.$t('trading-assistant.table.averageEntryPrice'),
           dataIndex: 'entry_price',
           key: 'entry_price',
           width: 120,
@@ -357,12 +389,11 @@ export default {
         { title: this.$t('trading-assistant.table.symbol'), dataIndex: 'symbol', width: 118 },
         { title: this.$t('trading-assistant.table.side'), dataIndex: 'side', width: 76, scopedSlots: { customRender: 'ownershipSide' } },
         { title: this.$t('strategyCenter.positionOwnership.accountQty'), dataIndex: 'account_qty', width: 112, scopedSlots: quantitySlot },
-        { title: this.$t('strategyCenter.positionOwnership.strategyQty'), dataIndex: 'strategy_qty', width: 112, scopedSlots: quantitySlot },
+        { title: this.$t('strategyCenter.positionOwnership.relatedStrategies'), dataIndex: 'strategy_qty', width: 140, scopedSlots: { customRender: 'ownershipAllocations' } },
         { title: this.$t('strategyCenter.positionOwnership.protectedQty'), dataIndex: 'protected_qty', width: 112, scopedSlots: quantitySlot },
-        { title: this.$t('strategyCenter.positionOwnership.unknownQty'), dataIndex: 'unknown_qty', width: 112, scopedSlots: quantitySlot },
-        { title: this.$t('strategyCenter.positionOwnership.mode'), dataIndex: 'coexistence_mode', width: 90, scopedSlots: { customRender: 'ownershipMode' } },
+        { title: this.$t('strategyCenter.positionOwnership.unknownQty'), dataIndex: 'unknown_qty', width: 150, scopedSlots: { customRender: 'ownershipDifference' } },
         { title: this.$t('strategyCenter.positionOwnership.status'), dataIndex: 'status', width: 90, scopedSlots: { customRender: 'ownershipStatus' } },
-        { title: this.$t('common.actions'), key: 'actions', fixed: 'right', width: 190, scopedSlots: { customRender: 'ownershipActions' } }
+        { title: this.$t('common.actions'), key: 'actions', fixed: 'right', width: 120, scopedSlots: { customRender: 'ownershipActions' } }
       ]
     },
     effectiveLeverage () {
@@ -397,17 +428,18 @@ export default {
       this.ownershipLoading = true
       try {
         const res = await getStrategyPositionOwnership(this.strategyId)
-        const data = res.code === 1 ? (res.data || {}) : {}
+        if (res.code !== 1) throw new Error(this.$t(res.msg || 'strategyCenter.positionOwnership.loadFailed'))
+        const data = res.data || {}
         const rows = data.items || []
-        this.ownershipAdvancedAvailable = Boolean(data.advanced_coexistence_available)
+        this.ownershipExchangeId = String(data.exchange_id || '').toLowerCase()
         this.ownershipRows = rows.map(row => ({
           ...row,
           rowKey: `${row.symbol || ''}:${row.side || ''}`
         }))
       } catch (error) {
-        this.ownershipAdvancedAvailable = false
+        this.ownershipExchangeId = ''
         this.ownershipRows = []
-        this.$message.error(this.$t('strategyCenter.positionOwnership.loadFailed'))
+        this.$message.error((error && error.message) || this.$t('strategyCenter.positionOwnership.loadFailed'))
       } finally {
         this.ownershipLoading = false
       }
@@ -421,7 +453,7 @@ export default {
           side: record.side,
           action
         })
-        if (res.code !== 1) throw new Error(res.msg || 'repair failed')
+        if (res.code !== 1) throw new Error(res.msg ? this.$t(res.msg) : this.$t('strategyCenter.positionOwnership.repairFailed'))
         this.$message.success(this.$t('strategyCenter.positionOwnership.repairSuccess'))
         await Promise.all([this.loadOwnership(), this.loadPositions()])
       } catch (error) {
@@ -456,11 +488,13 @@ export default {
             const entryPrice = parseFloat(position.entry_price || position.entryPrice || 0)
             const size = parseFloat(position.size || '0') || 0
             const pnl = parseFloat(position.unrealized_pnl || position.unrealizedPnl || '0') || 0
-            const notional = parseFloat(position.notional_value || position.notionalValue || 0) || (entryPrice > 0 && size > 0 ? entryPrice * size : 0)
+            const currentPrice = parseFloat(position.current_price || position.currentPrice || 0) || 0
+            const positionCost = parseFloat(position.notional_value || position.notionalValue || 0) || (entryPrice > 0 && size > 0 ? entryPrice * size : 0)
+            const marketValue = currentPrice > 0 && size > 0 ? currentPrice * size : positionCost
             const legacyPct = this.safeNumber(position.pnl_percent ?? position.pnlPercent)
             let marginPct = this.safeNumber(position.position_margin_pnl_percent ?? position.positionMarginPnlPercent)
             if (!Number.isFinite(marginPct)) {
-              marginPct = Number.isFinite(legacyPct) ? legacyPct : (notional > 0 ? (pnl / notional) * 100 * lev : 0)
+              marginPct = Number.isFinite(legacyPct) ? legacyPct : (positionCost > 0 ? (pnl / positionCost) * 100 * lev : 0)
             }
             let capitalPct = this.safeNumber(position.strategy_capital_pnl_percent ?? position.capital_contribution_percent ?? position.strategyCapitalPnlPercent)
             if (!Number.isFinite(capitalPct)) capitalPct = 0
@@ -471,13 +505,15 @@ export default {
               side: position.side || 'long',
               size: size > 0 ? size.toString() : '0',
               entry_price: entryPrice > 0 ? entryPrice.toString() : '0',
-              current_price: position.current_price || position.currentPrice || '0',
+              current_price: currentPrice > 0 ? currentPrice.toString() : '0',
               unrealized_pnl: position.unrealized_pnl || position.unrealizedPnl || '0',
               pnl_percent: marginPct,
               position_margin_pnl_percent: marginPct,
               position_notional_pnl_percent: this.safeNumber(position.position_notional_pnl_percent ?? position.positionNotionalPnlPercent) || 0,
               strategy_capital_pnl_percent: capitalPct,
-              notional_value: notional,
+              position_cost: positionCost,
+              market_value: marketValue,
+              notional_value: positionCost,
               updated_at: position.updated_at || position.updatedAt || ''
             }
           })
@@ -512,6 +548,10 @@ export default {
       const amount = Number.isFinite(parsed) ? parsed : 0
       return `${amount > 0 ? '+' : amount < 0 ? '-' : ''}$${Math.abs(amount).toFixed(2)}`
     },
+    formatMoney (value) {
+      const parsed = this.safeNumber(value)
+      return Number.isFinite(parsed) && parsed > 0 ? `$${parsed.toFixed(2)}` : '--'
+    },
     pnlClass (value) {
       const parsed = this.safeNumber(value)
       return {
@@ -519,15 +559,21 @@ export default {
         loss: Number.isFinite(parsed) && parsed < 0
       }
     },
-    getNotional (record) {
-      const supplied = parseFloat(record.notional_value || 0)
+    getPositionCost (record) {
+      const supplied = parseFloat(record.position_cost || record.notional_value || 0)
+      if (Number.isFinite(supplied) && supplied > 0) return supplied
+      const size = parseFloat(record.size || 0)
+      const ep = parseFloat(record.entry_price || 0)
+      if (size > 0 && ep > 0) return size * ep
+      return 0
+    },
+    getMarketValue (record) {
+      const supplied = parseFloat(record.market_value || 0)
       if (Number.isFinite(supplied) && supplied > 0) return supplied
       const size = parseFloat(record.size || 0)
       const cp = parseFloat(record.current_price || 0)
       if (size > 0 && cp > 0) return size * cp
-      const ep = parseFloat(record.entry_price || 0)
-      if (size > 0 && ep > 0) return size * ep
-      return 0
+      return this.getPositionCost(record)
     },
     startPolling () {
       this.stopPolling()
@@ -685,6 +731,7 @@ export default {
     font-weight: 700;
   }
 
+  .position-value-summary,
   .position-price-summary,
   .position-pnl-summary {
     display: inline-flex;
@@ -694,6 +741,7 @@ export default {
     font-variant-numeric: tabular-nums;
   }
 
+  .position-value-summary,
   .position-price-summary {
     color: #64748b;
 
@@ -711,6 +759,7 @@ export default {
   }
 
   &.theme-dark {
+    .position-value-summary,
     .position-price-summary {
       color: #8f98a5;
 

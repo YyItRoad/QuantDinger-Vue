@@ -15,90 +15,146 @@
     </a-tabs>
 
     <div v-show="activeTab === 'market'" class="market-header">
-      <div class="header-left">
-        <h2 class="page-title">
-          <a-icon type="shop" />
-          {{ $t('community.title') }}
-        </h2>
-        <a-radio-group
-          v-model="marketAssetType"
-          button-style="solid"
-          class="market-asset-tabs"
-          @change="handleMarketAssetTypeChange"
-        >
-          <a-radio-button value="indicator">
-            {{ $t('community.tabIndicators') }} ({{ marketAssetCounts.indicator }})
-          </a-radio-button>
-          <a-radio-button value="script_template">
-            {{ $t('community.tabScriptTemplates') }} ({{ marketAssetCounts.script_template }})
-          </a-radio-button>
-        </a-radio-group>
-      </div>
-      <div class="header-right">
-        <a-input-search
-          v-model="filters.keyword"
-          :placeholder="$t('community.searchPlaceholder')"
-          class="market-search"
-          allow-clear
-          @search="handleSearch"
-          @pressEnter="handleSearch"
-        />
-        <a-radio-group v-model="filters.pricingType" button-style="solid" @change="handleFilterChange">
-          <a-radio-button value="">{{ $t('community.all') }}</a-radio-button>
-          <a-radio-button value="free">{{ $t('community.freeOnly') }}</a-radio-button>
-          <a-radio-button value="paid">{{ $t('community.paidOnly') }}</a-radio-button>
-          <a-radio-button value="vip_free">{{ $t('community.vipFree') }}</a-radio-button>
-        </a-radio-group>
-        <a-select
-          v-model="filters.codeVisibility"
-          class="market-filter-select"
-          @change="handleFilterChange"
-        >
-          <a-select-option value="">{{ $t('community.codeVisibilityAll') }}</a-select-option>
-          <a-select-option value="visible">{{ $t('community.codeVisible') }}</a-select-option>
-          <a-select-option value="hidden">{{ $t('community.codeHidden') }}</a-select-option>
-        </a-select>
-        <div class="price-range-filter">
-          <a-input-number
-            v-model="filters.minPrice"
-            :min="0"
-            :precision="0"
-            :placeholder="$t('community.minPrice')"
-            @pressEnter="handleFilterChange"
+      <div class="market-header__workspace">
+        <div class="market-filter-bar">
+          <a-radio-group
+            v-model="marketAssetType"
+            button-style="solid"
+            class="market-asset-tabs"
+            @change="handleMarketAssetTypeChange"
+          >
+            <a-radio-button value="indicator">
+              {{ $t('community.tabIndicators') }} ({{ marketAssetCounts.indicator }})
+            </a-radio-button>
+            <a-radio-button value="script_template">
+              {{ $t('community.tabScriptTemplates') }} ({{ marketAssetCounts.script_template }})
+            </a-radio-button>
+          </a-radio-group>
+          <a-radio-group v-model="filters.pricingType" button-style="solid" @change="handleFilterChange">
+            <a-radio-button value="">{{ $t('community.all') }}</a-radio-button>
+            <a-radio-button value="free">{{ $t('community.freeOnly') }}</a-radio-button>
+            <a-radio-button value="paid">{{ $t('community.paidOnly') }}</a-radio-button>
+            <a-radio-button value="vip_free">{{ $t('community.vipFree') }}</a-radio-button>
+          </a-radio-group>
+          <a-select v-model="filters.codeVisibility" class="market-filter-select" @change="handleFilterChange">
+            <a-select-option value="">{{ $t('community.codeVisibilityAll') }}</a-select-option>
+            <a-select-option value="visible">{{ $t('community.codeVisible') }}</a-select-option>
+            <a-select-option value="hidden">{{ $t('community.codeHidden') }}</a-select-option>
+          </a-select>
+          <a-select v-model="filters.sortBy" class="market-sort-select" @change="handleFilterChange">
+            <a-select-option
+              v-for="option in marketSortOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </a-select-option>
+          </a-select>
+          <a-button :type="showMarketFilters ? 'primary' : 'default'" @click="showMarketFilters = !showMarketFilters">
+            <a-icon type="filter" />
+            {{ $t('community.moreFilters') }}
+          </a-button>
+          <a-button class="market-reset-btn" @click="resetMarketFilters">
+            <a-icon type="reload" />
+            {{ $t('community.resetFilters') }}
+          </a-button>
+          <a-input-search
+            v-model="filters.keyword"
+            :placeholder="$t('community.searchPlaceholder')"
+            :enter-button="$t('community.applyFilters')"
+            class="market-search"
+            allow-clear
+            @search="handleSearch"
+            @pressEnter="handleSearch"
           />
-          <span class="price-range-filter__dash">-</span>
-          <a-input-number
-            v-model="filters.maxPrice"
-            :min="0"
-            :precision="0"
-            :placeholder="$t('community.maxPrice')"
-            @pressEnter="handleFilterChange"
-          />
-          <a-button class="price-range-filter__apply" @click="handleFilterChange">
-            {{ $t('community.applyFilters') }}
+          <a-button type="link" class="market-purchases-btn" @click="showMyPurchases = true">
+            <a-icon type="shopping" />
+            {{ $t('community.myPurchases') }}
           </a-button>
         </div>
-        <a-button class="market-reset-btn" @click="resetMarketFilters">
-          <a-icon type="reload" />
-          {{ $t('community.resetFilters') }}
-        </a-button>
-        <a-select v-model="filters.sortBy" style="width: 160px" @change="handleFilterChange">
-          <a-select-option
-            v-for="option in marketSortOptions"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </a-select-option>
-        </a-select>
-        <a-button type="link" @click="showMyPurchases = true">
-          <a-icon type="shopping" />
-          {{ $t('community.myPurchases') }}
-        </a-button>
       </div>
+
+      <transition name="market-filters">
+        <div v-if="showMarketFilters" class="market-advanced-filters">
+          <div class="price-range-filter">
+            <a-input-number
+              v-model="filters.minPrice"
+              :min="0"
+              :precision="0"
+              :placeholder="$t('community.minPrice')"
+              @pressEnter="handleFilterChange"
+            />
+            <span class="price-range-filter__dash">-</span>
+            <a-input-number
+              v-model="filters.maxPrice"
+              :min="0"
+              :precision="0"
+              :placeholder="$t('community.maxPrice')"
+              @pressEnter="handleFilterChange"
+            />
+            <a-button type="primary" class="price-range-filter__apply" @click="handleFilterChange">
+              {{ $t('community.applyFilters') }}
+            </a-button>
+          </div>
+          <template v-if="marketAssetType === 'script_template'">
+            <a-select v-model="filters.market" class="strategy-filter-select" :placeholder="$t('community.filterMarket')" allow-clear @change="handleFilterChange">
+              <a-select-option v-for="option in strategyMarketOptions" :key="option.value" :value="option.value">
+                {{ strategyMarketLabel(option) }}
+              </a-select-option>
+            </a-select>
+            <a-select v-model="filters.bindingMode" class="strategy-filter-select" :placeholder="$t('community.filterBinding')" allow-clear @change="handleFilterChange">
+              <a-select-option v-for="value in strategyBindingModes" :key="value" :value="value">{{ $t(`community.binding.${value}`) }}</a-select-option>
+            </a-select>
+            <a-select v-model="filters.strategyType" class="strategy-filter-select" :placeholder="$t('community.filterStrategyType')" allow-clear @change="handleFilterChange">
+              <a-select-option value="cta">{{ $t('community.strategyType.cta') }}</a-select-option>
+              <a-select-option value="portfolio">{{ $t('community.strategyType.portfolio') }}</a-select-option>
+            </a-select>
+            <a-select v-model="filters.marketType" class="strategy-filter-select" :placeholder="$t('community.filterMarketType')" allow-clear @change="handleFilterChange">
+              <a-select-option value="spot">Spot</a-select-option>
+              <a-select-option value="swap">Swap</a-select-option>
+            </a-select>
+            <a-select v-model="filters.directionMode" class="strategy-filter-select" :placeholder="$t('community.filterDirection')" allow-clear @change="handleFilterChange">
+              <a-select-option v-for="value in strategyDirections" :key="value" :value="value">{{ $t(`community.direction.${value}`) }}</a-select-option>
+            </a-select>
+            <a-select v-model="filters.leverage" class="strategy-filter-select" :placeholder="$t('community.filterLeverage')" allow-clear @change="handleFilterChange">
+              <a-select-option value="yes">{{ $t('community.leverageDeclared') }}</a-select-option>
+              <a-select-option value="no">{{ $t('community.contractNoLeverage') }}</a-select-option>
+            </a-select>
+          </template>
+        </div>
+      </transition>
+    </div>
+
+    <div v-if="activeTab === 'market' && marketAssetType === 'script_template' && activeStrategyFilterChips.length" class="strategy-filter-summary">
+      <span class="strategy-filter-summary__label"><a-icon type="safety-certificate" /> {{ $t('community.strategyFilters') }}</span>
+      <a-tag v-for="chip in activeStrategyFilterChips" :key="chip.key" closable @close.prevent="clearStrategyFilter(chip.key)">{{ chip.label }}</a-tag>
+      <a-button type="link" size="small" @click="resetMarketFilters">{{ $t('community.resetFilters') }}</a-button>
     </div>
 
     <template v-if="activeTab === 'market'">
+      <marketplace-spotlight
+        v-if="indicators.length > 0 && !loading"
+        :featured="featuredIndicator"
+        :hot-items="hotIndicators"
+        :dark="isDarkTheme"
+        @select="openDetail"
+      />
+
+      <div v-if="pagination.total > 0" ref="marketResultsStart" class="market-section-heading">
+        <div class="market-section-heading__title">
+          <h3>{{ $t('community.all') }} · {{ currentMarketAssetLabel }}</h3>
+          <span>{{ pagination.total }} {{ $t('community.items') }}</span>
+        </div>
+        <a-pagination
+          v-if="pagination.total > pagination.pageSize"
+          simple
+          :current="pagination.current"
+          :total="pagination.total"
+          :page-size="pagination.pageSize"
+          @change="handlePageChange"
+        />
+      </div>
+
       <a-spin :spinning="loading">
         <div v-if="indicators.length === 0 && !loading" class="empty-state empty-state--blank" />
         <div v-else class="indicator-grid">
@@ -349,8 +405,16 @@
               <strong class="negative">{{ formatReviewPercent(reviewPerformance.max_drawdown) }}</strong>
             </div>
             <div class="perf-cell">
-              <span>{{ $t('community.profitFactor') }}</span>
-              <strong>{{ formatReviewNumber(reviewPerformance.profit_factor, 2) }}</strong>
+              <span>
+                {{ $t('strategyCenter.backtest.payoffRatio') }}
+                <a-tooltip :title="payoffRatioTooltip(reviewPerformance)">
+                  <a-icon
+                    type="info-circle"
+                    :class="{ 'payoff-warning': isPayoffRatioUnstable(reviewPerformance) }"
+                  />
+                </a-tooltip>
+              </span>
+              <strong>{{ formatReviewPayoffRatio(reviewPerformance) }}</strong>
             </div>
             <div class="perf-cell">
               <span>{{ $t('community.winRate') }}</span>
@@ -468,14 +532,17 @@ import { mapState } from 'vuex'
 import IndicatorCard from './components/IndicatorCard.vue'
 import IndicatorDetail from './components/IndicatorDetail.vue'
 import AuthorDashboard from './components/AuthorDashboard.vue'
+import MarketplaceSpotlight from './components/MarketplaceSpotlight.vue'
 import request from '@/utils/request'
+import { loadEnabledMarketOptions } from '@/utils/marketModules'
 
 export default {
   name: 'IndicatorCommunity',
   components: {
     IndicatorCard,
     IndicatorDetail,
-    AuthorDashboard
+    AuthorDashboard,
+    MarketplaceSpotlight
   },
   computed: {
     ...mapState({
@@ -526,6 +593,17 @@ export default {
     defaultMarketSort () {
       return this.marketAssetType === 'indicator' ? 'hot' : 'score'
     },
+    currentMarketAssetLabel () {
+      return this.marketAssetType === 'script_template'
+        ? this.$t('community.tabScriptTemplates')
+        : this.$t('community.tabIndicators')
+    },
+    featuredIndicator () {
+      return this.indicators.length ? this.indicators[0] : null
+    },
+    hotIndicators () {
+      return this.indicators.slice(1, 3)
+    },
     marketSortOptions () {
       const common = [
         { value: 'newest', label: this.$t('community.sortNewest') },
@@ -541,6 +619,20 @@ export default {
         { value: 'score', label: this.$t('community.sortScore') },
         ...common
       ]
+    },
+    activeStrategyFilterChips () {
+      const f = this.filters
+      const chips = []
+      if (f.market) {
+        const option = this.strategyMarketOptions.find(item => item.value === f.market) || { value: f.market, label: f.market }
+        chips.push({ key: 'market', label: this.strategyMarketLabel(option) })
+      }
+      if (f.bindingMode) chips.push({ key: 'bindingMode', label: this.$t(`community.binding.${f.bindingMode}`) })
+      if (f.strategyType) chips.push({ key: 'strategyType', label: this.$t(`community.strategyType.${f.strategyType}`) })
+      if (f.marketType) chips.push({ key: 'marketType', label: f.marketType.toUpperCase() })
+      if (f.directionMode) chips.push({ key: 'directionMode', label: this.$t(`community.direction.${f.directionMode}`) })
+      if (f.leverage) chips.push({ key: 'leverage', label: this.$t(f.leverage === 'yes' ? 'community.leverageDeclared' : 'community.contractNoLeverage') })
+      return chips
     }
   },
   data () {
@@ -558,8 +650,18 @@ export default {
         codeVisibility: '',
         minPrice: undefined,
         maxPrice: undefined,
-        sortBy: 'hot'
+        sortBy: 'hot',
+        market: undefined,
+        marketType: undefined,
+        bindingMode: undefined,
+        strategyType: undefined,
+        directionMode: undefined,
+        leverage: undefined
       },
+      showMarketFilters: false,
+      strategyMarketOptions: [],
+      strategyBindingModes: ['fixed', 'parameterized', 'universe', 'portfolio'],
+      strategyDirections: ['long_only', 'short_only', 'one_way', 'both'],
       pagination: {
         current: 1,
         pageSize: 12,
@@ -617,15 +719,32 @@ export default {
       }
     }
   },
-  mounted () {
+  async mounted () {
     const q = this.$route.query
     if (q && q.asset_type) {
       this.marketAssetType = String(q.asset_type)
       this.filters.sortBy = this.defaultMarketSort
     }
+    await this.loadStrategyMarketOptions()
     this.loadIndicators()
   },
   methods: {
+    async loadStrategyMarketOptions () {
+      this.strategyMarketOptions = await loadEnabledMarketOptions()
+      const supported = this.strategyMarketOptions.map(option => option.value)
+      if (this.filters.market && !supported.includes(this.filters.market)) {
+        this.filters.market = undefined
+      }
+    },
+
+    strategyMarketLabel (option) {
+      if (!option) return ''
+      const communityKey = `community.market.${option.value}`
+      if (this.$te(communityKey)) return this.$t(communityKey)
+      if (option.i18nKey && this.$te(option.i18nKey)) return this.$t(option.i18nKey)
+      return option.label || option.value
+    },
+
     async loadIndicators () {
       this.loading = true
       try {
@@ -642,7 +761,13 @@ export default {
             min_price: this.normalizedPriceRange.min,
             max_price: this.normalizedPriceRange.max,
             sort_by: this.filters.sortBy,
-            asset_type: this.marketAssetType
+            asset_type: this.marketAssetType,
+            market: this.marketAssetType === 'script_template' ? this.filters.market : undefined,
+            market_type: this.marketAssetType === 'script_template' ? this.filters.marketType : undefined,
+            binding_mode: this.marketAssetType === 'script_template' ? this.filters.bindingMode : undefined,
+            strategy_type: this.marketAssetType === 'script_template' ? this.filters.strategyType : undefined,
+            direction_mode: this.marketAssetType === 'script_template' ? this.filters.directionMode : undefined,
+            leverage: this.marketAssetType === 'script_template' ? this.filters.leverage : undefined
           }
         })
         if (res.code === 1) {
@@ -708,6 +833,13 @@ export default {
       this.loadIndicators()
     },
 
+    clearStrategyFilter (key) {
+      if (Object.prototype.hasOwnProperty.call(this.filters, key)) {
+        this.filters[key] = undefined
+        this.handleFilterChange()
+      }
+    },
+
     resetMarketFilters () {
       this.filters = {
         keyword: '',
@@ -715,15 +847,27 @@ export default {
         codeVisibility: '',
         minPrice: undefined,
         maxPrice: undefined,
-        sortBy: this.defaultMarketSort
+        sortBy: this.defaultMarketSort,
+        market: undefined,
+        marketType: undefined,
+        bindingMode: undefined,
+        strategyType: undefined,
+        directionMode: undefined,
+        leverage: undefined
       }
       this.pagination.current = 1
       this.loadIndicators()
     },
 
-    handlePageChange (page) {
+    async handlePageChange (page) {
       this.pagination.current = Number(page || 1)
-      this.loadIndicators()
+      await this.loadIndicators()
+      this.$nextTick(() => {
+        const target = this.$refs.marketResultsStart
+        if (target && typeof target.scrollIntoView === 'function') {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      })
     },
 
     openDetail (indicator) {
@@ -992,6 +1136,25 @@ export default {
       return v.toFixed(digits)
     },
 
+    formatReviewPayoffRatio (performance) {
+      if (!performance || Number(performance.losing_trades || 0) <= 0) return '—'
+      return this.formatReviewNumber(performance.profit_loss_ratio, 2)
+    },
+
+    isPayoffRatioUnstable (performance) {
+      const losses = Number(performance && performance.losing_trades) || 0
+      return losses > 0 && losses < 3
+    },
+
+    payoffRatioTooltip (performance) {
+      const wins = Number(performance && performance.winning_trades) || 0
+      const losses = Number(performance && performance.losing_trades) || 0
+      const sampleWarning = this.isPayoffRatioUnstable(performance)
+        ? `${this.$t('backtest-center.audit.lowSample')} · `
+        : ''
+      return `${sampleWarning}${this.$t('strategyCenter.backtest.winningTrades')}: ${wins} · ${this.$t('strategyCenter.backtest.losingTrades')}: ${losses}`
+    },
+
     formatReviewPercent (val) {
       const v = parseFloat(val)
       if (isNaN(v)) return '-'
@@ -1121,81 +1284,136 @@ export default {
   background: #f5f5f5;
 
   .market-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    padding: 16px 20px;
+    margin-bottom: 18px;
+    padding: 14px 16px;
     background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.05);
 
-    .header-left {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    &__workspace {
+      min-width: 0;
 
-      .page-title {
-        margin: 0;
-        font-size: 20px;
-        font-weight: 600;
-
-        .anticon {
-          margin-right: 8px;
-          color: var(--primary-color, #1890ff);
-        }
-      }
-
-      .market-asset-tabs {
-        align-self: flex-start;
+      .market-search {
+        width: 340px;
+        max-width: 100%;
+        margin-left: auto;
+        flex: 0 1 340px;
       }
     }
 
-    .header-right {
+    .market-filter-bar,
+    .market-advanced-filters {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
       flex-wrap: wrap;
-      gap: 10px;
-      max-width: 980px;
+      gap: 9px;
+    }
 
-      .market-search {
-        width: 260px;
-      }
-
+    .market-filter-bar {
       .market-filter-select {
-        width: 132px;
+        width: 138px;
       }
 
-      .price-range-filter {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-
-        ::v-deep .ant-input-number {
-          width: 86px;
-        }
-
-        &__dash {
-          color: rgba(0, 0, 0, 0.35);
-          line-height: 32px;
-        }
-
-        &__apply {
-          flex-shrink: 0;
-        }
+      .market-sort-select {
+        width: 150px;
       }
 
-      .market-reset-btn {
+      .market-purchases-btn {
+        flex-shrink: 0;
+      }
+    }
+
+    .market-advanced-filters {
+      grid-area: advanced;
+      padding-top: 14px;
+      border-top: 1px solid rgba(15, 23, 42, 0.08);
+
+      .strategy-filter-select {
+        width: 154px;
+      }
+    }
+
+    .price-range-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+
+      ::v-deep .ant-input-number {
+        width: 104px;
+      }
+
+      &__dash {
+        color: rgba(0, 0, 0, 0.35);
+        line-height: 32px;
+      }
+
+      &__apply {
         flex-shrink: 0;
       }
     }
   }
 
+  .market-filters-enter-active,
+  .market-filters-leave-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+
+  .market-filters-enter,
+  .market-filters-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  .strategy-filter-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: -12px 0 20px;
+    padding: 10px 14px;
+    border: 1px solid rgba(82, 196, 26, 0.24);
+    border-radius: 8px;
+    background: rgba(82, 196, 26, 0.06);
+
+    &__label {
+      margin-right: 4px;
+      color: #389e0d;
+      font-weight: 600;
+    }
+  }
+
   .indicator-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .market-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 38px;
+    margin-bottom: 12px;
+    color: rgba(0, 0, 0, 0.55);
+    scroll-margin-top: 96px;
+
+    &__title {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+
+      h3 {
+        margin: 0;
+        color: rgba(0, 0, 0, 0.88);
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      span {
+        font-size: 12px;
+      }
+    }
   }
 
   .empty-state {
@@ -1210,10 +1428,8 @@ export default {
   .pagination-wrapper {
     display: flex;
     justify-content: center;
-    margin-top: 32px;
-    padding: 16px;
-    background: #fff;
-    border-radius: 8px;
+    margin-top: 24px;
+    padding: 10px 0;
   }
 
   .market-risk-tip {
@@ -1241,10 +1457,13 @@ export default {
   }
 
   .admin-tabs {
-    margin-bottom: 16px;
-    padding: 0 20px;
-    background: #fff;
-    border-radius: 8px;
+    margin-bottom: 14px;
+    padding: 0 2px;
+    background: transparent;
+
+    ::v-deep .ant-tabs-bar {
+      margin-bottom: 0;
+    }
   }
 
   .review-panel {
@@ -1441,7 +1660,7 @@ export default {
   background: #141414;
 
   .admin-tabs {
-    background: #1f1f1f;
+    background: transparent;
 
     ::v-deep .ant-tabs-nav .ant-tabs-tab {
       color: rgba(255, 255, 255, 0.65);
@@ -1521,17 +1740,29 @@ export default {
   }
 
   .market-header {
+    border-color: #303030;
     background: #1f1f1f;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: none;
 
-    .page-title {
-      color: rgba(255, 255, 255, 0.85);
+    .market-advanced-filters {
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .price-range-filter__dash {
+      color: rgba(255, 255, 255, 0.35);
     }
   }
 
-  .empty-state,
-  .pagination-wrapper {
+  .empty-state {
     background: #1f1f1f;
+  }
+
+  .market-section-heading {
+    color: rgba(255, 255, 255, 0.55);
+
+    &__title h3 {
+      color: rgba(255, 255, 255, 0.9);
+    }
   }
 
   .market-risk-tip {
@@ -1716,40 +1947,122 @@ export default {
   }
 }
 
+@media (max-width: 1200px) {
+  .indicator-community-container {
+    .indicator-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+@media (min-width: 1201px) and (max-width: 1700px) {
+  .indicator-community-container .indicator-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
   .indicator-community-container {
     padding: 12px;
 
     .market-header {
-      flex-direction: column;
-      gap: 16px;
+      padding: 16px;
+      box-sizing: border-box;
+      width: 100%;
 
-      .header-right {
-        flex-wrap: wrap;
-        justify-content: center;
+      &__workspace {
+        width: 100%;
+      }
 
-        .market-search,
-        .market-filter-select,
-        > .ant-select,
-        .market-reset-btn,
-        .price-range-filter {
+      .market-search {
+        width: 100%;
+        max-width: 100%;
+        flex-basis: 100%;
+
+        ::v-deep .ant-input-group {
+          display: flex;
           width: 100%;
         }
 
-        .price-range-filter {
-          display: grid;
-          grid-template-columns: 1fr auto 1fr auto;
+        ::v-deep .ant-input {
+          width: auto;
+          min-width: 0;
+          flex: 1;
+        }
 
-          ::v-deep .ant-input-number {
+        ::v-deep .ant-input-affix-wrapper {
+          width: auto;
+          min-width: 0;
+          flex: 1;
+
+          .ant-input {
             width: 100%;
           }
+        }
+
+        ::v-deep .ant-input-group-addon {
+          display: block;
+          width: auto;
+        }
+      }
+
+      .market-filter-bar,
+      .market-advanced-filters {
+        align-items: stretch;
+        flex-direction: column;
+
+        .market-filter-select,
+        .market-sort-select,
+        .strategy-filter-select,
+        .market-reset-btn,
+        .market-purchases-btn,
+        > .ant-radio-group,
+        > .ant-btn {
+          width: 100%;
+        }
+
+        .market-purchases-btn {
+          margin-left: 0;
+        }
+      }
+
+      .price-range-filter {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr auto;
+        width: 100%;
+
+        ::v-deep .ant-input-number {
+          width: 100%;
         }
       }
     }
 
     .indicator-grid {
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-template-columns: minmax(0, 1fr);
       gap: 12px;
+    }
+
+    .market-section-heading {
+      align-items: flex-start;
+      gap: 10px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .indicator-community-container {
+    .market-header .market-asset-tabs {
+      display: flex;
+      width: 100%;
+
+      ::v-deep .ant-radio-button-wrapper {
+        flex: 1;
+        text-align: center;
+      }
+    }
+
+    .market-section-heading {
+      flex-direction: column;
     }
   }
 }
@@ -1766,6 +2079,10 @@ export default {
 -->
 <style lang="less">
 .qd-review-performance-modal {
+  .payoff-warning {
+    color: #faad14;
+  }
+
   .review-performance {
     &__grid {
       display: grid;

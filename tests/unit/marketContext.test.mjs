@@ -20,7 +20,7 @@ test('normalizes perpetual aliases to swap', () => {
   assert.equal(normalizeMarketType('futures'), 'swap')
 })
 
-test('watchlist identity stays asset-level across venues and product types', () => {
+test('watchlist identity separates venues, market types, and native instruments', () => {
   const spot = normalizeMarketContext({
     market: 'Crypto',
     symbol: 'btc/usdt',
@@ -41,13 +41,17 @@ test('watchlist identity stays asset-level across venues and product types', () 
   })
 
   assert.equal(spot.symbol, 'BTC/USDT')
-  assert.equal(marketContextKey(spot), 'Crypto:BTC/USDT')
-  assert.equal(marketContextKey(spot), marketContextKey(swap))
-  assert.equal(marketContextKey(swap), marketContextKey(okxSwap))
+  assert.equal(marketContextKey(spot), 'Crypto:BTC/USDT|binance|spot|')
+  assert.notEqual(marketContextKey(spot), marketContextKey(swap))
+  assert.notEqual(marketContextKey(swap), marketContextKey(okxSwap))
   assert.equal(okxSwap.exchange_id, 'okx')
   assert.equal(okxSwap.market_type, 'swap')
   assert.equal(marketContextKey({ market: 'Crypto', symbol: 'binance:spot::BTC/USDT' }), 'Crypto:BTC/USDT')
   assert.equal(marketContextKey({ market: 'Crypto', symbol: 'BTC/USDT:USDT' }), 'Crypto:BTC/USDT')
+  assert.notEqual(
+    marketContextKey({ ...spot, instrument_id: 'BTCUSDT' }),
+    marketContextKey({ ...spot, instrument_id: 'BTC-USDT' })
+  )
 })
 
 test('non-crypto identities do not retain an exchange venue', () => {

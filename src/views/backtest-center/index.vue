@@ -1,22 +1,20 @@
 <template>
   <div class="backtest-page" :class="{ 'theme-dark': isDarkTheme }" data-testid="backtest-center">
-    <section class="hero-card">
-      <div>
-        <div class="eyebrow">{{ $t('strategyV2.apiBadge') }}</div>
-        <h1>{{ $t('backtest-center.title') }}</h1>
-        <p>{{ $t('strategyV2.manifestHint') }}</p>
-      </div>
-      <div class="hero-actions">
+    <section class="workspace-toolbar">
+      <div class="workspace-toolbar__primary">
         <a-radio-group v-model="mode" button-style="solid" data-testid="research-mode-switch">
           <a-radio-button value="portfolio">{{ $t('strategyV2.backtest.mode.portfolio') }}</a-radio-button>
           <a-radio-button value="factor">{{ $t('strategyV2.backtest.mode.factor') }}</a-radio-button>
         </a-radio-group>
+        <span class="workspace-toolbar__context">{{ $t('backtest-center.title') }} · {{ mode === 'factor' ? $t('strategyV2.factorResearch.workspace') : $t('backtest-center.resultOverview') }}</span>
+      </div>
+      <div class="hero-actions">
         <span class="hero-stat"><strong>{{ availableSources.length }}</strong>{{ mode === 'factor' ? $t('strategyV2.factorResearch.eligibleSources') : $t('strategyV2.backtest.sources') }}</span>
         <span class="hero-stat"><strong>{{ history.length }}</strong>{{ mode === 'factor' ? $t('strategyV2.factorResearch.runs') : $t('strategyV2.backtest.runs') }}</span>
         <a-button icon="reload" :loading="historyLoading" @click="refreshPage">
           {{ $t('backtest-center.refreshHistory') }}
         </a-button>
-        <a-button icon="history" @click="historyVisible = true">
+        <a-button icon="history" @click="openHistoryDrawer">
           {{ mode === 'factor' ? $t('strategyV2.factorResearch.historyTitle') : $t('strategyV2.backtest.historyTitle') }}
         </a-button>
       </div>
@@ -25,87 +23,149 @@
     <div class="workspace-grid">
       <section class="panel config-panel">
         <div class="config-scroll">
-          <div class="panel-heading">
-            <div>
-              <span class="step-badge">1</span>
-              <h2>{{ $t('strategyV2.sourceTitle') }}</h2>
+          <section class="config-section config-section--source">
+            <div class="panel-heading config-section__heading">
+              <div>
+                <span class="step-badge">1</span>
+                <h2>{{ $t('strategyV2.sourceTitle') }}</h2>
+              </div>
+              <a-tag v-if="manifest" class="theme-ready-tag">{{ $t('strategyV2.backtest.ready') }}</a-tag>
             </div>
-            <a-tag v-if="manifest" color="green">{{ $t('strategyV2.backtest.ready') }}</a-tag>
-          </div>
-          <a-select
-            v-model="form.sourceId"
-            class="full-width"
-            show-search
-            option-filter-prop="children"
-            data-testid="backtest-source-select"
-            :placeholder="$t('backtest-center.strategyPlaceholder')"
-            @change="selectSource"
-          >
-            <a-select-option v-for="item in availableSources" :key="item.id" :value="item.id">
-              {{ item.name }} · {{ sourceTypeLabel(item) }}
-            </a-select-option>
-          </a-select>
-
-          <div v-if="manifest" class="manifest-card">
-            <div class="manifest-title">
-              <a-icon type="safety-certificate" />
-              {{ $t('strategyV2.manifestTitle') }}
-            </div>
-            <div class="manifest-grid">
-              <div><span>{{ $t('strategyV2.strategyType') }}</span><strong>{{ strategyTypeLabel }}</strong></div>
-              <div><span>{{ $t('strategyV2.frequency') }}</span><strong>{{ manifestFrequency }}</strong></div>
-              <div><span>{{ $t('strategyV2.markets') }}</span><strong>{{ (manifest.markets || []).join(', ') || '-' }}</strong></div>
-              <div><span>{{ $t('strategyV2.universe') }}</span><strong>{{ universeLabel }}</strong></div>
-            </div>
-          </div>
-
-          <div class="panel-heading runtime-heading">
-            <div>
-              <span class="step-badge">2</span>
-              <h2>{{ mode === 'factor' ? $t('strategyV2.factorResearch.runtimeTitle') : $t('strategyV2.runtimeTitle') }}</h2>
-            </div>
-          </div>
-          <p class="section-hint">{{ mode === 'factor' ? $t('strategyV2.factorResearch.runtimeHint') : $t('strategyV2.runtimeHint') }}</p>
-          <a-form layout="vertical">
-            <div class="form-grid">
-              <a-form-item :label="$t('backtest-center.startDate')">
-                <a-date-picker v-model="form.startDate" :disabled-date="disabledStartDate" class="full-width" />
-              </a-form-item>
-              <a-form-item :label="$t('backtest-center.endDate')">
-                <a-date-picker v-model="form.endDate" :disabled-date="disabledEndDate" class="full-width" />
-              </a-form-item>
-              <a-form-item v-if="mode === 'portfolio'" :label="$t('backtest-center.initialCapital')">
-                <a-input-number v-model="form.initialCapital" :min="10" class="full-width" />
-              </a-form-item>
-              <a-form-item :label="$t('backtest-center.commission')">
-                <a-input-number v-model="form.commission" :min="0" :max="1" :step="0.0001" class="full-width" />
-              </a-form-item>
-              <a-form-item :label="$t('backtest-center.slippage')">
-                <a-input-number v-model="form.slippage" :min="0" :max="1" :step="0.0001" class="full-width" />
-              </a-form-item>
-              <a-form-item v-if="mode === 'portfolio'" :label="$t('strategyV2.leverageEnabled')">
-                <div class="switch-row">
-                  <a-switch v-model="form.leverageEnabled" :disabled="!leverageAllowed" />
-                  <span>{{ leverageAllowed ? $t('strategyV2.backtest.optional') : $t('strategyV2.codeOwned') }}</span>
-                </div>
-              </a-form-item>
-              <a-form-item v-if="mode === 'portfolio' && form.leverageEnabled" :label="$t('strategyV2.leverageMultiplier')">
-                <a-input-number v-model="form.leverage" :min="1" :max="maxLeverage" :step="0.5" class="full-width" />
-              </a-form-item>
-            </div>
-
+            <a-radio-group
+              v-if="mode === 'portfolio'"
+              v-model="sourceCategory"
+              class="source-category-switch"
+              button-style="solid"
+              size="small"
+              data-testid="backtest-source-category"
+              @change="handleSourceCategoryChange"
+            >
+              <a-radio-button value="all">
+                {{ $t('strategyV2.backtest.sourceCategoryAll') }} {{ sources.length }}
+              </a-radio-button>
+              <a-radio-button value="script">
+                {{ $t('strategyV2.cta') }} {{ ctaSources.length }}
+              </a-radio-button>
+              <a-radio-button value="portfolio_strategy" :title="$t('strategyV2.portfolio')">
+                {{ $t('strategyV2.portfolio') }} {{ portfolioSources.length }}
+              </a-radio-button>
+            </a-radio-group>
+            <a-select
+              v-model="form.sourceId"
+              class="full-width"
+              show-search
+              option-filter-prop="children"
+              data-testid="backtest-source-select"
+              :loading="sourcesLoading"
+              :placeholder="$t('backtest-center.strategyPlaceholder')"
+              @change="selectSource"
+              @dropdownVisibleChange="onSourceDropdownVisibleChange"
+            >
+              <a-select-option v-for="item in availableSources" :key="item.id" :value="item.id">
+                {{ item.name }} · {{ sourceTypeLabel(item) }}
+              </a-select-option>
+            </a-select>
             <a-alert
-              v-if="backtestRangePolicy"
-              class="range-limit-alert"
-              :type="backtestRangeExceeded ? 'error' : 'info'"
+              v-if="mode === 'portfolio' && sourceCategory === 'portfolio_strategy' && !portfolioSources.length"
+              class="source-empty-alert"
+              type="info"
               show-icon
-              :message="backtestRangeAlertTitle"
-              :description="backtestRangeAlertDescription"
+              :message="$t('strategyV2.backtest.noPortfolioSourceTitle')"
+              :description="$t('strategyV2.backtest.noPortfolioSourceHint')"
             />
 
-            <div v-if="mode === 'portfolio' && paramDefinitions.length" class="params-section">
-              <div class="subheading">
-                <h3>{{ $t('backtest-center.codeParams') }}</h3>
+            <div v-if="manifest" class="manifest-card">
+              <div class="manifest-title">
+                <a-icon type="safety-certificate" />
+                {{ $t('strategyV2.manifestTitle') }}
+              </div>
+              <div class="manifest-grid">
+                <div><span>{{ $t('strategyV2.strategyType') }}</span><strong>{{ strategyTypeLabel }}</strong></div>
+                <div><span>{{ $t('strategyV2.frequency') }}</span><strong>{{ manifestFrequency }}</strong></div>
+                <div><span>{{ $t('strategyV2.markets') }}</span><strong>{{ (manifest.markets || []).join(', ') || '-' }}</strong></div>
+                <div><span>{{ $t('strategyV2.universe') }}</span><strong>{{ universeLabel }}</strong></div>
+              </div>
+            </div>
+          </section>
+          <a-form layout="vertical">
+            <section class="config-section config-section--runtime">
+              <div class="panel-heading config-section__heading">
+                <div>
+                  <span class="step-badge">2</span>
+                  <h2>{{ mode === 'factor' ? $t('strategyV2.factorResearch.runtimeTitle') : $t('strategyV2.runtimeTitle') }}</h2>
+                </div>
+              </div>
+              <p class="section-hint config-section__hint">{{ mode === 'factor' ? $t('strategyV2.factorResearch.runtimeHint') : $t('strategyV2.runtimeHint') }}</p>
+              <div class="date-range-card">
+                <div class="range-presets" data-testid="backtest-range-presets">
+                  <span class="range-presets__label">{{ $t('backtest-center.quickRange.label') }}</span>
+                  <div class="range-presets__buttons">
+                    <a-tooltip v-for="preset in rangePresetOptions" :key="preset.key" :title="preset.tooltip">
+                      <span class="range-preset-wrap">
+                        <a-button
+                          size="small"
+                          :type="preset.active ? 'primary' : 'default'"
+                          :disabled="preset.disabled"
+                          :aria-pressed="preset.active ? 'true' : 'false'"
+                          :data-testid="`backtest-range-${preset.key}`"
+                          @click="applyRangePreset(preset)"
+                        >
+                          {{ preset.label }}
+                        </a-button>
+                      </span>
+                    </a-tooltip>
+                  </div>
+                </div>
+                <div class="date-range-fields">
+                  <a-form-item :label="$t('backtest-center.startDate')">
+                    <a-date-picker v-model="form.startDate" :disabled-date="disabledStartDate" class="full-width" />
+                  </a-form-item>
+                  <span class="date-range-arrow"><a-icon type="arrow-right" /></span>
+                  <a-form-item :label="$t('backtest-center.endDate')">
+                    <a-date-picker v-model="form.endDate" :disabled-date="disabledEndDate" class="full-width" />
+                  </a-form-item>
+                </div>
+                <div
+                  v-if="backtestRangePolicy"
+                  class="range-policy-note"
+                  :class="{ 'is-error': backtestRangeExceeded }"
+                >
+                  <a-icon :type="backtestRangeExceeded ? 'warning' : 'info-circle'" />
+                  <div>
+                    <strong>{{ backtestRangeAlertTitle }}</strong>
+                    <span>{{ backtestRangeAlertDescription }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <a-form-item v-if="mode === 'portfolio'" :label="$t('backtest-center.initialCapital')">
+                  <a-input-number v-model="form.initialCapital" :min="10" class="full-width" />
+                </a-form-item>
+                <a-form-item :label="$t('backtest-center.commission')">
+                  <a-input-number v-model="form.commission" :min="0" :max="1" :step="0.0001" class="full-width" />
+                </a-form-item>
+                <a-form-item :label="$t('backtest-center.slippage')">
+                  <a-input-number v-model="form.slippage" :min="0" :max="1" :step="0.0001" class="full-width" />
+                </a-form-item>
+                <a-form-item v-if="mode === 'portfolio'" :label="$t('strategyV2.leverageEnabled')">
+                  <div class="switch-row">
+                    <a-switch v-model="form.leverageEnabled" :disabled="!leverageAllowed" />
+                    <span>{{ leverageAllowed ? $t('strategyV2.backtest.optional') : $t('strategyV2.codeOwned') }}</span>
+                  </div>
+                </a-form-item>
+                <a-form-item v-if="mode === 'portfolio' && form.leverageEnabled" :label="$t('strategyV2.leverageMultiplier')">
+                  <a-input-number v-model="form.leverage" :min="1" :max="maxLeverage" :step="0.5" class="full-width" />
+                </a-form-item>
+              </div>
+            </section>
+
+            <section v-if="mode === 'portfolio' && paramDefinitions.length" class="config-section params-section">
+              <div class="subheading config-section__heading">
+                <div>
+                  <span class="step-badge">3</span>
+                  <h3>{{ $t('backtest-center.codeParams') }}</h3>
+                </div>
                 <span>{{ $t('strategyV2.backtest.paramCount', { count: paramDefinitions.length }) }}</span>
               </div>
               <div class="form-grid">
@@ -116,21 +176,39 @@
                     @change="value => setParam(item.name, value)"
                   />
                   <a-input-number
-                    v-else
+                    v-else-if="['integer', 'number', 'percent'].includes(item.type)"
                     :value="params[item.name]"
                     :min="item.min"
                     :max="item.max"
                     :step="item.step || 1"
+                    :formatter="item.type === 'percent' ? formatRatioPercent : undefined"
+                    :parser="item.type === 'percent' ? parseRatioPercent : undefined"
                     class="full-width"
                     @change="value => setParam(item.name, value)"
                   />
+                  <a-select
+                    v-else-if="parameterOptions(item).length"
+                    :value="params[item.name]"
+                    class="full-width"
+                    @change="value => setParam(item.name, value)"
+                  >
+                    <a-select-option v-for="option in parameterOptions(item)" :key="String(option.value)" :value="option.value">
+                      {{ parameterOptionLabel(item, option) }}
+                    </a-select-option>
+                  </a-select>
+                  <a-input v-else :value="params[item.name]" @input="event => setParam(item.name, event.target.value)" />
+                  <div v-if="parameterDescription(item)" class="param-description">{{ parameterDescription(item) }}</div>
                 </a-form-item>
               </div>
-            </div>
+              <p class="section-hint">{{ $t('strategyBuilder.sourceContractHint') }}</p>
+            </section>
 
-            <div v-if="mode === 'factor'" class="params-section factor-settings">
-              <div class="subheading">
-                <h3>{{ $t('strategyV2.factorResearch.settings') }}</h3>
+            <section v-if="mode === 'factor'" class="config-section params-section factor-settings">
+              <div class="subheading config-section__heading">
+                <div>
+                  <span class="step-badge">3</span>
+                  <h3>{{ $t('strategyV2.factorResearch.settings') }}</h3>
+                </div>
                 <span>{{ $t('strategyV2.factorResearch.independentMode') }}</span>
               </div>
               <a-alert
@@ -160,6 +238,17 @@
                   <div class="switch-row"><a-switch v-model="factorForm.neutralizeIndustry" /><span>{{ $t('strategyV2.factorResearch.neutralizationHint') }}</span></div>
                 </a-form-item>
               </div>
+            </section>
+
+            <div v-if="fundamentalDependencies.length" class="dependency-summary">
+              <a-icon type="warning" />
+              <div>
+                <strong>{{ $t('strategyV2.backtest.fundamentalDependencyTitle') }}</strong>
+                <span>{{ fundamentalDependencies.join(', ') }}</span>
+              </div>
+              <a-tooltip :title="$t('strategyV2.backtest.fundamentalDependencyHint', { fields: fundamentalDependencies.join(', ') })">
+                <a-icon type="question-circle" />
+              </a-tooltip>
             </div>
 
           </a-form>
@@ -181,10 +270,10 @@
       </section>
 
       <section class="panel result-panel">
-        <div class="panel-heading">
+        <div class="panel-heading result-heading">
           <div>
-            <span class="step-badge">3</span>
             <h2>{{ mode === 'factor' ? $t('strategyV2.factorResearch.workspace') : $t('backtest-center.resultOverview') }}</h2>
+            <span v-if="source" class="result-source-name">{{ source.name }}</span>
           </div>
           <span v-if="selectedRun" class="run-id">{{ mode === 'factor' ? 'FR-' : '#' }}{{ selectedRun.id || selectedRun.runId }}</span>
         </div>
@@ -247,7 +336,7 @@
     >
       <div class="drawer-history-header" data-testid="backtest-history">
         <p>{{ mode === 'factor' ? $t('strategyV2.factorResearch.historyDesc') : $t('strategyV2.backtest.historyDesc') }}</p>
-        <a-button icon="reload" size="small" :loading="historyLoading" @click="loadHistory">
+        <a-button icon="reload" size="small" :loading="historyLoading" @click="refreshCurrentHistory">
           {{ $t('backtest-center.refreshHistory') }}
         </a-button>
       </div>
@@ -316,17 +405,27 @@ import {
 } from '@/api/strategy'
 import PortfolioResult from './PortfolioResult.vue'
 import FactorResearchResult from './FactorResearchResult.vue'
+import {
+  strategyParameterDescription,
+  strategyParameterLabel,
+  strategyParameterOptionLabel,
+  strategyParameterOptions
+} from '@/utils/strategyParameterPresentation'
+import { ratioPercentInputFormatter, ratioPercentInputParser } from '@/utils/numberFormat'
 
 export default {
   name: 'BacktestCenter',
   components: { PortfolioResult, FactorResearchResult },
   data () {
+    const latestCompleteDate = moment().subtract(1, 'day').startOf('day')
     return {
       mode: 'portfolio',
       sources: [],
+      sourcesLoading: false,
       portfolioHistory: [],
       factorHistory: [],
       source: null,
+      sourceCategory: 'all',
       manifest: null,
       backtestRangePolicy: null,
       params: {},
@@ -338,14 +437,19 @@ export default {
       runTimer: null,
       historyLoading: false,
       historyVisible: false,
+      historyLoadedByMode: { portfolio: false, factor: false },
+      historyRequestSequence: 0,
       historyDetailLoading: false,
       historyDetailRunId: null,
+      pageReady: false,
+      sourceLoadSequence: 0,
+      sourceContractLoading: false,
       equityChart: null,
       chartResizeObserver: null,
       form: {
         sourceId: null,
-        startDate: moment().subtract(1, 'year'),
-        endDate: moment(),
+        startDate: latestCompleteDate.clone().subtract(1, 'year'),
+        endDate: latestCompleteDate,
         initialCapital: 10000,
         commission: 0.0005,
         slippage: 0.0005,
@@ -361,7 +465,10 @@ export default {
     }
   },
   computed: {
-    ...mapState({ navTheme: state => state.app.theme }),
+    ...mapState({
+      navTheme: state => state.app.theme,
+      primaryColor: state => state.app.color || '#52C41A'
+    }),
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
     },
@@ -369,7 +476,14 @@ export default {
       return this.mode === 'portfolio' ? this.result : this.factorResult
     },
     availableSources () {
-      if (this.mode !== 'factor') return this.sources
+      if (this.mode === 'factor') return this.portfolioSources
+      if (this.sourceCategory === 'all') return this.sources
+      return this.sources.filter(item => item.asset_type === this.sourceCategory)
+    },
+    ctaSources () {
+      return this.sources.filter(item => item.asset_type !== 'portfolio_strategy')
+    },
+    portfolioSources () {
       return this.sources.filter(item => item.asset_type === 'portfolio_strategy')
     },
     history () {
@@ -406,6 +520,10 @@ export default {
       const subscriptions = (this.manifest && this.manifest.subscriptions) || []
       return (this.manifest && this.manifest.primaryFrequency) || (subscriptions[0] && subscriptions[0].frequency) || '-'
     },
+    fundamentalDependencies () {
+      const dependencies = this.manifest && this.manifest.fundamentalDependencies
+      return Array.isArray(dependencies) ? dependencies : []
+    },
     backtestRangeLimitDays () {
       if (!this.backtestRangePolicy) return null
       const value = Number(this.mode === 'factor'
@@ -416,6 +534,25 @@ export default {
     selectedRangeDays () {
       if (!this.form.startDate || !this.form.endDate) return null
       return this.form.endDate.clone().startOf('day').diff(this.form.startDate.clone().startOf('day'), 'days')
+    },
+    rangePresetOptions () {
+      const endDate = this.rangePresetEndDate()
+      const presets = [
+        { key: '1m', amount: 1, unit: 'month' },
+        { key: '6m', amount: 6, unit: 'month' },
+        { key: '1y', amount: 1, unit: 'year' },
+        { key: '2y', amount: 2, unit: 'year' }
+      ]
+      const options = presets.map(preset => this.decorateRangePreset(preset, endDate))
+      if (this.backtestRangeLimitDays !== null && !options.some(item => item.rangeDays === this.backtestRangeLimitDays)) {
+        options.push(this.decorateRangePreset({
+          key: 'max',
+          amount: this.backtestRangeLimitDays,
+          unit: 'day',
+          dynamic: true
+        }, endDate))
+      }
+      return options
     },
     estimatedBacktestBars () {
       if (!this.backtestRangePolicy || this.selectedRangeDays === null || this.selectedRangeDays < 0) return 0
@@ -447,7 +584,7 @@ export default {
       })
     },
     runDisabled () {
-      return !this.manifest || this.backtestRangeExceeded || (this.mode === 'factor' && !this.factorCompatible)
+      return this.sourceContractLoading || !this.manifest || this.backtestRangeExceeded || (this.mode === 'factor' && !this.factorCompatible)
     },
     strategyTypeLabel () {
       const type = String((this.manifest && this.manifest.strategyType) || 'cta')
@@ -466,12 +603,18 @@ export default {
       const schema = this.parseObject(this.source && this.source.param_schema)
       return Array.isArray(schema.params) ? schema.params : []
     },
+    hasBenchmarkMetrics () {
+      if (!this.result || !['available', 'partial'].includes(this.result.benchmarkStatus)) return false
+      return Number.isFinite(Number(this.result.benchmarkTotalReturn)) &&
+        Number.isFinite(Number(this.result.excessReturn)) &&
+        Array.isArray(this.result.benchmarkCurve) && this.result.benchmarkCurve.length > 0
+    },
     metrics () {
       if (!this.result) return []
       return [
         { key: 'return', label: this.$t('backtest-center.metrics.totalReturn'), value: this.formatPercent(this.result.totalReturn), tone: Number(this.result.totalReturn) >= 0 ? 'positive' : 'negative' },
-        { key: 'benchmark', label: this.$t('strategyV2.backtest.benchmarkReturn'), value: this.result.benchmarkStatus === 'available' ? this.formatPercent(this.result.benchmarkTotalReturn) : '-', tone: Number(this.result.benchmarkTotalReturn) >= 0 ? 'positive' : 'negative' },
-        { key: 'excess', label: this.$t('strategyV2.backtest.excessReturn'), value: this.result.benchmarkStatus === 'available' ? this.formatPercent(this.result.excessReturn) : '-', tone: Number(this.result.excessReturn) >= 0 ? 'positive' : 'negative' },
+        { key: 'benchmark', label: this.$t('strategyV2.backtest.benchmarkReturn'), value: this.hasBenchmarkMetrics ? this.formatPercent(this.result.benchmarkTotalReturn) : '-', tone: this.hasBenchmarkMetrics ? (Number(this.result.benchmarkTotalReturn) >= 0 ? 'positive' : 'negative') : '' },
+        { key: 'excess', label: this.$t('strategyV2.backtest.excessReturn'), value: this.hasBenchmarkMetrics ? this.formatPercent(this.result.excessReturn) : '-', tone: this.hasBenchmarkMetrics ? (Number(this.result.excessReturn) >= 0 ? 'positive' : 'negative') : '' },
         { key: 'drawdown', label: this.$t('backtest-center.metrics.maxDrawdown'), value: this.formatPercent(this.result.maxDrawdown), tone: 'negative' },
         { key: 'executions', label: this.$t('strategyV2.backtest.executions'), value: Number(this.result.totalExecutions || 0), tone: '' },
         { key: 'trades', label: this.$t('strategyV2.backtest.closedTrades'), value: Number(this.result.totalTrades || 0), tone: '' },
@@ -560,19 +703,29 @@ export default {
     isDarkTheme () {
       this.$nextTick(this.renderEquityChart)
     },
+    primaryColor () {
+      this.$nextTick(this.renderEquityChart)
+    },
     mode (value) {
       this.handleModeChange(value)
+    },
+    '$route.query.sourceId' () {
+      if (this.pageReady) this.syncRouteSource({ fallback: true })
     }
   },
   async mounted () {
-    await this.refreshPage()
-    const routeSourceId = Number(this.$route.query.sourceId)
-    const sourceId = routeSourceId || (this.sources[0] && Number(this.sources[0].id))
-    if (sourceId) {
-      this.form.sourceId = sourceId
-      await this.selectSource(sourceId)
-    }
+    await this.loadSources()
+    this.pageReady = true
+    await this.syncRouteSource({ fallback: true })
+    this.loadHistory({ mode: this.mode }).catch(() => {})
     window.addEventListener('resize', this.resizeEquityChart)
+  },
+  activated () {
+    if (this.pageReady) {
+      this.syncRouteSource({ fallback: true, forceReload: true, preserveParams: true }).catch(error => {
+        this.$message.error((error && error.backendMessage) || this.$t('strategyV2.backtest.runFailed'))
+      })
+    }
   },
   beforeDestroy () {
     window.removeEventListener('resize', this.resizeEquityChart)
@@ -581,6 +734,13 @@ export default {
     if (this.equityChart) this.equityChart.dispose()
   },
   methods: {
+    themeColorWithAlpha (alpha) {
+      const hex = String(this.primaryColor || '#52C41A').trim().replace('#', '')
+      const normalized = hex.length === 3 ? hex.split('').map(char => char + char).join('') : hex
+      if (!/^[0-9a-f]{6}$/i.test(normalized)) return `rgba(82, 196, 26, ${alpha})`
+      const value = Number.parseInt(normalized, 16)
+      return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`
+    },
     renderEquityChart () {
       if (!this.$refs.equityChart || !this.equityPoints.length) {
         if (this.equityChart) this.equityChart.clear()
@@ -625,7 +785,7 @@ export default {
       }
       this.equityChart.setOption({
         animationDuration: 350,
-        color: ['#52c41a', '#f5a623'],
+        color: [this.primaryColor, '#94a3b8'],
         grid: { left: 12, right: 18, top: 46, bottom: 58, containLabel: true },
         legend: { top: 4, left: 4, textStyle: { color: textColor }, data: benchmarkData.length ? [strategyName, benchmarkName] : [strategyName] },
         tooltip: {
@@ -660,7 +820,7 @@ export default {
         },
         dataZoom: [
           { type: 'inside', xAxisIndex: 0, filterMode: 'none', zoomOnMouseWheel: true, moveOnMouseMove: true },
-          { type: 'slider', xAxisIndex: 0, height: 22, bottom: 7, borderColor: 'transparent', backgroundColor: this.isDarkTheme ? '#0d0d0d' : '#f1f5f9', fillerColor: this.isDarkTheme ? 'rgba(82,196,26,.18)' : 'rgba(82,196,26,.12)', textStyle: { color: textColor }, showDetail: false }
+          { type: 'slider', xAxisIndex: 0, height: 22, bottom: 7, borderColor: 'transparent', backgroundColor: this.isDarkTheme ? '#0d0d0d' : '#f1f5f9', fillerColor: this.themeColorWithAlpha(this.isDarkTheme ? 0.18 : 0.12), textStyle: { color: textColor }, showDetail: false }
         ],
         series
       }, true)
@@ -674,24 +834,69 @@ export default {
       try { return JSON.parse(value) } catch (error) { return {} }
     },
     async refreshPage () {
-      await Promise.all([this.loadSources(), this.loadHistory()])
+      await Promise.all([
+        this.loadSources(),
+        this.loadHistory({ mode: this.mode, force: true })
+      ])
+      await this.syncRouteSource({ fallback: true })
     },
     async loadSources () {
-      const response = await getScriptSourceList()
-      this.sources = (response.data && response.data.items) || []
-    },
-    async loadHistory () {
-      this.historyLoading = true
+      this.sourcesLoading = true
       try {
-        const [portfolioResponse, factorResponse] = await Promise.all([
-          getStrategyBacktestHistory({ limit: 24 }),
-          getStrategyFactorResearchHistory({ limit: 24 })
-        ])
-        this.portfolioHistory = Array.isArray(portfolioResponse.data) ? portfolioResponse.data : []
-        this.factorHistory = Array.isArray(factorResponse.data) ? factorResponse.data : []
+        const response = await getScriptSourceList()
+        this.sources = (response.data && response.data.items) || []
       } finally {
-        this.historyLoading = false
+        this.sourcesLoading = false
       }
+    },
+    onSourceDropdownVisibleChange (visible) {
+      if (!visible || this.sourcesLoading) return
+      this.loadSources().catch(error => {
+        console.warn('Refresh backtest sources failed:', error)
+      })
+    },
+    async loadHistory ({ mode = this.mode, force = false } = {}) {
+      const requestedMode = mode === 'factor' ? 'factor' : 'portfolio'
+      if (!force && this.historyLoadedByMode[requestedMode]) return
+      const requestSequence = ++this.historyRequestSequence
+      if (requestedMode === this.mode) this.historyLoading = true
+      try {
+        const response = requestedMode === 'factor'
+          ? await getStrategyFactorResearchHistory({ limit: 24 })
+          : await getStrategyBacktestHistory({ limit: 24 })
+        const items = Array.isArray(response.data) ? response.data : []
+        if (requestedMode === 'factor') this.factorHistory = items
+        else this.portfolioHistory = items
+        this.historyLoadedByMode = { ...this.historyLoadedByMode, [requestedMode]: true }
+      } finally {
+        if (requestSequence === this.historyRequestSequence || requestedMode === this.mode) {
+          this.historyLoading = false
+        }
+      }
+    },
+    async refreshCurrentHistory () {
+      return this.loadHistory({ mode: this.mode, force: true })
+    },
+    openHistoryDrawer () {
+      this.historyVisible = true
+      this.loadHistory({ mode: this.mode }).catch(error => {
+        this.$message.error((error && error.backendMessage) || this.$t('strategyV2.backtest.historyLoadFailed'))
+      })
+    },
+    async syncRouteSource ({ fallback = false, forceReload = false, preserveParams = false } = {}) {
+      const routeSourceId = Number(this.$route.query.sourceId)
+      const routeSource = Number.isFinite(routeSourceId) && routeSourceId > 0
+        ? this.sources.find(item => Number(item.id) === routeSourceId)
+        : null
+      if (routeSource && this.mode === 'portfolio') {
+        this.sourceCategory = routeSource.asset_type === 'portfolio_strategy' ? 'portfolio_strategy' : 'script'
+      }
+      const target = routeSource || (fallback ? this.availableSources[0] : null)
+      if (!target) return
+      const sourceId = Number(target.id)
+      if (!forceReload && Number(this.form.sourceId) === sourceId && Number(this.source && this.source.id) === sourceId && this.manifest) return
+      this.form.sourceId = sourceId
+      await this.selectSource(sourceId, { preserveParams })
     },
     async handleModeChange () {
       this.selectedRun = null
@@ -708,25 +913,69 @@ export default {
           this.backtestRangePolicy = null
         }
       }
+      this.loadHistory({ mode: this.mode }).catch(() => {})
       this.applyBacktestRangePolicy()
       this.$nextTick(() => this.resizeEquityChart())
     },
-    async selectSource (sourceId) {
+    async handleSourceCategoryChange () {
+      const currentId = Number(this.form.sourceId)
+      if (this.availableSources.some(item => Number(item.id) === currentId)) return
+      const nextSource = this.availableSources[0]
+      this.form.sourceId = nextSource ? Number(nextSource.id) : null
+      if (nextSource) {
+        await this.selectSource(nextSource.id)
+      } else {
+        this.source = null
+        this.manifest = null
+        this.backtestRangePolicy = null
+        this.result = null
+      }
+    },
+    async selectSource (sourceId, { preserveParams = false } = {}) {
+      const requestSequence = ++this.sourceLoadSequence
+      const previousSourceId = Number(this.source && this.source.id)
+      const previousCodeHash = String((this.manifest && this.manifest.codeHash) || '')
+      const previousParams = { ...this.params }
+      const previousResult = this.result
+      const previousFactorResult = this.factorResult
+      const previousSelectedRun = this.selectedRun
+      const previousLeverageEnabled = this.form.leverageEnabled
+      const previousLeverage = this.form.leverage
+      this.sourceContractLoading = true
       this.result = null
       this.factorResult = null
       this.selectedRun = null
       this.form.leverageEnabled = false
       this.form.leverage = 1
-      const response = await getScriptSourceDetail(sourceId)
-      this.source = response.data
-      const compiled = await compileScriptSource({ sourceId })
-      this.manifest = compiled.data && compiled.data.manifest
-      this.backtestRangePolicy = compiled.data && compiled.data.backtestRangePolicy
-      this.applyBacktestRangePolicy()
-      this.params = this.paramDefinitions.reduce((output, item) => {
-        output[item.name] = item.default
-        return output
-      }, {})
+      try {
+        const [response, compiled] = await Promise.all([
+          getScriptSourceDetail(sourceId),
+          compileScriptSource({ sourceId })
+        ])
+        if (requestSequence !== this.sourceLoadSequence) return
+        this.source = response.data
+        this.manifest = compiled.data && compiled.data.manifest
+        this.backtestRangePolicy = compiled.data && compiled.data.backtestRangePolicy
+        this.applyBacktestRangePolicy()
+        const nextCodeHash = String((this.manifest && this.manifest.codeHash) || '')
+        const sameSourceVersion = Number(sourceId) === previousSourceId &&
+          previousCodeHash && nextCodeHash && previousCodeHash === nextCodeHash
+        if (preserveParams && sameSourceVersion) {
+          this.result = previousResult
+          this.factorResult = previousFactorResult
+          this.selectedRun = previousSelectedRun
+          this.form.leverageEnabled = previousLeverageEnabled
+          this.form.leverage = previousLeverage
+        }
+        this.params = this.paramDefinitions.reduce((output, item) => {
+          output[item.name] = preserveParams && sameSourceVersion && Object.prototype.hasOwnProperty.call(previousParams, item.name)
+            ? previousParams[item.name]
+            : item.default
+          return output
+        }, {})
+      } finally {
+        if (requestSequence === this.sourceLoadSequence) this.sourceContractLoading = false
+      }
     },
     sourceTypeLabel (item) {
       if (String(item.template_key || '').startsWith('robot_v2_')) return this.$t('strategyV2.robot')
@@ -739,9 +988,22 @@ export default {
       return [item.symbol, marketTypeLabel].filter(Boolean).join(' · ')
     },
     parameterLabel (item) {
-      if (!item.labelKey) return item.name
-      const label = this.$t(item.labelKey)
-      return label === item.labelKey ? item.name : label
+      return strategyParameterLabel(item, key => this.$t(key))
+    },
+    parameterDescription (item) {
+      return strategyParameterDescription(item, key => this.$t(key), this.$i18n && this.$i18n.locale)
+    },
+    parameterOptions (item) {
+      return strategyParameterOptions(item)
+    },
+    parameterOptionLabel (item, option) {
+      return strategyParameterOptionLabel(item, option, key => this.$t(key))
+    },
+    formatRatioPercent (value) {
+      return ratioPercentInputFormatter(value)
+    },
+    parseRatioPercent (value) {
+      return ratioPercentInputParser(value)
     },
     setParam (name, value) {
       this.params = { ...this.params, [name]: value }
@@ -754,11 +1016,53 @@ export default {
       return current.isBefore(endDate.clone().subtract(this.backtestRangeLimitDays, 'days'), 'day')
     },
     disabledEndDate (current) {
-      if (!current || !this.form.startDate) return false
+      if (!current) return false
+      if (current.isAfter(moment().subtract(1, 'day'), 'day')) return true
+      if (!this.form.startDate) return false
       const startDate = this.form.startDate.clone().startOf('day')
       if (current.isBefore(startDate, 'day')) return true
       if (this.backtestRangeLimitDays === null) return false
       return current.isAfter(startDate.clone().add(this.backtestRangeLimitDays, 'days'), 'day')
+    },
+    rangePresetEndDate () {
+      const latestCompleteDate = moment().subtract(1, 'day').startOf('day')
+      if (!this.form.endDate) return latestCompleteDate
+      const selectedEndDate = this.form.endDate.clone().startOf('day')
+      return selectedEndDate.isAfter(latestCompleteDate, 'day') ? latestCompleteDate : selectedEndDate
+    },
+    decorateRangePreset (preset, endDate) {
+      const startDate = endDate.clone().subtract(preset.amount, preset.unit).startOf('day')
+      const rangeDays = endDate.diff(startDate, 'days')
+      const disabled = this.backtestRangeLimitDays !== null && rangeDays > this.backtestRangeLimitDays
+      const active = Boolean(
+        this.form.startDate && this.form.endDate &&
+        this.form.startDate.clone().startOf('day').isSame(startDate, 'day') &&
+        this.form.endDate.clone().startOf('day').isSame(endDate, 'day')
+      )
+      const label = preset.dynamic
+        ? this.$t('backtest-center.quickRange.max', { days: preset.amount })
+        : this.$t(`backtest-center.quickRange.${preset.key}`)
+      return {
+        ...preset,
+        startDate,
+        endDate: endDate.clone(),
+        rangeDays,
+        disabled,
+        active,
+        label,
+        tooltip: disabled
+          ? this.$t('backtest-center.quickRange.unavailable', {
+            range: label,
+            timeframe: this.manifestFrequency,
+            maxDays: this.backtestRangeLimitDays
+          })
+          : ''
+      }
+    },
+    applyRangePreset (preset) {
+      if (!preset || preset.disabled) return
+      this.form.startDate = preset.startDate.clone()
+      this.form.endDate = preset.endDate.clone()
     },
     applyBacktestRangePolicy () {
       if (this.backtestRangeLimitDays === null || !this.form.startDate || !this.form.endDate) return
@@ -791,6 +1095,11 @@ export default {
         this.$message.warning(this.$t('strategyV2.sourceContractRequired'))
         return
       }
+      if (this.form.endDate.isAfter(moment().subtract(1, 'day'), 'day')) {
+        this.form.endDate = moment().subtract(1, 'day').startOf('day')
+        this.applyBacktestRangePolicy()
+        this.$message.info(this.$t('strategyV2.backtest.endDateAdjusted'))
+      }
       if (!this.ensureBacktestRangeAllowed()) return
       this.running = true
       this.result = null
@@ -814,7 +1123,7 @@ export default {
         if (billing && typeof billing.remaining !== 'undefined') {
           this.$root.$emit('credits-updated', billing.remaining)
         }
-        await this.loadHistory()
+        await this.loadHistory({ mode: 'portfolio', force: true })
       } catch (error) {
         this.$message.error((error && error.backendMessage) || this.$t('strategyV2.backtest.runFailed'))
       } finally {
@@ -826,6 +1135,11 @@ export default {
       if (!this.form.sourceId) {
         this.$message.warning(this.$t('strategyV2.sourceContractRequired'))
         return
+      }
+      if (this.form.endDate.isAfter(moment().subtract(1, 'day'), 'day')) {
+        this.form.endDate = moment().subtract(1, 'day').startOf('day')
+        this.applyBacktestRangePolicy()
+        this.$message.info(this.$t('strategyV2.backtest.endDateAdjusted'))
       }
       if (!this.ensureBacktestRangeAllowed()) return
       this.running = true
@@ -845,7 +1159,7 @@ export default {
         })
         this.factorResult = response.data
         this.selectedRun = { id: response.data && response.data.runId }
-        await this.loadHistory()
+        await this.loadHistory({ mode: 'factor', force: true })
       } catch (error) {
         this.$message.error((error && error.backendMessage) || this.$t('strategyV2.factorResearch.runFailed'))
       } finally {
@@ -889,9 +1203,16 @@ export default {
           this.form.sourceId = Number(run.source_id)
           const detail = await getScriptSourceDetail(run.source_id)
           this.source = detail.data
+          this.sourceCategory = this.source && this.source.asset_type === 'portfolio_strategy'
+            ? 'portfolio_strategy'
+            : 'script'
           const compiled = await compileScriptSource({ sourceId: run.source_id })
           this.manifest = compiled.data && compiled.data.manifest
           this.backtestRangePolicy = compiled.data && compiled.data.backtestRangePolicy
+        } else if (this.source) {
+          this.sourceCategory = this.source.asset_type === 'portfolio_strategy'
+            ? 'portfolio_strategy'
+            : 'script'
         }
         this.historyVisible = false
       } catch (error) {
@@ -988,38 +1309,81 @@ export default {
 </script>
 
 <style lang="less" scoped>
-.backtest-page { min-height: 100%; padding: 18px 22px 28px; background: #f4f6f8; color: #182230; }
-.hero-card, .panel { border: 1px solid #e4e9ef; border-radius: 12px; background: #fff; box-shadow: 0 10px 30px rgba(15, 35, 60, 0.055); }
-.hero-card { display: flex; justify-content: space-between; align-items: center; gap: 22px; padding: 18px 22px; margin-bottom: 14px; }
-.hero-card h1 { margin: 2px 0 4px; font-size: 24px; color: #17233d; }
-.hero-card p, .section-hint, .history-title-row p { margin: 0; color: #718096; line-height: 1.55; }
-.eyebrow { color: #52c41a; font-weight: 800; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+.backtest-page { min-height: 100%; padding: 0 14px 22px; background: #f1f3f5; color: #182230; }
+.workspace-toolbar, .panel { border: 1px solid #e2e6eb; border-radius: 10px; background: #fff; box-shadow: 0 6px 20px rgba(15, 35, 60, 0.045); }
+.workspace-toolbar { position: sticky; z-index: 20; top: 0; display: flex; width: calc(100% + 28px); align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; margin-right: -14px; margin-bottom: 10px; margin-left: -14px; padding: 7px 24px; border-radius: 0; }
+.workspace-toolbar__primary { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.workspace-toolbar__context { overflow: hidden; color: #718096; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.section-hint, .history-title-row p { margin: 0; color: #718096; line-height: 1.55; }
 .hero-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .hero-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 7px 10px; border-radius: 8px; color: #718096; background: #f7f9fb; font-size: 12px; }
+.source-category-switch { display: flex; width: 100%; margin-bottom: 9px; }
+.source-category-switch /deep/ .ant-radio-button-wrapper { flex: 1 1 0; min-width: 0; overflow: hidden; padding: 0 8px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.source-empty-alert { margin-top: 10px; }
 .hero-stat strong { color: #25364f; font-size: 16px; }
-.workspace-grid { display: grid; grid-template-columns: minmax(340px, 420px) minmax(620px, 1fr); gap: 14px; align-items: start; }
-.panel { padding: 18px; }
-.config-panel { position: sticky; top: 74px; display: flex; overflow: hidden; max-height: calc(100vh - 230px); flex-direction: column; padding: 0; }
-.config-scroll { min-height: 0; overflow-y: auto; padding: 18px 18px 10px; scrollbar-gutter: stable; }
-.run-action-bar { position: relative; z-index: 2; flex: none; padding: 12px 18px 16px; border-top: 1px solid #e8edf2; background: #fff; box-shadow: 0 -10px 24px rgba(15, 35, 60, 0.06); }
-.result-panel { min-height: calc(100vh - 190px); }
+.workspace-grid { display: grid; grid-template-columns: 332px minmax(620px, 1fr); gap: 10px; align-items: start; }
+.panel { padding: 14px; }
+.config-panel { position: sticky; top: 60px; display: flex; overflow: hidden; height: calc(100vh - 150px); min-height: 610px; flex-direction: column; padding: 0; }
+.config-scroll { min-height: 0; overflow-y: auto; padding: 10px 10px 4px; scrollbar-gutter: stable; }
+.run-action-bar { position: relative; z-index: 2; flex: none; padding: 10px 14px 14px; border-top: 1px solid #e8edf2; background: #fff; box-shadow: 0 -8px 20px rgba(15, 35, 60, 0.05); }
+.result-panel { min-height: calc(100vh - 150px); overflow: hidden; }
 .panel-heading, .panel-heading > div, .subheading, .history-title-row, .history-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .panel-heading > div { justify-content: flex-start; }
-.panel-heading h2, .history-title-row h2 { margin: 0; color: #17233d; font-size: 17px; }
-.step-badge { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 7px; color: #397d16; background: #f0f9e8; font-size: 11px; font-weight: 800; }
-.runtime-heading { margin-top: 22px; }
+.panel-heading h2, .history-title-row h2 { margin: 0; color: #17233d; font-size: 15px; }
+.step-badge { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 7px; color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 10%, transparent); font-size: 11px; font-weight: 800; }
+.theme-ready-tag { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 36%, transparent); color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 8%, transparent); }
+.config-section { margin: 0 0 10px; padding: 12px; border: 1px solid #e5eaf0; border-radius: 10px; background: #fafbfc; }
+.config-section__heading { min-height: 24px; margin-bottom: 10px; }
+.config-section__heading > div { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.config-section__heading h2,
+.config-section__heading h3 { overflow: hidden; margin: 0; color: #26364c; font-size: 14px; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.config-section__heading > span:last-child { flex: 0 0 auto; color: #7c8ca1; font-size: 11px; }
+.config-section__hint { margin: -2px 0 10px; }
+.config-section /deep/ .ant-form-item-label > label { color: #445269; font-size: 12px; font-weight: 600; }
 .full-width { width: 100%; }
-.manifest-card { margin-top: 12px; padding: 13px; border: 1px solid #dfe8f1; border-radius: 9px; background: #f8fbff; }
-.manifest-title { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; color: #315c85; font-weight: 700; }
+.manifest-card { margin-top: 10px; padding: 11px; border: 1px solid #e5e9ee; border-left: 3px solid var(--primary-color, #52c41a); border-radius: 8px; background: #fff; }
+.manifest-title { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; color: var(--primary-color, #52c41a); font-weight: 700; }
 .manifest-grid, .metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .manifest-grid div, .metric-card { display: flex; flex-direction: column; gap: 3px; }
 .manifest-grid span, .metric-card span, .assumption-strip span { color: #7c8ca1; font-size: 11px; }
 .manifest-grid strong { color: #23344d; overflow-wrap: anywhere; }
 .section-hint { margin: 7px 0 10px; font-size: 12px; }
-.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
-.range-limit-alert { margin: 0 0 14px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
+.form-grid /deep/ .ant-form-item { margin-bottom: 12px; }
+.date-range-card { margin-bottom: 12px; padding: 11px; border: 1px solid #e4e8ed; border-radius: 9px; background: #fff; }
+.range-presets { display: block; margin: 0 0 11px; }
+.range-presets__label { display: block; margin-bottom: 7px; color: #7c8ca1; font-size: 10px; font-weight: 600; }
+.range-presets__buttons { display: grid; min-width: 0; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.range-preset-wrap { display: block; min-width: 0; }
+.range-preset-wrap /deep/ .ant-btn-sm { width: 100%; min-width: 0; height: 28px; padding: 0 3px; border-radius: 7px; font-size: 10px; }
+.range-preset-wrap /deep/ .ant-btn-primary { border-color: var(--primary-color, #52c41a); background: var(--primary-color, #52c41a); box-shadow: 0 3px 10px color-mix(in srgb, var(--primary-color, #52c41a) 24%, transparent); }
+.range-preset-wrap /deep/ .ant-btn[disabled],
+.range-preset-wrap /deep/ .ant-btn[disabled]:hover,
+.range-preset-wrap /deep/ .ant-btn[disabled]:focus { border-color: #e1e5ea !important; background: #f0f2f4 !important; color: #a0a9b7 !important; box-shadow: none !important; }
+.date-range-fields { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr); align-items: end; gap: 5px; }
+.date-range-fields /deep/ .ant-form-item { margin-bottom: 0; }
+.date-range-fields /deep/ .ant-form-item-label { padding-bottom: 4px; line-height: 1; }
+.date-range-fields /deep/ .ant-form-item-label > label { color: #556277; font-size: 10px; }
+.date-range-fields /deep/ .ant-calendar-picker-input { height: 34px; border-color: #dfe4ea; border-radius: 7px; background: #fff; font-size: 11px; font-variant-numeric: tabular-nums; }
+.date-range-arrow { display: flex; height: 34px; align-items: center; justify-content: center; color: #9aa5b5; font-size: 10px; }
+.range-policy-note { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px; margin-top: 10px; padding-top: 9px; border-top: 1px solid #e1e6eb; color: #64748b; }
+.range-policy-note > .anticon { margin-top: 2px; color: var(--primary-color, #52c41a); }
+.range-policy-note div { min-width: 0; }
+.range-policy-note strong, .range-policy-note span { display: block; }
+.range-policy-note strong { color: #435168; font-size: 10px; line-height: 1.45; }
+.range-policy-note span { margin-top: 2px; color: #8994a5; font-size: 9px; line-height: 1.45; }
+.range-policy-note.is-error > .anticon, .range-policy-note.is-error strong { color: #dc2626; }
 .switch-row { display: flex; align-items: center; gap: 8px; min-height: 32px; color: #7c8ca1; font-size: 11px; }
-.params-section { margin: 2px 0 14px; padding-top: 12px; border-top: 1px solid #eef2f6; }
+.params-section { margin: 0 0 10px; padding: 12px; border: 1px solid #e5eaf0; }
+.dependency-summary { display: grid; grid-template-columns: 18px minmax(0, 1fr) 18px; align-items: start; gap: 8px; margin: 0 0 10px; padding: 10px; border: 1px solid color-mix(in srgb, #faad14 30%, #e7ebf0); border-radius: 8px; background: color-mix(in srgb, #faad14 5%, #fff); color: #ad6800; }
+.dependency-summary > div { min-width: 0; }
+.dependency-summary strong, .dependency-summary span { display: block; }
+.dependency-summary strong { font-size: 11px; }
+.dependency-summary span { overflow: hidden; margin-top: 2px; color: #7c8ca1; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dependency-summary > .anticon:last-child { cursor: help; color: #9aa5b5; }
+.result-heading { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #edf0f4; }
+.result-heading > div { min-width: 0; }
+.result-source-name { overflow: hidden; max-width: 420px; color: #7c8ca1; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .factor-contract-alert { margin: 10px 0 14px; }
 .subheading h3 { margin: 0; color: #26364c; font-size: 14px; }
 .subheading span { color: #7c8ca1; font-size: 11px; }
@@ -1033,28 +1397,28 @@ export default {
 .run-id { color: #8a97aa; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .result-empty { position: relative; min-height: calc(100vh - 265px); display: flex; overflow: hidden; flex-direction: column; align-items: center; justify-content: center; padding: 52px 30px; text-align: center; }
 .result-empty::before, .result-empty::after { position: absolute; width: 320px; height: 320px; border-radius: 50%; content: ''; pointer-events: none; filter: blur(2px); }
-.result-empty::before { top: 9%; right: 5%; background: radial-gradient(circle, rgba(82, 196, 26, .075), rgba(82, 196, 26, 0) 70%); }
-.result-empty::after { bottom: 3%; left: 4%; background: radial-gradient(circle, rgba(24, 144, 255, .055), rgba(24, 144, 255, 0) 70%); }
-.empty-hero-card { position: relative; z-index: 1; width: 100%; max-width: 700px; padding: 34px 42px 30px; border: 1px solid #e4ebf2; border-radius: 20px; background: linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(248, 252, 246, .94)); box-shadow: 0 18px 48px rgba(36, 59, 85, .09); }
-.empty-hero-card::before { position: absolute; top: 0; left: 18%; right: 18%; height: 3px; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, rgba(82, 196, 26, 0), #52c41a, rgba(82, 196, 26, 0)); content: ''; }
+.result-empty::before { top: 9%; right: 5%; background: radial-gradient(circle, color-mix(in srgb, var(--primary-color, #52c41a) 8%, transparent), transparent 70%); }
+.result-empty::after { bottom: 3%; left: 4%; background: radial-gradient(circle, color-mix(in srgb, var(--primary-color, #52c41a) 5%, transparent), transparent 70%); }
+.empty-hero-card { position: relative; z-index: 1; width: 100%; max-width: 700px; padding: 34px 42px 30px; border: 1px solid color-mix(in srgb, var(--primary-color, #52c41a) 16%, #e4ebf2); border-radius: 20px; background: linear-gradient(145deg, rgba(255, 255, 255, .98), color-mix(in srgb, var(--primary-color, #52c41a) 4%, #fff)); box-shadow: 0 18px 48px rgba(36, 59, 85, .09); }
+.empty-hero-card::before { position: absolute; top: 0; left: 18%; right: 18%; height: 3px; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, transparent, var(--primary-color, #52c41a), transparent); content: ''; }
 .result-running { min-height: 390px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 30px; text-align: center; color: #718096; }
 .result-running h3 { margin: 4px 0 0; color: #17233d; font-size: 18px; }
 .result-running p { max-width: 620px; margin: 0; line-height: 1.6; }
-.result-running > strong { color: #3f7f1f; font-variant-numeric: tabular-nums; }
-.running-icon { display: inline-flex; width: 64px; height: 64px; align-items: center; justify-content: center; border: 1px solid #d9f7be; border-radius: 22px; color: #52c41a; background: #f6ffed; font-size: 27px; }
+.result-running > strong { color: var(--primary-color, #52c41a); font-variant-numeric: tabular-nums; }
+.running-icon { display: inline-flex; width: 64px; height: 64px; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--primary-color, #52c41a) 28%, transparent); border-radius: 22px; color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 9%, transparent); font-size: 27px; }
 .running-contract { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 7px; }
 .running-contract span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid #e4e9ef; border-radius: 999px; color: #64748b; font-size: 11px; }
-.empty-orbit { display: inline-flex; width: 72px; height: 72px; align-items: center; justify-content: center; border: 1px solid #d8edcd; border-radius: 24px; color: #52c41a; background: linear-gradient(145deg, #fbfff8, #eefbe6); box-shadow: 0 10px 26px rgba(82, 196, 26, .13), 0 0 0 8px rgba(82, 196, 26, .045); font-size: 29px; transform: rotate(-4deg); }
+.empty-orbit { display: inline-flex; width: 72px; height: 72px; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--primary-color, #52c41a) 26%, transparent); border-radius: 24px; color: var(--primary-color, #52c41a); background: linear-gradient(145deg, #fff, color-mix(in srgb, var(--primary-color, #52c41a) 11%, #fff)); box-shadow: 0 10px 26px color-mix(in srgb, var(--primary-color, #52c41a) 14%, transparent), 0 0 0 8px color-mix(in srgb, var(--primary-color, #52c41a) 5%, transparent); font-size: 29px; transform: rotate(-4deg); }
 .empty-orbit > .anticon { transform: rotate(4deg); }
 .result-empty h3 { margin: 20px 0 7px; color: #23344d; font-size: 19px; }
 .result-empty p { max-width: 520px; margin: 0 auto; color: #7c8ca1; line-height: 1.65; }
 .empty-checks { display: flex; justify-content: center; gap: 9px; flex-wrap: wrap; margin-top: 20px; }
 .empty-checks span { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid #e7ebf0; border-radius: 999px; color: #7c8ca1; font-size: 11px; }
-.empty-checks span.done { color: #3f7f1f; border-color: #d9f7be; background: #f6ffed; }
+.empty-checks span.done { color: var(--primary-color, #52c41a); border-color: color-mix(in srgb, var(--primary-color, #52c41a) 30%, transparent); background: color-mix(in srgb, var(--primary-color, #52c41a) 8%, transparent); }
 .empty-preview-grid { position: relative; z-index: 1; display: grid; width: 100%; max-width: 860px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
 .empty-preview-card { display: grid; min-width: 0; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 11px; padding: 15px 16px; border: 1px solid #e5ebf1; border-radius: 12px; background: rgba(255, 255, 255, .92); box-shadow: 0 7px 20px rgba(36, 59, 85, .055); text-align: left; transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
-.empty-preview-card:hover { border-color: #cbe8ba; box-shadow: 0 10px 24px rgba(36, 59, 85, .08); transform: translateY(-2px); }
-.empty-preview-card > .anticon { display: inline-flex; width: 34px; height: 34px; grid-row-start: 1; grid-row-end: 3; align-items: center; justify-content: center; align-self: center; border-radius: 10px; color: #52c41a; background: #f2faed; font-size: 17px; }
+.empty-preview-card:hover { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 34%, transparent); box-shadow: 0 10px 24px rgba(36, 59, 85, .08); transform: translateY(-2px); }
+.empty-preview-card > .anticon { display: inline-flex; width: 34px; height: 34px; grid-row-start: 1; grid-row-end: 3; align-items: center; justify-content: center; align-self: center; border-radius: 10px; color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 9%, transparent); font-size: 17px; }
 .empty-preview-card span { grid-column: 2; overflow: hidden; color: #7c8ca1; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .empty-preview-card strong { display: -webkit-box; min-width: 0; min-height: 32px; grid-column: 2; overflow: hidden; color: #27364a; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; word-break: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .result-trustbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid; border-radius: 9px; }
@@ -1081,7 +1445,7 @@ export default {
 .drawer-history-header p { margin: 0; color: #718096; font-size: 12px; line-height: 1.55; }
 .drawer-run-list { display: flex; flex-direction: column; gap: 9px; }
 .run-card { display: flex; min-width: 0; flex-direction: column; gap: 6px; padding: 11px; border: 1px solid #e6eaf0; border-radius: 9px; background: #fafbfc; color: inherit; text-align: left; cursor: pointer; transition: 0.16s ease; }
-.run-card:hover, .run-card.active { border-color: #85ce62; background: #fbfff8; transform: translateY(-1px); }
+.run-card:hover, .run-card.active { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 48%, transparent); background: color-mix(in srgb, var(--primary-color, #52c41a) 5%, #fff); transform: translateY(-1px); }
 .run-card__top, .run-card__metrics { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .run-card__top strong { min-width: 0; overflow: hidden; color: #2a3b52; text-overflow: ellipsis; white-space: nowrap; }
 .run-card__top em { color: #9aa5b5; font-style: normal; font-size: 11px; }
@@ -1092,40 +1456,62 @@ export default {
 .run-card__metrics b { font-size: 15px; }
 .factor-history-metrics b { font-variant-numeric: tabular-nums; }
 .run-card__metrics small { color: #8491a4; }
-.theme-dark.backtest-page { background: #080808; color: rgba(255, 255, 255, 0.88); }
-.theme-dark .hero-card, .theme-dark .panel { border-color: rgba(255, 255, 255, 0.1); background: #111; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28); }
-.theme-dark .run-action-bar { border-color: rgba(255, 255, 255, 0.1); background: #111; box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.34); }
-.theme-dark .hero-card h1, .theme-dark .panel-heading h2, .theme-dark .history-title-row h2, .theme-dark .subheading h3, .theme-dark .history-header h3, .theme-dark .result-empty h3, .theme-dark .result-running h3 { color: #f3f4f6; }
+.theme-dark.backtest-page { background: #08090a; color: rgba(255, 255, 255, 0.88); }
+.theme-dark .workspace-toolbar, .theme-dark .panel { border-color: #25282d; background: #111315; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24); }
+.theme-dark .workspace-toolbar__context { color: rgba(255, 255, 255, 0.42); }
+.theme-dark .run-action-bar { border-color: #25282d; background: #111315; box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.28); }
+.theme-dark .panel-heading h2, .theme-dark .history-title-row h2, .theme-dark .subheading h3, .theme-dark .history-header h3, .theme-dark .result-empty h3, .theme-dark .result-running h3 { color: #f3f4f6; }
+.theme-dark .config-section { border-color: #282c32; background: #151719; }
+.theme-dark .config-section__heading h2, .theme-dark .config-section__heading h3 { color: #f3f4f6; }
+.theme-dark .config-section /deep/ .ant-form-item-label > label { color: rgba(255, 255, 255, 0.68); }
 .theme-dark .hero-stat, .theme-dark .metric-card, .theme-dark .assumption-strip div, .theme-dark .run-card { border-color: rgba(255, 255, 255, 0.1); background: #0d0d0d; }
 .theme-dark .hero-stat strong, .theme-dark .manifest-grid strong, .theme-dark .metric-card strong, .theme-dark .assumption-strip strong, .theme-dark .run-card__top strong { color: #e5e7eb; }
-.theme-dark .manifest-card { border-color: rgba(255, 255, 255, 0.1); background: #0d0d0d; }
-.theme-dark .manifest-title { color: #73d13d; }
+.theme-dark .manifest-card { border-color: #2a2d31; border-left-color: var(--primary-color, #52c41a); background: #17191c; }
+.theme-dark .manifest-title { color: var(--primary-color, #52c41a); }
+.theme-dark .range-presets__label { color: rgba(255, 255, 255, 0.48); }
+.theme-dark .range-preset-wrap /deep/ .ant-btn:not(.ant-btn-primary) { border-color: rgba(255, 255, 255, 0.14); background: #1a1a1a; color: rgba(255, 255, 255, 0.72); }
+.theme-dark .range-preset-wrap /deep/ .ant-btn:not(.ant-btn-primary):hover { border-color: var(--primary-color, #52c41a); color: var(--primary-color, #52c41a); }
+.theme-dark .range-preset-wrap /deep/ .ant-btn[disabled],
+.theme-dark .range-preset-wrap /deep/ .ant-btn[disabled]:hover,
+.theme-dark .range-preset-wrap /deep/ .ant-btn[disabled]:focus { border-color: #2b2e33 !important; background: #121416 !important; color: rgba(255, 255, 255, 0.24) !important; box-shadow: none !important; }
 .theme-dark .chart-card { border-color: rgba(255, 255, 255, 0.1); }
 .theme-dark .result-trustbar.is-success { border-color: #315d22; background: #13200f; color: #73d13d; }
 .theme-dark .result-trustbar.is-warning { border-color: #664d03; background: #211b08; color: #ffc53d; }
 .theme-dark .result-trustbar.is-error { border-color: #6b2525; background: #251111; color: #ff7875; }
 .theme-dark .result-trustbar span { color: rgba(255, 255, 255, 0.52); }
-.theme-dark .run-card:hover, .theme-dark .run-card.active { border-color: #52c41a; background: #15230f; }
-.theme-dark .empty-hero-card { border-color: rgba(255, 255, 255, .11); background: linear-gradient(145deg, #121512, #0d0f0d); box-shadow: 0 20px 54px rgba(0, 0, 0, .32); }
+.theme-dark .run-card:hover, .theme-dark .run-card.active { border-color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 10%, #111); }
+.theme-dark .empty-hero-card { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 22%, rgba(255, 255, 255, .11)); background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color, #52c41a) 5%, #121212), #0d0f0d); box-shadow: 0 20px 54px rgba(0, 0, 0, .32); }
 .theme-dark .empty-preview-card { border-color: rgba(255, 255, 255, 0.1); background: #0d0d0d; }
 .theme-dark .empty-preview-card strong { color: #e5e7eb; }
-.theme-dark .result-running > strong { color: #73d13d; }
-.theme-dark .running-icon { border-color: rgba(82, 196, 26, 0.38); background: #10190c; }
+.theme-dark .result-running > strong { color: var(--primary-color, #52c41a); }
+.theme-dark .running-icon { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 38%, transparent); background: color-mix(in srgb, var(--primary-color, #52c41a) 9%, #0d0d0d); }
+.theme-dark .empty-orbit { background: linear-gradient(145deg, color-mix(in srgb, var(--primary-color, #52c41a) 12%, #151515), #0d0d0d); }
+.theme-dark .empty-checks span.done, .theme-dark .empty-preview-card > .anticon { background: color-mix(in srgb, var(--primary-color, #52c41a) 10%, #0d0d0d); }
 .theme-dark .running-contract span { border-color: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.58); background: #0d0d0d; }
+.theme-dark .runtime-heading, .theme-dark .params-section, .theme-dark .result-heading { border-color: #282b30; }
+.theme-dark .date-range-card { border-color: #2b2e33; background: #17191c; }
+.theme-dark .date-range-fields /deep/ .ant-form-item-label > label { color: rgba(255,255,255,.58); }
+.theme-dark .date-range-fields /deep/ .ant-calendar-picker-input { border-color: #30343a; background: #101214; color: rgba(255,255,255,.82); }
+.theme-dark .date-range-fields /deep/ .ant-calendar-picker-icon { color: rgba(255,255,255,.38); }
+.theme-dark .range-policy-note { border-color: #2b2e33; }
+.theme-dark .range-policy-note strong { color: rgba(255,255,255,.68); }
+.theme-dark .range-policy-note span { color: rgba(255,255,255,.42); }
+.theme-dark .dependency-summary { border-color: rgba(250,173,20,.28); background: rgba(250,173,20,.06); }
+.theme-dark .dependency-summary span { color: rgba(255,255,255,.48); }
 .theme-dark /deep/ .ant-form-item-label > label, .theme-dark /deep/ .ant-table { color: rgba(255, 255, 255, 0.72); }
 .theme-dark /deep/ .ant-table-thead > tr > th { border-color: rgba(255, 255, 255, 0.1); background: #0d0d0d; color: rgba(255, 255, 255, 0.68); }
 .theme-dark /deep/ .ant-table-tbody > tr > td { border-color: rgba(255, 255, 255, 0.08); background: #111; color: rgba(255, 255, 255, 0.72); }
-@media (max-width: 1100px) { .workspace-grid { grid-template-columns: 1fr; } .config-panel { position: static; overflow: visible; max-height: none; } .config-scroll { overflow: visible; } .result-panel { min-height: 560px; } .result-empty { min-height: 480px; } }
-@media (max-width: 720px) { .backtest-page { padding: 12px; } .hero-card { align-items: flex-start; flex-direction: column; } .hero-actions { justify-content: flex-start; } .result-empty { padding: 34px 12px; }.empty-hero-card { padding: 30px 18px 26px; }.form-grid, .manifest-grid, .metrics-grid, .assumption-strip, .empty-preview-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .workspace-grid { grid-template-columns: 1fr; } .config-panel { position: static; overflow: visible; height: auto; min-height: 0; max-height: none; } .config-scroll { overflow: visible; } .result-panel { min-height: 560px; } .result-empty { min-height: 480px; } }
+@media (max-width: 720px) { .backtest-page { padding: 0 10px 10px; } .workspace-toolbar { top: 0; width: calc(100% + 20px); align-items: flex-start; flex-direction: column; margin-right: -10px; margin-left: -10px; padding-right: 20px; padding-left: 20px; } .workspace-toolbar__primary { width: 100%; align-items: flex-start; flex-direction: column; }.hero-actions { justify-content: flex-start; } .result-empty { padding: 34px 12px; }.empty-hero-card { padding: 30px 18px 26px; }.form-grid, .manifest-grid, .metrics-grid, .assumption-strip, .empty-preview-grid { grid-template-columns: 1fr; }.range-presets__buttons { width: 100%; }.range-preset-wrap /deep/ .ant-btn { width: 100%; } }
 </style>
 
 <style lang="less">
 .backtest-history-drawer .ant-drawer-header { border-bottom: 1px solid #e8edf2; }
 .backtest-history-drawer .ant-drawer-body { padding: 16px; }
-.drawer-detail-loading { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid #b7eb8f; border-radius: 8px; color: #3f7f1f; background: #f6ffed; font-size: 12px; }
+.drawer-detail-loading { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--primary-color, #52c41a) 32%, transparent); border-radius: 8px; color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 8%, transparent); font-size: 12px; }
 .run-card:disabled { cursor: wait; opacity: .68; }
-.run-card.loading { border-color: #52c41a; opacity: 1; }
-.run-card__top strong .anticon { margin-right: 6px; color: #52c41a; }
+.run-card.loading { border-color: var(--primary-color, #52c41a); opacity: 1; }
+.run-card__top strong .anticon { margin-right: 6px; color: var(--primary-color, #52c41a); }
 .backtest-history-drawer.theme-dark .ant-drawer-content,
 .backtest-history-drawer.theme-dark .ant-drawer-header { background: #111; }
 .backtest-history-drawer.theme-dark .ant-drawer-header { border-color: rgba(255, 255, 255, 0.1); }
@@ -1134,7 +1520,8 @@ export default {
 .backtest-history-drawer.theme-dark .drawer-history-header p { color: rgba(255, 255, 255, 0.5); }
 .backtest-history-drawer.theme-dark .run-card { border-color: rgba(255, 255, 255, 0.1); background: #0d0d0d; color: rgba(255, 255, 255, 0.72); }
 .backtest-history-drawer.theme-dark .run-card:hover,
-.backtest-history-drawer.theme-dark .run-card.active { border-color: #52c41a; background: #15230f; }
-.backtest-history-drawer.theme-dark .drawer-detail-loading { border-color: rgba(82, 196, 26, .38); color: #73d13d; background: #10190c; }
+.backtest-history-drawer.theme-dark .run-card.active { border-color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 10%, #111); }
+.backtest-history-drawer.theme-dark .drawer-detail-loading { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 38%, transparent); color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 9%, #0d0d0d); }
 .backtest-history-drawer.theme-dark .run-card__top strong { color: #e5e7eb; }
+.param-description { margin-top: 5px; color: #8c8c8c; font-size: 11px; line-height: 1.45; }
 </style>

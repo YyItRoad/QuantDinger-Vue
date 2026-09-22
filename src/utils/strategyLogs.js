@@ -15,3 +15,8 @@ export const strategyLogLevelKey = level => {
   const normalized = normalizeStrategyLogLevel(level)
   return `trading-assistant.logs.level.${normalized}`
 }
+
+export const translateStrategyRuntimeMessage = (message, translate) => {
+  const text = String(message || '')
+  return /^(strategyV2|strategyRuntime)\.[\w.]+$/.test(text) ? translate(text) : text
+}

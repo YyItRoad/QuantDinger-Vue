@@ -48,20 +48,23 @@ function makeBrokerClient (id) {
 
   return {
     id,
-    status () {
-      return request({ url: ep.status, method: 'get' })
+    accounts () {
+      return request({ url: '/api/alpaca/accounts', method: 'get' })
+    },
+    status (params = {}) {
+      return request({ url: ep.status, method: 'get', params })
     },
     connect (data = {}) {
       return request({ url: ep.connect, method: 'post', data })
     },
-    disconnect () {
-      return request({ url: ep.disconnect, method: 'post' })
+    disconnect (data = {}) {
+      return request({ url: ep.disconnect, method: 'post', data })
     },
-    account () {
-      return request({ url: ep.account, method: 'get' })
+    account (params = {}) {
+      return request({ url: ep.account, method: 'get', params })
     },
-    positions () {
-      return request({ url: ep.positions, method: 'get' })
+    positions (params = {}) {
+      return request({ url: ep.positions, method: 'get', params })
     },
     orders (params = {}) {
       return request({ url: ep.orders, method: 'get', params })
@@ -69,11 +72,11 @@ function makeBrokerClient (id) {
     placeOrder (data = {}) {
       return request({ url: ep.order, method: 'post', data })
     },
-    cancelOrder (orderId) {
+    cancelOrder (orderId, params = {}) {
       const url = id === 'alpaca'
         ? `${ep.order}/${encodeURIComponent(orderId)}`
         : `${ep.order}/${orderId}`
-      return request({ url, method: 'delete' })
+      return request({ url, method: 'delete', params })
     },
     quote (symbol, params = {}) {
       if (id === 'alpaca') {

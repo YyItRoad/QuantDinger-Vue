@@ -68,7 +68,7 @@
             </span>
           </a-tooltip>
         </div>
-        <span v-else class="log-message">{{ log.message }}</span>
+        <span v-else class="log-message">{{ formatLogMessage(log.message) }}</span>
       </div>
     </div>
   </div>
@@ -80,7 +80,8 @@ import { formatStrategyLogTime } from '@/utils/userTime'
 import {
   normalizeStrategyLogLevel,
   STRATEGY_LOG_FILTERS,
-  strategyLogLevelKey
+  strategyLogLevelKey,
+  translateStrategyRuntimeMessage
 } from '@/utils/strategyLogs'
 
 export default {
@@ -126,6 +127,10 @@ export default {
     this.stopAutoRefresh()
   },
   methods: {
+    formatLogMessage (message) {
+      return translateStrategyRuntimeMessage(message, key => this.$t(key))
+    },
+
     async loadLogs () {
       if (!this.strategyId) return
       this.loading = true

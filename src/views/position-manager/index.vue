@@ -159,7 +159,7 @@
       </div>
     </a-modal>
 
-    <live-strategy-editor
+    <managed-strategy-editor
       v-if="managedEditorOpen"
       :visible="managedEditorOpen"
       mode="create"
@@ -188,7 +188,7 @@ import {
   requireCompleteAccountSnapshot,
   selectableSnapshotCredentials
 } from '@/utils/positionManager'
-import LiveStrategyEditor from '@/views/strategy-center/components/LiveStrategyEditor.vue'
+import ManagedStrategyEditor from './components/ManagedStrategyEditor.vue'
 
 const POSITION_SNAPSHOT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const HISTORY_PAGE_SIZE = 20
@@ -267,7 +267,7 @@ function responseData (response) {
 
 export default {
   name: 'PositionManager',
-  components: { LiveStrategyEditor },
+  components: { ManagedStrategyEditor },
   data () {
     return {
       credentials: [],

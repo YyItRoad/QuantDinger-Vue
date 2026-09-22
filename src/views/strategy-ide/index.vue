@@ -1,6 +1,15 @@
 <template>
   <div class="strategy-ide-shell" :class="{ 'theme-dark': isDarkTheme }">
     <div class="strategy-ide-layout">
+      <a-alert
+        v-if="adaptedBacktestRequired"
+        class="adapted-backtest-alert"
+        type="warning"
+        show-icon
+        :message="$t('community.backtestBeforeDeployment')"
+      >
+        <a-button slot="action" size="small" type="primary" ghost @click="openBacktestCenter">{{ text.backtestTitle }}</a-button>
+      </a-alert>
       <section class="script-panel script-panel--editor">
         <strategy-editor
           ref="scriptEditor"
@@ -18,9 +27,19 @@
           :hidden-source="scriptCodeHidden"
           :readonly="false"
           :consume-copilot-draft="false"
+          :runtime-config="runConfig"
+          :runtime-exchange-options="strategyExchangeOptions"
+          :runtime-symbol-options="strategySymbolOptions"
+          :runtime-symbol-loading="strategySymbolLoading"
+          :runtime-watchlist-count="strategyWatchlistOptions.length"
+          :runtime-capabilities="strategyRuntimeContract"
           side-mode="split"
-          @verified="scriptVerified = true"
+          @verified="handleStrategyVerified"
           @template-change="handleTemplateChange"
+          @runtime-change="handleRuntimeConfigChange"
+          @runtime-symbol-search="searchStrategySymbols"
+          @runtime-symbol-change="handleRuntimeSymbolChange"
+          @runtime-symbol-open="loadStrategyWatchlistOptions"
         >
           <template #toolbar>
             <div class="ide-toolbar">
@@ -47,6 +66,7 @@
                   :loading="loadingScripts"
                   :placeholder="text.selectScriptPlaceholder"
                   @change="handleScriptSelect"
+                  @dropdownVisibleChange="onScriptDropdownVisibleChange"
                 >
                   <a-select-option
                     v-for="item in scriptOptions"
@@ -166,9 +186,143 @@
               </div>
             </div>
           </template>
+
+          <template #ai-workspace>
+            <div
+              class="strategy-ai-workspace"
+              :class="{ 'strategy-ai-workspace--collapsed': !aiPanelExpanded }"
+            >
+              <div class="strategy-ai-header" @click="toggleStrategyAiPanel">
+                <div class="strategy-ai-header__title">
+                  <a-icon type="robot" />
+                  <strong>{{ aiWorkspaceText.title }}</strong>
+                  <span class="strategy-ai-contract-badge">
+                    {{ currentAssetType === 'portfolio_strategy' ? aiWorkspaceText.portfolioContract : aiWorkspaceText.ctaContract }}
+                  </span>
+                  <span class="strategy-ai-memory-badge">
+                    <a-icon :type="scriptCodeHidden ? 'lock' : (currentSourceId ? 'link' : 'clock-circle')" />
+                    {{ scriptCodeHidden ? aiWorkspaceText.hiddenSourceBadge : (currentSourceId ? aiWorkspaceText.memoryActive : aiWorkspaceText.temporaryMemory) }}
+                  </span>
+                </div>
+                <div class="strategy-ai-header__actions">
+                  <a-button
+                    v-if="!scriptCodeHidden && currentSourceId && (aiMessages.length || aiCandidate)"
+                    type="link"
+                    size="small"
+                    :disabled="aiStrategyGenerating"
+                    @click.stop="clearStrategyAiConversation"
+                  >{{ aiWorkspaceText.clear }}</a-button>
+                  <a-icon :type="aiPanelExpanded ? 'up' : 'down'" />
+                </div>
+              </div>
+
+              <div v-show="aiPanelExpanded" class="strategy-ai-body">
+                <div v-if="scriptCodeHidden" class="strategy-ai-locked">
+                  <a-icon type="lock" />
+                  <strong>{{ aiWorkspaceText.hiddenSourceTitle }}</strong>
+                  <span>{{ aiWorkspaceText.hiddenSourceUnavailable }}</span>
+                </div>
+                <template v-else>
+                  <div ref="strategyAiConversation" class="strategy-ai-conversation">
+                    <div v-if="aiWorkspaceLoading" class="strategy-ai-empty">
+                      <a-icon type="loading" spin />
+                      <span>{{ aiWorkspaceText.loading }}</span>
+                    </div>
+                    <div v-else-if="!aiMessages.length" class="strategy-ai-empty">
+                      <a-icon type="message" />
+                      <strong>{{ aiWorkspaceText.emptyTitle }}</strong>
+                      <span>{{ currentAssetType === 'portfolio_strategy' ? aiWorkspaceText.portfolioEmptyDesc : aiWorkspaceText.ctaEmptyDesc }}</span>
+                      <div class="strategy-ai-quick-prompts">
+                        <button
+                          v-for="item in aiStrategyQuickPrompts"
+                          :key="item.label"
+                          type="button"
+                          @click="useStrategyAiQuickPrompt(item)"
+                        >{{ item.label }}</button>
+                      </div>
+                    </div>
+
+                    <div
+                      v-for="messageItem in aiMessages"
+                      :key="messageItem.localId || messageItem.id"
+                      :class="['strategy-ai-message', `strategy-ai-message--${messageItem.role || 'assistant'}`]"
+                    >
+                      <div class="strategy-ai-message__role">
+                        {{ messageItem.role === 'user' ? aiWorkspaceText.you : 'AI' }}
+                        <span v-if="messageItem.role !== 'user'" class="strategy-ai-message__badge">
+                          {{ messageItem.message_type === 'candidate' ? aiWorkspaceText.candidateBadge : aiWorkspaceText.discussionBadge }}
+                        </span>
+                      </div>
+                      <div class="strategy-ai-message__content" v-html="renderStrategyAiMessage(messageItem)" />
+                      <div
+                        v-if="isActiveStrategyCandidateMessage(messageItem)"
+                        class="strategy-ai-candidate"
+                        :class="{ 'strategy-ai-candidate--warning': !aiCandidateValidationPassed }"
+                      >
+                        <div>
+                          <a-icon :type="aiCandidateValidationPassed ? 'check-circle' : 'exclamation-circle'" />
+                          <span>{{ aiCandidateValidationPassed ? aiWorkspaceText.candidateValid : aiWorkspaceText.candidateNeedsReview }}</span>
+                        </div>
+                        <div class="strategy-ai-candidate__actions">
+                          <a-button size="small" @click="previewStrategyAiCandidate"><a-icon type="eye" /> {{ aiWorkspaceText.preview }}</a-button>
+                          <a-button size="small" type="primary" :disabled="!aiCandidateValidationPassed" @click="applyStrategyAiCandidate"><a-icon type="check" /> {{ aiWorkspaceText.apply }}</a-button>
+                          <a-button size="small" type="link" @click="discardStrategyAiCandidate">{{ aiWorkspaceText.discard }}</a-button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div v-if="aiStrategyGenerating" class="strategy-ai-message strategy-ai-message--assistant strategy-ai-message--thinking">
+                      <div class="strategy-ai-message__role">AI</div>
+                      <div class="strategy-ai-message__content"><a-icon type="loading" spin /> {{ aiWorkspaceText.thinking }}</div>
+                    </div>
+                  </div>
+
+                  <div class="strategy-ai-composer">
+                    <a-textarea
+                      ref="strategyAiPrompt"
+                      v-model="aiStrategyPrompt"
+                      :rows="2"
+                      :placeholder="aiWorkspaceText.placeholder"
+                      :disabled="aiStrategyGenerating || scriptCodeHidden"
+                      @input="aiInteractionMode = 'auto'"
+                      @pressEnter="handleStrategyAiEnter"
+                    />
+                    <div class="strategy-ai-composer__footer">
+                      <span>{{ aiWorkspaceText.shortcut }}</span>
+                      <a-button
+                        type="primary"
+                        class="strategy-ai-send"
+                        :loading="aiStrategyGenerating"
+                        :disabled="!String(aiStrategyPrompt || '').trim() || scriptCodeHidden"
+                        @click="sendStrategyAiTurn"
+                      >{{ aiWorkspaceText.send }}</a-button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
         </strategy-editor>
       </section>
     </div>
+
+    <a-modal
+      v-model="aiPreviewVisible"
+      :title="aiWorkspaceText.previewTitle"
+      :footer="null"
+      :wrap-class-name="isDarkTheme ? 'strategy-ai-preview-modal strategy-ai-preview-modal--dark' : 'strategy-ai-preview-modal'"
+      width="920px"
+    >
+      <div class="strategy-ai-preview-toolbar">
+        <span>{{ aiWorkspaceText.previewHint }}</span>
+        <div>
+          <a-button size="small" @click="aiPreviewVisible = false">{{ text.cancel }}</a-button>
+          <a-button size="small" type="primary" :disabled="!aiCandidateValidationPassed" @click="applyStrategyAiCandidate">{{ aiWorkspaceText.apply }}</a-button>
+        </div>
+      </div>
+      <pre class="strategy-ai-code-preview">{{ (aiCandidate && aiCandidate.code) || '' }}</pre>
+    </a-modal>
 
     <a-modal
       :visible="showPublishModal"
@@ -177,6 +331,7 @@
       :confirmLoading="publishingScript"
       :ok-text="text.publishConfirm"
       :cancel-text="text.cancel"
+      :ok-button-props="{ props: { disabled: publishBacktestStatus !== 'passed' } }"
       :wrap-class-name="isDarkTheme ? 'script-publish-modal script-publish-modal--dark' : 'script-publish-modal'"
       @ok="confirmPublish"
       @cancel="closePublishModal"
@@ -196,6 +351,47 @@
         <div class="publish-note">
           <a-icon type="info-circle" />
           <span>{{ text.publishHint }}</span>
+        </div>
+
+        <div class="publish-backtest-gate" :class="`is-${publishBacktestStatus}`">
+          <div class="publish-backtest-gate__icon">
+            <a-icon
+              :type="publishBacktestStatus === 'checking' ? 'loading' : (publishBacktestStatus === 'passed' ? 'check-circle' : 'experiment')"
+              :spin="publishBacktestStatus === 'checking'"
+            />
+          </div>
+          <div class="publish-backtest-gate__copy">
+            <strong>
+              {{ publishBacktestStatus === 'checking'
+                ? text.publishBacktestChecking
+                : (publishBacktestStatus === 'passed' ? text.publishBacktestPassed : text.publishBacktestRequired) }}
+            </strong>
+            <span v-if="publishBacktestStatus === 'required'">{{ text.publishBacktestRequiredHint }}</span>
+          </div>
+          <a-button
+            v-if="publishBacktestStatus === 'required'"
+            class="publish-backtest-gate__button"
+            type="primary"
+            @click="goToBacktestFromPublish"
+          >
+            <a-icon type="bar-chart" />
+            {{ text.publishGoBacktest }}
+          </a-button>
+        </div>
+
+        <div v-if="publishContractPreview" class="publish-contract-preview">
+          <div class="publish-contract-preview__head">
+            <strong>{{ $t('community.publishApplicability') }}</strong>
+            <a-tag :color="publishContractPreview.binding_mode === 'parameterized' ? 'green' : 'orange'">
+              {{ $t(`community.binding.${publishContractPreview.binding_mode || 'unknown'}`) }}
+            </a-tag>
+          </div>
+          <div class="publish-contract-preview__grid">
+            <span><small>{{ $t('community.filterMarket') }}</small><b>{{ (publishContractPreview.markets || []).join(' · ') || '—' }}</b></span>
+            <span><small>{{ $t('community.boundTo') }}</small><b>{{ (publishContractPreview.bound_instruments || []).join(' · ') || publishContractPreview.universe_reference || '—' }}</b></span>
+            <span><small>{{ $t('community.filterTimeframe') }}</small><b>{{ (publishContractPreview.frequencies || []).join(' · ') || '—' }}</b></span>
+          </div>
+          <p>{{ $t('community.publishApplicabilityHint') }}</p>
         </div>
 
         <div class="publish-section">
@@ -336,6 +532,7 @@
       :asset-type="currentAssetType"
       :selected-universe-id="selectedUniverseId"
       @use="handleUniverseUse"
+      @deleted="handleUniverseDeleted"
       @close="showUniverseLibrary = false"
     />
 
@@ -416,75 +613,45 @@ import FactorLibraryModal from './FactorLibraryModal.vue'
 import UniverseLibraryModal from './UniverseLibraryModal.vue'
 import ExecutorStrategies from '@/views/executor-strategies'
 import { resolveIndicatorStrategyContext } from '@/utils/indicatorStrategyContext'
+import { renderSafeMarkdown } from '@/utils/safeMarkdown'
+import { getWatchlist, searchSymbols } from '@/api/market'
+import { CRYPTO_EXCHANGE_IDS, normalizeExchangeId, normalizeMarketType } from '@/utils/marketContext'
+import {
+  applyStrategyRuntimeConfigToCode,
+  extractStrategyRuntimeContractFromCode,
+  sanitizeRuntimeConfigForSource
+} from './components/scriptTemplateCatalog'
 import {
   aiGenerateStrategy,
+  clearStrategyAiWorkspace,
   createScriptSource,
   deleteScriptSource,
-  getStrategyBacktestHistory,
   getIndicatorListForStrategy,
+  getStrategyAiWorkspace,
+  getScriptSourcePublishReadiness,
   getScriptSourceDetail,
   getScriptSourceList,
   getScriptSourceVersion,
   getScriptSourceVersions,
   publishScriptSource,
   restoreScriptSourceVersion,
+  runStrategyAiTurn,
+  setStrategyAiCandidateStatus,
   updateScriptSource,
   verifyStrategyCode
 } from '@/api/strategy'
 
-const DEFAULT_SCRIPT_CODE = `"""
-My Custom Strategy
-
-Describe the strategy logic, supported markets, entry/exit rules, and risk controls here.
-"""
-
-def initialize(context):
-    context.set_universe(["USStock:SPY"])
-    context.subscribe(frequency="1d")
-    context.set_warmup(55)
-    g.period = 50
-
-def handle_data(context, data):
-    bars = get_history(g.period + 2, "1d", "close", "USStock:SPY")
-    if len(bars) < g.period:
-        return
-    average = float(bars["close"].tail(g.period).mean())
-    target = 1.0 if float(bars["close"].iloc[-1]) > average else 0.0
-    order_target_percent("USStock:SPY", target, reason="single_ma_regime")
-`
-
-const DEFAULT_PORTFOLIO_CODE = `"""
-My Portfolio Strategy
-
-Rank the eligible point-in-time universe by momentum and hold an equal-weight Top-N portfolio.
-"""
-
-def initialize(context):
-    context.set_universe(pool="nasdaq100")
-    context.subscribe(frequency="1d")
-    context.set_warmup(130)
-    g.top_n = 10
-    g.lookback = 126
-    run_weekly(rebalance, weekday=1, time="09:35")
-
-def rebalance(context, data):
-    scores = {}
-    for symbol in get_universe_stocks():
-        frame = get_history(g.lookback + 1, "1d", "close", symbol)
-        if len(frame) <= g.lookback:
-            continue
-        start = float(frame["close"].iloc[-g.lookback - 1])
-        end = float(frame["close"].iloc[-1])
-        if start > 0:
-            scores[symbol] = end / start - 1.0
-    selected = sorted(scores, key=scores.get, reverse=True)[:g.top_n]
-    for symbol in get_positions().keys():
-        if symbol not in selected:
-            order_target_percent(symbol, 0.0, reason="left_top_n")
-    weight = 1.0 / len(selected) if selected else 0.0
-    for symbol in selected:
-        order_target_percent(symbol, weight, reason="momentum_top_n")
-`
+const EMPTY_DRAFT_CODE = ''
+const createDefaultRunConfig = () => ({
+  market_category: 'Crypto',
+  exchange_id: 'binance',
+  symbol: 'BTC/USDT',
+  timeframe: '1m',
+  market_type: 'swap',
+  trade_direction: 'long',
+  initial_capital: 10000,
+  leverage: 5
+})
 
 export default {
   name: 'StrategyIde',
@@ -502,7 +669,7 @@ export default {
       currentSourceId: null,
       currentSource: null,
       currentAssetType: 'script',
-      scriptCode: DEFAULT_SCRIPT_CODE,
+      scriptCode: EMPTY_DRAFT_CODE,
       scriptCodeHidden: false,
       scriptTemplateKey: '',
       scriptTemplateParams: {},
@@ -515,6 +682,7 @@ export default {
       deletingScript: false,
       publishingScript: false,
       showPublishModal: false,
+      publishBacktestStatus: 'idle',
       publishForm: {
         name: '',
         description: '',
@@ -523,6 +691,7 @@ export default {
         vipFree: false,
         codeHidden: false
       },
+      publishContractPreview: null,
       showVersionDrawer: false,
       scriptVersionLoading: false,
       scriptVersions: [],
@@ -531,6 +700,18 @@ export default {
       showFactorLibrary: false,
       showUniverseLibrary: false,
       showRobotBuilder: false,
+      aiPanelExpanded: true,
+      aiWorkspaceLoading: false,
+      aiWorkspaceLoadToken: 0,
+      aiThread: null,
+      aiMessages: [],
+      aiCandidate: null,
+      aiPreviewVisible: false,
+      aiStrategyPrompt: '',
+      aiStrategyGenerating: false,
+      aiInteractionMode: 'auto',
+      aiRequestBaseCode: '',
+      strategyValidation: null,
       showIndicatorConvertModal: false,
       indicatorConvertLoading: false,
       indicatorConvertIndicatorLoading: false,
@@ -539,16 +720,12 @@ export default {
       indicatorConvertContext: null,
       indicatorConvertInstruction: '',
       indicatorConvertError: '',
-      runConfig: {
-        market_category: 'Crypto',
-        exchange_id: 'binance',
-        symbol: 'BTC/USDT',
-        timeframe: '1m',
-        market_type: 'swap',
-        trade_direction: 'long',
-        initial_capital: 10000,
-        leverage: 5
-      },
+      runConfig: createDefaultRunConfig(),
+      strategySymbolOptions: [],
+      strategyWatchlistOptions: [],
+      strategySymbolLoading: false,
+      strategyWatchlistLoading: false,
+      strategySymbolSearchTimer: null,
       lastSavedSnapshot: ''
     }
   },
@@ -562,12 +739,14 @@ export default {
         this.navTheme === 'realdark' ||
         !!(body && (body.classList.contains('dark') || body.classList.contains('realdark')))
     },
-    isZh () {
-      return String((this.$i18n && this.$i18n.locale) || '').toLowerCase().startsWith('zh')
-    },
     userId () {
       const userInfo = this.$store && this.$store.getters && this.$store.getters.userInfo
       return (userInfo && userInfo.id) || 1
+    },
+    adaptedBacktestRequired () {
+      const metadata = this.parseObject(this.currentSource && this.currentSource.metadata)
+      const adaptation = this.parseObject(metadata.marketplace_adaptation)
+      return String((this.$route.query || {}).requiresBacktest || '') === '1' || !!adaptation.requires_backtest
     },
     editorKey () {
       return `script-editor-${this.currentSourceId || 'draft'}-${this.editorKeySeed}`
@@ -617,8 +796,57 @@ export default {
     currentWorkspaceDescription () {
       return this.currentAssetType === 'portfolio_strategy' ? this.text.portfolioWorkspaceDescription : this.text.ctaWorkspaceDescription
     },
+    strategyExchangeOptions () {
+      return CRYPTO_EXCHANGE_IDS.map(value => ({ value, label: value.toUpperCase() }))
+    },
+    strategyRuntimeContract () {
+      if (this.currentAssetType !== 'script' || this.scriptCodeHidden) {
+        return { config: {}, hasControls: false }
+      }
+      return extractStrategyRuntimeContractFromCode(this.scriptCode)
+    },
     currentNewScriptLabel () {
       return this.currentAssetType === 'portfolio_strategy' ? this.text.newPortfolioStrategy : this.text.newCtaStrategy
+    },
+    aiCandidateValidationPassed () {
+      return !!(this.aiCandidate && this.aiCandidate.validation && this.aiCandidate.validation.success)
+    },
+    aiStrategyQuickPrompts () {
+      const prefix = 'strategyIde.aiWorkspace.quick.'
+      const keys = this.currentAssetType === 'portfolio_strategy'
+        ? ['portfolioCreate', 'portfolioExplain', 'portfolioRisk', 'portfolioFix', 'portfolioBacktest']
+        : ['ctaCreate', 'ctaExplain', 'ctaRisk', 'ctaFix', 'ctaBacktest']
+      return keys.map((key, index) => ({
+        label: this.$t(`${prefix}${key}`),
+        mode: index === 1 ? 'discussion' : 'modify'
+      }))
+    },
+    aiWorkspaceText () {
+      const keys = [
+        'title', 'resize', 'ctaContract', 'portfolioContract', 'memoryActive', 'temporaryMemory', 'clear',
+        'loading', 'emptyTitle', 'ctaEmptyDesc', 'portfolioEmptyDesc', 'you', 'candidateBadge',
+        'discussionBadge', 'candidateValid', 'candidateNeedsReview', 'preview', 'apply', 'discard',
+        'thinking', 'placeholder', 'shortcut', 'send', 'checksTab',
+        'checkPassed', 'checkPassedDesc', 'checkPending', 'checkPendingDesc', 'frequencies', 'instruments',
+        'runCheck', 'previewTitle', 'previewHint', 'clearConfirm', 'candidateReady', 'candidateApplied',
+        'candidateDiscarded', 'editorChangedTitle', 'editorChangedDesc', 'sendFailed', 'temporaryHint',
+        'hiddenSourceBadge', 'hiddenSourceTitle', 'hiddenSourceUnavailable'
+      ]
+      return keys.reduce((acc, key) => {
+        acc[key] = this.$t(`strategyIde.aiWorkspace.${key}`)
+        return acc
+      }, {})
+    },
+    aiStrategyText () {
+      const t = key => this.$t(`strategyIde.aiGenerate.${key}`)
+      return {
+        title: t('title'),
+        generate: t('generate'),
+        hint: t('hint'),
+        placeholder: t('placeholder'),
+        success: t('success'),
+        failed: t('failed')
+      }
     },
     hasUnsavedScriptChanges () {
       if (this.scriptCodeHidden) return false
@@ -658,8 +886,13 @@ export default {
         'verifyBlocked',
         'verifyFailed',
         'publishSuccess',
+        'publishUpdateSuccess',
         'publishFailed',
         'publishBacktestRequired',
+        'publishBacktestChecking',
+        'publishBacktestPassed',
+        'publishBacktestRequiredHint',
+        'publishGoBacktest',
         'publishModalTitle',
         'publishConfirm',
         'marketTag',
@@ -719,6 +952,7 @@ export default {
         'switchWorkspaceTitle',
         'switchWorkspaceContent',
         'universeApplied',
+        'universeDeleted',
         'robotTemplates',
         'robotTemplatesDesc',
         'robotGenerated'
@@ -729,22 +963,480 @@ export default {
     }
   },
   watch: {
-    scriptCode () {
+    scriptCode (value) {
       this.scriptVerified = false
+      this.strategyValidation = null
+      this.syncRunConfigFromCode(value)
+    },
+    currentSourceId (value) {
+      this.loadStrategyAiWorkspace(value)
+    },
+    scriptCodeHidden (hidden) {
+      if (hidden) this.resetStrategyAiWorkspace()
+    },
+    currentAssetType () {
+      // CTA and portfolio workspaces have different contracts and prompt intent.
+      // Never carry a half-written request across the boundary.
+      this.aiStrategyPrompt = ''
+      this.aiInteractionMode = 'auto'
+      if (this.currentSourceId) this.loadStrategyAiWorkspace(this.currentSourceId)
+    },
+    '$route.query.sourceId' () {
+      this.applyStrategyRouteSource()
     }
   },
   mounted () {
     this._saveShortcut = (event) => this.handleSaveShortcut(event)
     window.addEventListener('keydown', this._saveShortcut, true)
-    this.initPage()
+    this._initialPagePromise = this.initPage()
+    this.initializeStrategyBuilderOptions()
+  },
+  activated () {
+    if (this._saveShortcut) {
+      window.addEventListener('keydown', this._saveShortcut, true)
+    }
+    this.applyStrategyRouteSource()
+    this.initializeStrategyBuilderOptions()
+  },
+  deactivated () {
+    if (this._saveShortcut) {
+      window.removeEventListener('keydown', this._saveShortcut, true)
+    }
   },
   beforeDestroy () {
+    if (this.strategySymbolSearchTimer) clearTimeout(this.strategySymbolSearchTimer)
     if (this._saveShortcut) {
       window.removeEventListener('keydown', this._saveShortcut, true)
       this._saveShortcut = null
     }
   },
   methods: {
+    syncRunConfigFromCode (code = this.scriptCode) {
+      if (this.currentAssetType !== 'script' || this.scriptCodeHidden) return
+      const inferred = extractStrategyRuntimeContractFromCode(code).config
+      this.runConfig = {
+        ...sanitizeRuntimeConfigForSource(this.runConfig, code),
+        ...inferred
+      }
+    },
+    async initializeStrategyBuilderOptions () {
+      await this.loadStrategyWatchlistOptions()
+      this.ensureCurrentSymbolOption()
+    },
+    async loadStrategyWatchlistOptions () {
+      if (this.strategyWatchlistLoading) return
+      this.strategyWatchlistLoading = true
+      this.strategySymbolLoading = true
+      try {
+        const res = await getWatchlist()
+        const data = res && res.data
+        const list = Array.isArray(data) ? data : ((data && data.watchlist) || [])
+        this.strategyWatchlistOptions = list
+          .map(item => this.normalizeStrategySymbolOption(item, true))
+          .filter(Boolean)
+        this.strategySymbolOptions = [...this.strategyWatchlistOptions]
+        this.ensureCurrentSymbolOption()
+      } catch (_) {
+        if (!this.strategyWatchlistOptions.length) this.strategySymbolOptions = []
+        this.ensureCurrentSymbolOption()
+      } finally {
+        this.strategyWatchlistLoading = false
+        this.strategySymbolLoading = false
+      }
+    },
+    ensureCurrentSymbolOption () {
+      const symbol = String(this.runConfig.symbol || '').trim().toUpperCase()
+      if (!symbol) return
+      const exists = this.strategySymbolOptions.some(item => (
+        item.symbol === symbol &&
+        item.market === this.runConfig.market_category &&
+        (item.market !== 'Crypto' || item.market_type === this.runConfig.market_type) &&
+        (!this.strategyRuntimeContract.hasExchange || !item.exchange_id || item.exchange_id === this.runConfig.exchange_id)
+      ))
+      if (!exists) {
+        const current = this.normalizeStrategySymbolOption({
+          market: this.runConfig.market_category,
+          symbol,
+          exchange_id: this.runConfig.exchange_id,
+          market_type: this.runConfig.market_type,
+          instrument_id: this.runConfig.instrument_id
+        })
+        if (current) this.strategySymbolOptions = [current, ...this.strategySymbolOptions]
+      }
+    },
+    normalizeStrategySymbolOption (item, isWatchlist = false) {
+      const symbol = String((item && (item.symbol || item.code || item.value)) || '').trim().toUpperCase()
+      if (!symbol) return null
+      const market = String((item && (item.market || item.category)) || 'Crypto')
+      const exchangeId = String((item && (item.exchange_id || item.exchangeId)) || '')
+      const marketType = market === 'Crypto'
+        ? normalizeMarketType(item && (item.market_type || item.marketType), market)
+        : 'spot'
+      const instrumentId = String((item && (item.instrument_id || item.instrumentId)) || '')
+      const name = String((item && (item.name || item.display_name)) || '').trim()
+      return {
+        value: [market, exchangeId, marketType, instrumentId, symbol].join('|'),
+        label: [symbol, name, market].filter(Boolean).join(' · '),
+        market,
+        symbol,
+        exchange_id: exchangeId,
+        market_type: marketType,
+        instrument_id: instrumentId,
+        is_watchlist: isWatchlist
+      }
+    },
+    searchStrategySymbols (keyword) {
+      if (this.strategySymbolSearchTimer) clearTimeout(this.strategySymbolSearchTimer)
+      this.strategySymbolSearchTimer = setTimeout(() => this.loadStrategySymbols(keyword), 280)
+    },
+    async loadStrategySymbols (keyword) {
+      const term = String(keyword || '').trim()
+      if (!term) {
+        this.strategySymbolOptions = [...this.strategyWatchlistOptions]
+        this.ensureCurrentSymbolOption()
+        return
+      }
+      this.strategySymbolLoading = true
+      try {
+        const res = await searchSymbols({
+          keyword: term,
+          limit: 20
+        })
+        const data = res && res.data
+        const list = Array.isArray(data) ? data : ((data && (data.results || data.symbols || data.items)) || [])
+        this.strategySymbolOptions = list.map(this.normalizeStrategySymbolOption).filter(Boolean)
+        this.ensureCurrentSymbolOption()
+      } catch (_) {
+        this.strategySymbolOptions = []
+        this.ensureCurrentSymbolOption()
+      } finally {
+        this.strategySymbolLoading = false
+      }
+    },
+    handleRuntimeSymbolChange (value) {
+      if (!this.strategyRuntimeContract.hasInstrument) return
+      const selected = this.strategySymbolOptions.find(option => option.value === value)
+      if (!selected) return
+      const patch = {
+        market_category: selected.market,
+        symbol: selected.symbol,
+        instrument_id: selected.instrument_id || ''
+      }
+      if (selected.market === 'Crypto') {
+        patch.market_type = selected.market_type || this.runConfig.market_type || 'spot'
+        patch.exchange_id = selected.exchange_id || this.runConfig.exchange_id || 'binance'
+      } else {
+        patch.market_type = 'spot'
+        patch.exchange_id = ''
+        patch.trade_direction = 'long'
+        patch.leverage = 1
+      }
+      this.applyRuntimeConfigPatch(patch)
+    },
+    handleRuntimeConfigChange ({ field, value } = {}) {
+      const capabilityByField = {
+        exchange_id: 'hasExchange',
+        market_type: 'hasProduct',
+        timeframe: 'hasTimeframe',
+        trade_direction: 'hasDirection'
+      }
+      if (!field || (capabilityByField[field] && !this.strategyRuntimeContract[capabilityByField[field]])) return
+      this.applyRuntimeConfigPatch({ [field]: value }, field)
+    },
+    applyRuntimeConfigPatch (patch = {}, field = '') {
+      const next = { ...this.runConfig, ...patch }
+      if (field === 'market_category') {
+        next.market_category = String(patch[field] || 'Crypto')
+        next.market_type = next.market_category === 'Crypto' ? normalizeMarketType(next.market_type, 'Crypto') : 'spot'
+        next.exchange_id = next.market_category === 'Crypto' ? normalizeExchangeId(next.exchange_id || 'binance') : ''
+      }
+      if (field === 'exchange_id') next.exchange_id = normalizeExchangeId(patch[field])
+      if (field === 'market_type') next.market_type = normalizeMarketType(patch[field], next.market_category)
+      if (next.market_category !== 'Crypto' || next.market_type === 'spot') {
+        next.trade_direction = 'long'
+        next.leverage = 1
+      }
+      this.runConfig = next
+      this.ensureCurrentSymbolOption()
+      if (['market_category', 'exchange_id', 'market_type'].includes(field)) this.searchStrategySymbols('')
+      if (!this.scriptCodeHidden && this.currentAssetType === 'script') {
+        const updated = applyStrategyRuntimeConfigToCode(this.scriptCode, next)
+        if (updated !== this.scriptCode) this.scriptCode = updated
+      }
+      this.scriptVerified = false
+    },
+    renderStrategyAiMessage (messageItem) {
+      const legacyCandidateText = 'Candidate generated and validated against the current Strategy API V2 workspace contract.'
+      const item = messageItem && typeof messageItem === 'object'
+        ? messageItem
+        : { content: messageItem }
+      const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {}
+      const messageKey = item.message_key || metadata.message_key || ''
+      const rawContent = String(item.content || '').trim()
+      const localizedContent = messageKey === 'candidate_generated_validated' || rawContent === legacyCandidateText
+        ? this.aiWorkspaceText.candidateReady
+        : rawContent
+      return renderSafeMarkdown(localizedContent)
+    },
+    localizeStrategyAiError (error) {
+      const envelope = error && error.response && error.response.data
+      const details = envelope && envelope.data && typeof envelope.data === 'object'
+        ? envelope.data
+        : {}
+      const raw = String(
+        details.error ||
+        (error && (error.backendMessage || error.message)) ||
+        this.aiWorkspaceText.sendFailed
+      ).trim()
+      const separator = raw.indexOf(':')
+      const key = raw.startsWith('strategyV2.')
+        ? (separator === -1 ? raw : raw.slice(0, separator))
+        : ''
+      if (key) {
+        const localized = String(this.$t(key) || '')
+        if (localized && localized !== key) {
+          const detail = separator === -1 ? '' : raw.slice(separator + 1).trim()
+          return detail ? `${localized} (${detail})` : localized
+        }
+      }
+      return raw || this.aiWorkspaceText.sendFailed
+    },
+    toggleStrategyAiPanel () {
+      this.aiPanelExpanded = !this.aiPanelExpanded
+      if (this.aiPanelExpanded) {
+        this.$nextTick(() => {
+          this.scrollStrategyAiConversation()
+          const input = this.$refs.strategyAiPrompt && this.$refs.strategyAiPrompt.$el
+          const textarea = input && input.querySelector('textarea')
+          if (textarea) textarea.focus()
+        })
+      }
+    },
+    resetStrategyAiWorkspace () {
+      this.aiWorkspaceLoadToken += 1
+      this.aiWorkspaceLoading = false
+      this.aiThread = null
+      this.aiMessages = []
+      this.aiCandidate = null
+      this.aiPreviewVisible = false
+      this.aiRequestBaseCode = ''
+      this.aiStrategyPrompt = ''
+      this.aiInteractionMode = 'auto'
+    },
+    async loadStrategyAiWorkspace (sourceId) {
+      const id = Number(sourceId || 0)
+      if (!id || this.scriptCodeHidden) {
+        this.resetStrategyAiWorkspace()
+        return
+      }
+      const token = ++this.aiWorkspaceLoadToken
+      this.aiWorkspaceLoading = true
+      this.aiThread = null
+      this.aiMessages = []
+      this.aiCandidate = null
+      try {
+        const res = await getStrategyAiWorkspace(id, { assetType: this.currentAssetType })
+        if (token !== this.aiWorkspaceLoadToken || Number(this.currentSourceId || 0) !== id) return
+        const data = (res && res.data) || {}
+        this.aiThread = data.thread || null
+        this.aiMessages = Array.isArray(data.messages) ? data.messages : []
+        const candidate = data.candidate
+        if (candidate && candidate.candidate_code) {
+          this.aiCandidate = {
+            id: candidate.id,
+            code: candidate.candidate_code,
+            baseCodeHash: candidate.base_code_hash || '',
+            baseCodeMatchesCurrent: candidate.base_code_matches_current !== false,
+            validation: candidate.validation || {},
+            summary: candidate.summary || {}
+          }
+        }
+        this.$nextTick(this.scrollStrategyAiConversation)
+      } catch (e) {
+        if (token !== this.aiWorkspaceLoadToken) return
+        const status = e && e.response && Number(e.response.status)
+        if (status === 404) {
+          // An older backend may not expose the workspace history route yet.
+          // Keep the editor usable and treat it as an empty conversation instead
+          // of surfacing a raw HTTP error during page entry.
+          this.aiThread = null
+          this.aiMessages = []
+          this.aiCandidate = null
+          return
+        }
+        this.$message.error(e.backendMessage || e.message || this.aiWorkspaceText.sendFailed)
+      } finally {
+        if (token === this.aiWorkspaceLoadToken) this.aiWorkspaceLoading = false
+      }
+    },
+    scrollStrategyAiConversation () {
+      const el = this.$refs.strategyAiConversation
+      if (el) el.scrollTop = el.scrollHeight
+    },
+    useStrategyAiQuickPrompt (item) {
+      this.aiStrategyPrompt = String((item && item.label) || '')
+      this.aiInteractionMode = (item && item.mode) || 'auto'
+      this.$nextTick(() => {
+        const root = this.$refs.strategyAiPrompt && this.$refs.strategyAiPrompt.$el
+        const textarea = root && root.querySelector('textarea')
+        if (textarea) textarea.focus()
+      })
+    },
+    handleStrategyAiEnter (event) {
+      if (!event) return
+      if (event.ctrlKey || event.metaKey) {
+        const target = event.target
+        if (!target) return
+        event.preventDefault()
+        const start = target.selectionStart
+        const end = target.selectionEnd
+        const value = String(this.aiStrategyPrompt || '')
+        this.aiStrategyPrompt = `${value.slice(0, start)}\n${value.slice(end)}`
+        this.$nextTick(() => {
+          target.selectionStart = start + 1
+          target.selectionEnd = start + 1
+        })
+        return
+      }
+      event.preventDefault()
+      if (!this.aiStrategyGenerating && String(this.aiStrategyPrompt || '').trim()) this.sendStrategyAiTurn()
+    },
+    async sendStrategyAiTurn () {
+      const prompt = String(this.aiStrategyPrompt || '').trim()
+      if (!prompt || this.aiStrategyGenerating || this.scriptCodeHidden) return
+      const existingCode = this.getCurrentScriptCode()
+      this.aiStrategyGenerating = true
+      this.aiRequestBaseCode = existingCode
+      this.aiMessages.push({
+        role: 'user',
+        content: prompt,
+        message_type: this.aiInteractionMode === 'discussion' ? 'question' : 'change_request',
+        localId: `strategy-user-${Date.now()}`
+      })
+      const interactionMode = this.aiInteractionMode || 'auto'
+      this.aiStrategyPrompt = ''
+      this.aiInteractionMode = 'auto'
+      this.$nextTick(this.scrollStrategyAiConversation)
+      try {
+        const res = await runStrategyAiTurn({
+          sourceId: Number(this.currentSourceId || 0),
+          assetType: this.currentAssetType,
+          prompt,
+          existingCode,
+          interactionMode,
+          generationMode: 'authoring',
+          context: { source: 'strategy_ide' }
+        })
+        const data = (res && res.data) || {}
+        const billing = (data.billing && typeof data.billing === 'object') ? data.billing : data
+        const remainingCredits = Number(billing.remaining_credits)
+        if (Number.isFinite(remainingCredits)) this.$root.$emit('credits-updated', remainingCredits)
+        const assistantMessage = Object.assign({}, data.assistant_message || {
+          role: 'assistant',
+          content: data.reply_type === 'candidate' ? this.aiWorkspaceText.candidateReady : '',
+          localId: `strategy-assistant-${Date.now()}`
+        }, {
+          // Older or source-less backend responses may omit message_type even
+          // though reply_type and code clearly identify a generated candidate.
+          message_type: data.reply_type === 'candidate'
+            ? 'candidate'
+            : ((data.assistant_message && data.assistant_message.message_type) || data.reply_type || 'discussion')
+        })
+        if (assistantMessage.content) this.aiMessages.push(assistantMessage)
+        if (data.reply_type === 'candidate' && data.code) {
+          this.aiCandidate = {
+            id: data.change_id || 0,
+            code: data.code,
+            baseCode: existingCode,
+            baseCodeHash: data.base_code_hash || '',
+            baseCodeMatchesCurrent: true,
+            validation: data.validation || { success: false },
+            summary: data.summary || {}
+          }
+          this.$message.success(this.aiWorkspaceText.candidateReady)
+        }
+        this.aiPanelExpanded = true
+        this.$nextTick(this.scrollStrategyAiConversation)
+      } catch (e) {
+        const message = this.localizeStrategyAiError(e)
+        this.aiMessages.push({ role: 'assistant', content: message, message_type: 'discussion', localId: `strategy-error-${Date.now()}` })
+        this.$message.error(message)
+        this.$nextTick(this.scrollStrategyAiConversation)
+      } finally {
+        this.aiStrategyGenerating = false
+      }
+    },
+    isActiveStrategyCandidateMessage (messageItem) {
+      if (!this.aiCandidate || !messageItem || messageItem.role === 'user' || messageItem.message_type !== 'candidate') return false
+      const candidateMessages = this.aiMessages.filter(item => item && item.role !== 'user' && item.message_type === 'candidate')
+      const latest = candidateMessages[candidateMessages.length - 1]
+      const messageChangeId = Number(messageItem.change_id || 0)
+      const candidateId = Number(this.aiCandidate.id || 0)
+      if (messageChangeId && candidateId) return messageChangeId === candidateId
+      return latest === messageItem
+    },
+    previewStrategyAiCandidate () {
+      if (this.aiCandidate && this.aiCandidate.code) this.aiPreviewVisible = true
+    },
+    applyStrategyAiCandidate () {
+      if (!this.aiCandidate || !this.aiCandidate.code || !this.aiCandidateValidationPassed) return
+      const current = this.getCurrentScriptCode()
+      const changed = this.aiCandidate.baseCodeMatchesCurrent === false ||
+        (!!this.aiCandidate.baseCode && current !== this.aiCandidate.baseCode) ||
+        (!!this.aiRequestBaseCode && current !== this.aiRequestBaseCode)
+      if (changed) {
+        this.$confirm({
+          title: this.aiWorkspaceText.editorChangedTitle,
+          content: this.aiWorkspaceText.editorChangedDesc,
+          okText: this.aiWorkspaceText.apply,
+          cancelText: this.text.cancel,
+          onOk: () => this.applyStrategyAiCandidateCode()
+        })
+        return
+      }
+      this.applyStrategyAiCandidateCode()
+    },
+    async applyStrategyAiCandidateCode () {
+      const candidate = this.aiCandidate
+      if (!candidate || !candidate.code) return
+      this.scriptCode = candidate.code
+      await this.$nextTick()
+      const editor = this.$refs.scriptEditor
+      if (editor && typeof editor.setCode === 'function') editor.setCode(candidate.code)
+      this.scriptVerified = true
+      this.strategyValidation = { valid: true, manifest: (candidate.validation && candidate.validation.manifest) || {} }
+      this.aiPreviewVisible = false
+      if (candidate.id) setStrategyAiCandidateStatus(candidate.id, 'applied').catch(() => {})
+      this.aiCandidate = null
+      this.$message.success(this.aiWorkspaceText.candidateApplied)
+    },
+    async discardStrategyAiCandidate () {
+      const candidate = this.aiCandidate
+      if (!candidate) return
+      if (candidate.id) {
+        try { await setStrategyAiCandidateStatus(candidate.id, 'discarded') } catch (_) {}
+      }
+      this.aiCandidate = null
+      this.aiPreviewVisible = false
+      this.$message.success(this.aiWorkspaceText.candidateDiscarded)
+    },
+    clearStrategyAiConversation () {
+      if (!this.currentSourceId) return
+      this.$confirm({
+        title: this.aiWorkspaceText.clear,
+        content: this.aiWorkspaceText.clearConfirm,
+        okText: this.aiWorkspaceText.clear,
+        cancelText: this.text.cancel,
+        onOk: async () => {
+          await clearStrategyAiWorkspace(this.currentSourceId, { assetType: this.currentAssetType })
+          this.resetStrategyAiWorkspace()
+        }
+      })
+    },
+    handleStrategyVerified (validation) {
+      this.scriptVerified = true
+      this.strategyValidation = validation || { valid: true }
+    },
     async initPage () {
       await this.loadSources()
       if (this.isIndicatorConvertRoute()) {
@@ -798,6 +1490,9 @@ export default {
         await this.openSource(this.currentSourceId, { updateRoute: false })
       }
     },
+    onScriptDropdownVisibleChange (visible) {
+      if (visible && !this.loadingScripts) this.loadSources()
+    },
     extractSources (res) {
       const data = res && res.data
       if (Array.isArray(data)) return data
@@ -808,6 +1503,12 @@ export default {
       const query = this.$route.query || {}
       const value = query.sourceId
       return value ? String(value).trim() : ''
+    },
+    async applyStrategyRouteSource () {
+      if (this._initialPagePromise) await this._initialPagePromise
+      const sourceId = this.getInitialRouteSourceId()
+      if (!sourceId || String(this.currentSourceId || '') === sourceId) return
+      await this.openSource(sourceId, { updateRoute: false })
     },
     getRouteAssetType () {
       const query = this.$route.query || {}
@@ -907,6 +1608,7 @@ export default {
     applySource (source) {
       const metadata = this.parseObject(source.metadata)
       const runConfig = this.parseObject(metadata.last_run_config)
+      const inferredRunConfig = extractStrategyRuntimeContractFromCode(source.code || '').config
       this.currentSource = source
       this.currentAssetType = source.asset_type === 'portfolio_strategy' ? 'portfolio_strategy' : 'script'
       this.currentSourceId = this.getScriptSourceId(source)
@@ -914,7 +1616,7 @@ export default {
       this.scriptCodeHidden = !!(source.code_hidden || metadata.code_hidden)
       this.scriptCode = this.scriptCodeHidden
         ? ''
-        : String(source.code || (this.currentAssetType === 'portfolio_strategy' ? DEFAULT_PORTFOLIO_CODE : DEFAULT_SCRIPT_CODE))
+        : String(source.code || '')
       this.scriptTemplateKey = source.template_key || runConfig.script_template_key || ''
       this.scriptTemplateParams = {
         ...this.parseObject(metadata.script_template_params),
@@ -922,9 +1624,14 @@ export default {
       }
       this.scriptParamSchema = this.parseObject(source.param_schema)
       this.runConfig = {
-        ...this.runConfig,
-        ...runConfig
+        ...createDefaultRunConfig(),
+        ...sanitizeRuntimeConfigForSource(runConfig, source.code || ''),
+        ...inferredRunConfig
       }
+      this.$nextTick(() => {
+        this.ensureCurrentSymbolOption()
+        this.searchStrategySymbols(this.runConfig.symbol)
+      })
       const universeReference = this.extractUniverseReferenceFromCode(this.scriptCode)
       if (universeReference.id && !this.runConfig.universe_id) {
         this.runConfig = {
@@ -943,7 +1650,7 @@ export default {
       this.currentSourceId = null
       this.selectedScriptId = undefined
       this.currentAssetType = assetType === 'portfolio_strategy' ? 'portfolio_strategy' : 'script'
-      this.scriptCode = this.currentAssetType === 'portfolio_strategy' ? DEFAULT_PORTFOLIO_CODE : DEFAULT_SCRIPT_CODE
+      this.scriptCode = EMPTY_DRAFT_CODE
       this.scriptCodeHidden = false
       this.scriptTemplateKey = ''
       this.scriptTemplateParams = {}
@@ -951,7 +1658,7 @@ export default {
       this.editorInitialTemplateKey = ''
       this.scriptVerified = false
       this.runConfig = {
-        ...this.runConfig,
+        ...createDefaultRunConfig(),
         universe_id: undefined,
         universe_code: '',
         universe_name: ''
@@ -977,10 +1684,9 @@ export default {
         if (first) await this.openSource(first.id, { updateRoute: true })
         else this.createNewDraft({ openTemplate: false, updateRoute: true, assetType: target })
       }
-      const defaultCode = this.currentAssetType === 'portfolio_strategy' ? DEFAULT_PORTFOLIO_CODE : DEFAULT_SCRIPT_CODE
       const shouldConfirm = this.currentSourceId
         ? this.hasUnsavedScriptChanges
-        : String(this.scriptCode || '').trim() !== String(defaultCode).trim()
+        : String(this.scriptCode || '').trim() !== EMPTY_DRAFT_CODE
       if (shouldConfirm) {
         this.$confirm({
           title: this.text.switchWorkspaceTitle,
@@ -1024,6 +1730,19 @@ export default {
       this.applyUniverseReferenceToCode(item)
       this.showUniverseLibrary = false
       this.$message.success(this.text.universeApplied.replace('{name}', item.name || item.code || ''))
+    },
+    handleUniverseDeleted (item) {
+      if (!item || Number(item.id) !== Number(this.selectedUniverseId)) return
+      this.runConfig = {
+        ...this.runConfig,
+        universe_id: null,
+        universe_code: '',
+        universe_name: ''
+      }
+      if (!this.scriptCodeHidden) {
+        this.scriptCode = String(this.scriptCode || '').replace(/^\s*context\.set_universe\((?:pool=["'][^"']+["']|index=["']INDEX:[^"']+["'])\)\s*\r?\n?/mi, '')
+      }
+      this.$message.info(this.text.universeDeleted.replace('{name}', item.name || item.code || ''))
     },
     async applyGeneratedRobot (generated) {
       if (!generated || !generated.code) return
@@ -1180,7 +1899,7 @@ export default {
       return aliases[raw.toLowerCase()] || ''
     },
     buildTradingConfig () {
-      const cfg = this.runConfig || {}
+      const cfg = sanitizeRuntimeConfigForSource(this.runConfig, this.getCurrentScriptCode())
       const marketCategory = cfg.market_category || cfg.marketCategory || 'Crypto'
       const marketType = marketCategory === 'Crypto' && cfg.market_type === 'swap' ? 'swap' : 'spot'
       const tradeDirection = marketType === 'spot' ? 'long' : (cfg.trade_direction || 'long')
@@ -1298,6 +2017,7 @@ export default {
           return false
         }
         this.scriptVerified = true
+        this.publishContractPreview = verification.marketplace_contract || null
         if (!options.silentSuccess) this.$message.success(this.text.verifyPassed)
         return true
       } catch (e) {
@@ -1401,10 +2121,6 @@ export default {
       if (!await this.verifyScriptCode()) return
       const sourceId = await this.saveScript(false, { silent: true, loadingMode: 'publish' })
       if (!sourceId) return
-      if (!await this.hasSuccessfulBacktest(sourceId)) {
-        this.$message.warning(this.text.publishBacktestRequired)
-        return
-      }
       const meta = this.extractScriptMetadataFromCode(this.scriptCode)
       this.publishForm = {
         name: meta.name || this.deriveScriptName(),
@@ -1414,28 +2130,46 @@ export default {
         vipFree: false,
         codeHidden: false
       }
+      this.publishBacktestStatus = 'checking'
       this.showPublishModal = true
+      const passed = await this.hasSuccessfulBacktest(sourceId)
+      if (this.showPublishModal) {
+        this.publishBacktestStatus = passed ? 'passed' : 'required'
+      }
     },
     async hasSuccessfulBacktest (sourceId) {
       const id = Number(sourceId || 0)
       if (!id) return false
       try {
-        const res = await getStrategyBacktestHistory({
-          assetType: 'script',
-          assetId: id,
-          status: 'success',
-          limit: 1
-        })
-        const rows = Array.isArray(res && res.data) ? res.data : []
-        return res && res.code === 1 && rows.length > 0
+        const res = await getScriptSourcePublishReadiness(id)
+        return !!(res && res.code === 1 && res.data && res.data.ready)
       } catch (_) {
         return false
       }
     },
     closePublishModal () {
-      if (!this.publishingScript) this.showPublishModal = false
+      if (!this.publishingScript) {
+        this.showPublishModal = false
+        this.publishBacktestStatus = 'idle'
+      }
+    },
+    isBacktestRequiredPublishResponse (payload) {
+      const envelope = payload && payload.response ? payload.response.data : payload
+      const details = envelope && envelope.data
+      return !!(details && (details.requires_backtest || details.error_type === 'BACKTEST_REQUIRED'))
+    },
+    goToBacktestFromPublish () {
+      if (this.publishingScript) return
+      this.showPublishModal = false
+      this.publishBacktestStatus = 'idle'
+      this.openBacktestCenter()
     },
     async confirmPublish () {
+      if (this.publishBacktestStatus !== 'passed') {
+        this.publishBacktestStatus = 'required'
+        this.$message.warning(this.text.publishBacktestRequired)
+        return
+      }
       const sourceId = this.currentSourceId || await this.saveScript(false, { silent: true, loadingMode: 'publish' })
       if (!sourceId) return
       const pricingType = this.publishForm.pricingType === 'paid' ? 'paid' : 'free'
@@ -1457,13 +2191,23 @@ export default {
           codeHidden: !!this.publishForm.codeHidden
         })
         if (res && res.code === 1) {
-          this.$message.success(this.text.publishSuccess)
+          const action = res.data && res.data.publication_action
+          this.$message.success(action === 'updated' ? this.text.publishUpdateSuccess : this.text.publishSuccess)
           this.showPublishModal = false
+          this.publishBacktestStatus = 'idle'
+        } else if (this.isBacktestRequiredPublishResponse(res)) {
+          this.publishBacktestStatus = 'required'
+          this.$message.warning(this.text.publishBacktestRequired)
         } else {
           this.$message.error((res && res.msg) || this.text.publishFailed)
         }
       } catch (e) {
-        this.$message.error(e.backendMessage || e.message || this.text.publishFailed)
+        if (this.isBacktestRequiredPublishResponse(e)) {
+          this.publishBacktestStatus = 'required'
+          this.$message.warning(this.text.publishBacktestRequired)
+        } else {
+          this.$message.error(e.backendMessage || e.message || this.text.publishFailed)
+        }
       } finally {
         this.publishingScript = false
       }
@@ -1529,6 +2273,11 @@ export default {
           updateRoute: false
         })
       if (!sourceId) return
+      if (this.adaptedBacktestRequired && !await this.hasSuccessfulBacktest(sourceId)) {
+        this.$message.warning(this.$t('community.backtestBeforeDeployment'))
+        this.openBacktestCenter()
+        return
+      }
       if (this.currentAssetType === 'portfolio_strategy') {
         this.$router.push({
           path: '/strategy-center',
@@ -1703,23 +2452,24 @@ export default {
         '',
         'Hard boundaries:',
         '- Return Strategy API V2 code only, using the current manifest and handler contract.',
-        '- Start with a metadata docstring, then define initialize(context) and handle_data(context, data), scheduled callbacks, or on_rebalance(context, data).',
+        '- Start with a metadata docstring, then define initialize(context) and handle_data(context, data). This conversion must remain a single-instrument CTA; do not use on_rebalance or a portfolio manifest.',
         '- The strategy source owns its universe, markets, subscriptions, frequency, factors, schedules, direction, sizing, entries, exits, and risk rules.',
         '- Preserve the source instrument and timeframe below in context.set_universe(...) and context.subscribe(...). Never replace them with USStock:SPY or another fallback instrument.',
         '- In initialize(context), call context.set_universe(...) and context.subscribe(frequency=...). Use context.set_warmup(...) when indicators need history.',
         '- Backtest and deployment panels only provide initial capital, date range, and optional leverage for a Crypto @swap strategy that explicitly calls context.allow_leverage(max_leverage=N).',
         '- Preserve the indicator signal logic first. Map visual buy/entry markers to long entries, sell/exit markers to long exits, and warning markers to wait/risk states.',
-        '- Default to long-only unless the user explicitly asks for shorts and the indicator has clear bearish short-entry logic.',
+        '- Default to long-only. Shorts require an explicit user request and a preserved Crypto @swap instrument; express short-entry conditions independently from long exits.',
         '- First classify every marker as long entry, long exit, short entry, short exit, warning/wait, or visual-only. Marker color and type="sell" alone do not prove short-entry intent.',
         '- Preserve composite event algebra exactly. For edge(A | B), compare the complete previous composite A_prev | B_prev; do not emit a duplicate event on the next bar.',
         '- If the user explicitly requests symmetric shorts from a long-only indicator, derive and label them as new behavior; otherwise do not invent short entries.',
-        '- Confirm indicator conditions on completed bars. Orders from handle_data are filled by the engine on the next available bar open.',
+        '- Confirm indicator conditions on completed bars. In backtests, market orders from handle_data become eligible at the next available bar open; live orders are asynchronous and fills must be confirmed.',
+        '- Follow the server-provided Strategy API V2 system contract and active capability definitions for exact API signatures, factor semantics, bar clocks, and native protection rules.',
         '- Use get_history, indicator, factor, get_factors, and get_fundamentals without future data. TA-Lib functions are available through indicator/factor.',
         '- Use data.current(symbol, field) for current scalar values. There is no get_current_data API. get_position(symbol) returns a Position with amount, avg_cost, and last_price; it has no quantity or cost_basis.',
         '- Fundamental factors are point-in-time and portfolio-oriented; never invent fundamental values or backfill future observations.',
         '- Use order, order_value, order_target, order_target_value, and order_target_percent. Prevent duplicate intents on the same bar.',
         '- Declare tunable strategy knobs with # @param and read matching context.params defaults only inside handlers or callbacks, never inside initialize(context).',
-        '- For risk-managed entries, attach explicit protection rules to entries with stop_loss_pct, take_profit_pct, trailing_stop_pct, or time_limit_seconds.',
+        '- For risk-managed entries, attach native protection using stop_loss_pct, take_profit_pct, trailing_stop_pct, trailing_activation_pct, or time_limit_seconds. Spot strategies may also call set_default_protection inside an executable handler before entry; Crypto swaps require direct protection on every entry leg. Ratios use decimals: 0.03 means 3%. Signal exits alone do not implement native protection.',
         '- Remove display-only parameters such as colors, visibility toggles, marker offsets, line extension, and plot layout.',
         '- Do not generate grid, DCA, or martingale logic unless the user explicitly requests a Strategy API V2 robot.',
         '',
@@ -1747,8 +2497,18 @@ export default {
       this.indicatorConvertLoading = true
       this.indicatorConvertError = ''
       try {
+        const source = this.resolveIndicatorConversionContext(ctx)
         const res = await aiGenerateStrategy({
-          prompt: this.buildIndicatorConversionPrompt()
+          prompt: this.buildIndicatorConversionPrompt(),
+          assetType: 'script',
+          generationMode: 'indicator_conversion',
+          existingCode: '',
+          context: {
+            source: 'indicator_ide_conversion',
+            conversionRequest: String(this.indicatorConvertInstruction || '').trim(),
+            instrument: source.instrument,
+            timeframe: source.timeframe
+          }
         })
         const code = this.extractAiGeneratedCode(res)
         if (!code) throw new Error((res && res.msg) || this.text.indicatorConvertFailed)
@@ -1765,7 +2525,7 @@ export default {
         this.finishIndicatorConversion(sourceId)
         this.$message.success(this.text.indicatorConvertSuccess)
       } catch (e) {
-        this.indicatorConvertError = e.backendMessage || e.message || this.text.indicatorConvertFailed
+        this.indicatorConvertError = this.localizeStrategyAiError(e)
       } finally {
         this.indicatorConvertLoading = false
       }
@@ -1893,21 +2653,30 @@ export default {
 .strategy-ide-shell {
   box-sizing: border-box;
   height: calc(100vh - 64px);
-  padding: 12px;
-  background: #f5f7fb;
+  padding: 10px;
+  color: #252a34;
+  background: #f4f5f7;
   overflow: hidden;
+}
+
+.adapted-backtest-alert {
+  flex: 0 0 auto;
+  margin-bottom: 10px;
 }
 
 .strategy-ide-layout {
   height: 100%;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .script-panel {
-  height: 100%;
+  height: auto;
+  flex: 1;
   min-height: 0;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 1px solid #e1e4e8;
+  border-radius: 10px;
   background: #fff;
   overflow: hidden;
 }
@@ -1929,16 +2698,42 @@ export default {
   min-height: 0;
 }
 
+.script-panel ::v-deep .editor-layout--split {
+  grid-template-columns: minmax(280px, 18%) minmax(520px, 1fr) minmax(340px, 29%);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.script-panel ::v-deep .editor-layout--split.editor-layout--split-no-params {
+  grid-template-columns: minmax(520px, 1fr) minmax(340px, 29%);
+}
+
+.script-panel ::v-deep .editor-layout--split-no-params .code-col {
+  grid-column: 1;
+}
+
+.script-panel ::v-deep .editor-layout--split-no-params .strategy-ai-workspace-host--primary {
+  grid-column: 2;
+}
+
 .script-panel ::v-deep .code-col,
 .script-panel ::v-deep .side-col {
   height: 100%;
   min-height: 0;
 }
 
-.script-panel ::v-deep .code-section,
+.script-panel ::v-deep .editor-layout--split .side-col {
+  height: 100%;
+}
+
 .script-panel ::v-deep .side-tabs {
   height: 100%;
   min-height: 0;
+}
+
+.script-panel ::v-deep .code-section {
+  height: auto;
+  min-height: 180px;
+  flex: 1 1 auto;
 }
 
 .script-panel ::v-deep .code-editor-container {
@@ -1956,8 +2751,8 @@ export default {
   width: 100%;
   gap: 12px;
   padding: 10px 12px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fff;
+  border-bottom: 1px solid #e1e4e8;
+  background: #f9fafb;
 }
 
 .toolbar-left,
@@ -2042,10 +2837,255 @@ export default {
 .script-live-button,
 .script-backtest-button,
 .indicator-convert-button,
+.robot-template-button,
 .factor-library-button,
 .universe-library-button {
   height: 36px;
   font-weight: 700;
+}
+
+.strategy-ai-workspace {
+  position: relative;
+  height: 100%;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e1e4e8;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.strategy-ai-workspace--collapsed {
+  min-height: 42px;
+  height: 42px;
+}
+
+.strategy-ai-header {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid #e7e9ed;
+  background: #f7f8fa;
+  cursor: pointer;
+}
+
+.strategy-ai-header__title,
+.strategy-ai-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.strategy-ai-header__title {
+  flex-wrap: wrap;
+}
+
+.strategy-ai-header__title > .anticon { color: var(--primary-color, #52c41a); }
+.strategy-ai-header__title strong { color: #25324a; font-size: 13px; }
+
+.strategy-ai-contract-badge,
+.strategy-ai-memory-badge,
+.strategy-ai-message__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.strategy-ai-contract-badge { color: #1677ff; background: #e6f4ff; }
+.strategy-ai-memory-badge { color: #389e0d; background: #f0f9eb; }
+
+.strategy-ai-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  flex: 1 1 auto;
+  padding: 10px;
+}
+
+.strategy-ai-conversation {
+  min-height: 0;
+  padding: 10px;
+  overflow-y: auto;
+  border: 1px solid #e4e7eb;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+
+.strategy-ai-empty {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #8491a5;
+  text-align: center;
+  font-size: 11px;
+}
+
+.strategy-ai-empty > .anticon { color: var(--primary-color, #52c41a); font-size: 22px; }
+.strategy-ai-empty strong { color: #25324a; font-size: 13px; }
+.strategy-ai-empty span { max-width: 560px; }
+
+.strategy-ai-locked {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 8px;
+  color: #8491a5;
+  text-align: center;
+  background: #fafafa;
+}
+
+.strategy-ai-locked > .anticon { color: #d89614; font-size: 24px; }
+.strategy-ai-locked strong { color: #25324a; font-size: 13px; }
+
+.theme-dark .strategy-ai-locked {
+  border-color: #3a414c;
+  color: #8c98aa;
+  background: #17191d;
+}
+
+.theme-dark .strategy-ai-locked strong { color: #e5e9f0; }
+
+.strategy-ai-quick-prompts {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.strategy-ai-quick-prompts button {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #dce3ec;
+  border-radius: 999px;
+  color: #526079;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.strategy-ai-quick-prompts button:hover {
+  border-color: var(--primary-color, #52c41a);
+  color: var(--primary-color, #52c41a);
+}
+
+.strategy-ai-message { max-width: 92%; margin-bottom: 10px; }
+.strategy-ai-message--user { margin-left: auto; }
+.strategy-ai-message__role { margin: 0 4px 3px; color: #96a0b2; font-size: 9px; }
+.strategy-ai-message--user .strategy-ai-message__role { text-align: right; }
+.strategy-ai-message__badge { margin-left: 5px; color: #1677ff; background: #e6f4ff; }
+.strategy-ai-message__content {
+  padding: 8px 10px;
+  border-radius: 9px 9px 9px 3px;
+  color: #354056;
+  background: #f1f4f8;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: normal;
+  word-break: break-word;
+}
+.strategy-ai-message__content ::v-deep p { margin: 0 0 7px; }
+.strategy-ai-message__content ::v-deep p:last-child { margin-bottom: 0; }
+.strategy-ai-message__content ::v-deep h3,
+.strategy-ai-message__content ::v-deep h4,
+.strategy-ai-message__content ::v-deep h5 { margin: 10px 0 5px; color: inherit; font-size: 12px; line-height: 1.45; }
+.strategy-ai-message__content ::v-deep ul,
+.strategy-ai-message__content ::v-deep ol { margin: 5px 0 7px; padding-left: 19px; }
+.strategy-ai-message__content ::v-deep li { margin: 2px 0; }
+.strategy-ai-message__content ::v-deep blockquote { margin: 7px 0; padding: 5px 8px; border-left: 3px solid var(--primary-color, #52c41a); color: #68758a; background: rgba(82, 196, 26, 0.06); }
+.strategy-ai-message__content ::v-deep code { padding: 1px 4px; border-radius: 4px; color: #d46b08; background: rgba(250, 140, 22, 0.1); font: 10px/1.45 'Fira Code', Consolas, monospace; }
+.strategy-ai-message__content ::v-deep .qd-markdown-code { margin: 7px 0; padding: 9px; overflow-x: auto; border-radius: 6px; color: #d9e2f1; background: #1f2430; white-space: pre; }
+.strategy-ai-message__content ::v-deep .qd-markdown-code code { padding: 0; color: inherit; background: transparent; }
+.strategy-ai-message__content ::v-deep hr { margin: 8px 0; border: 0; border-top: 1px solid rgba(127, 140, 160, 0.24); }
+.strategy-ai-message__content ::v-deep a { color: #1677ff; text-decoration: underline; }
+.strategy-ai-message__content ::v-deep .qd-markdown-table-wrap { max-width: 100%; margin: 7px 0; overflow-x: auto; }
+.strategy-ai-message__content ::v-deep .qd-markdown-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.strategy-ai-message__content ::v-deep .qd-markdown-table th,
+.strategy-ai-message__content ::v-deep .qd-markdown-table td { padding: 5px 6px; border: 1px solid rgba(127, 140, 160, 0.22); text-align: left; }
+.strategy-ai-message--user .strategy-ai-message__content {
+  border: 1px solid #d9f7be;
+  border-radius: 9px 9px 3px 9px;
+  color: #24570f;
+  background: #f0f9eb;
+}
+.strategy-ai-message--thinking { opacity: 0.74; }
+
+.strategy-ai-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: -1px;
+  padding: 8px 10px;
+  border: 1px solid #b7eb8f;
+  border-radius: 0 0 9px 3px;
+  color: #389e0d;
+  background: #f6ffed;
+  font-size: 10px;
+}
+
+.strategy-ai-candidate--warning { border-color: #ffd591; color: #d46b08; background: #fff7e6; }
+.strategy-ai-candidate__actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.strategy-ai-composer {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  background: #fff;
+}
+.strategy-ai-composer ::v-deep textarea.ant-input {
+  min-height: 78px;
+  max-height: 130px;
+  flex: 1 1 auto;
+  resize: vertical;
+  line-height: 1.55;
+}
+.strategy-ai-composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  color: #9aa4b3;
+  font-size: 9px;
+}
+.strategy-ai-send { min-width: 96px; height: 36px; border-radius: 8px; font-weight: 700; }
+
+.strategy-ai-preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; color: #718096; font-size: 12px; }
+.strategy-ai-preview-toolbar > div { display: flex; gap: 8px; }
+.strategy-ai-code-preview {
+  max-height: 64vh;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 8px;
+  color: #d4d4d4;
+  background: #1e1e1e;
+  font: 12px/1.55 'Fira Code', Consolas, monospace;
+  white-space: pre;
 }
 
 .script-save-button,
@@ -2065,16 +3105,17 @@ export default {
 }
 
 .theme-dark {
-  background: #0f0f0f;
+  color: rgba(255, 255, 255, 0.82);
+  background: #101010;
 
   .script-panel {
-    border-color: rgba(255, 255, 255, 0.1);
-    background: #141414;
+    border-color: #2c2c2c;
+    background: #171717;
   }
 
   .ide-toolbar {
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-    background: #141414;
+    border-bottom-color: #2c2c2c;
+    background: #1b1b1b;
   }
 
   .script-select-label {
@@ -2114,6 +3155,45 @@ export default {
     border-color: rgba(255, 255, 255, 0.12) !important;
     color: rgba(255, 255, 255, 0.86) !important;
   }
+
+  .strategy-ai-workspace,
+  .strategy-ai-composer {
+    border-color: #303030;
+    background: #191919;
+  }
+
+  .strategy-ai-header {
+    border-bottom-color: #303030;
+    background: #202020;
+  }
+
+  .strategy-ai-header__title strong,
+  .strategy-ai-empty strong {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .strategy-ai-conversation {
+    border-color: #2b2b2b;
+    background: #131313;
+  }
+
+  .strategy-ai-message__content {
+    color: rgba(255, 255, 255, 0.76);
+    background: #242424;
+  }
+
+  .strategy-ai-message--user .strategy-ai-message__content {
+    border-color: rgba(82, 196, 26, 0.28);
+    color: #d9f7be;
+    background: rgba(82, 196, 26, 0.12);
+  }
+
+  .strategy-ai-quick-prompts button {
+    border-color: rgba(255, 255, 255, 0.13);
+    color: rgba(255, 255, 255, 0.62);
+    background: #1f1f1f;
+  }
+
 }
 
 @media (max-width: 1180px) {
@@ -2132,10 +3212,96 @@ export default {
     flex: 1 1 260px;
     width: auto;
   }
+
+  .script-panel ::v-deep .editor-layout--split {
+    grid-template-columns: minmax(250px, 27%) minmax(480px, 1fr);
+    grid-template-rows: minmax(420px, 1fr) minmax(320px, auto);
+  }
+
+  .script-panel ::v-deep .editor-layout--split.editor-layout--split-no-params {
+    grid-template-columns: minmax(480px, 1fr) minmax(320px, 36%);
+    grid-template-rows: minmax(420px, 1fr);
+  }
+
+  .script-panel ::v-deep .editor-layout--split .side-col {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .script-panel ::v-deep .editor-layout--split .code-col {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .script-panel ::v-deep .editor-layout--split .strategy-ai-workspace-host--primary {
+    grid-column: 1 / 3;
+    grid-row: 2;
+  }
+
+  .script-panel ::v-deep .editor-layout--split-no-params .code-col {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .script-panel ::v-deep .editor-layout--split-no-params .strategy-ai-workspace-host--primary {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .strategy-ai-quick-prompts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+}
+
+@media (max-width: 768px) {
+  .strategy-ide-shell {
+    height: auto;
+    min-height: calc(100vh - 64px);
+    overflow: auto;
+  }
+
+  .script-panel ::v-deep .editor-layout--split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .script-panel ::v-deep .editor-layout--split.editor-layout--split-no-params {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .script-panel ::v-deep .editor-layout--split .side-col,
+  .script-panel ::v-deep .editor-layout--split .code-col,
+  .script-panel ::v-deep .editor-layout--split .strategy-ai-workspace-host--primary {
+    grid-column: 1;
+    min-height: 360px;
+  }
+
+  .script-panel ::v-deep .editor-layout--split .side-col { grid-row: 1; }
+  .script-panel ::v-deep .editor-layout--split .code-col { grid-row: 2; }
+  .script-panel ::v-deep .editor-layout--split .strategy-ai-workspace-host--primary { grid-row: 3; }
+  .script-panel ::v-deep .editor-layout--split-no-params .code-col { grid-row: 1; }
+  .script-panel ::v-deep .editor-layout--split-no-params .strategy-ai-workspace-host--primary { grid-row: 2; }
 }
 </style>
 
 <style lang="less">
+.strategy-ai-preview-modal--dark {
+  .ant-modal-content,
+  .ant-modal-header,
+  .ant-modal-body {
+    border-color: #303030;
+    background: #181818;
+  }
+
+  .ant-modal-title,
+  .ant-modal-close,
+  .strategy-ai-preview-toolbar {
+    color: rgba(255, 255, 255, 0.82);
+  }
+}
+
 .robot-builder-drawer {
   .ant-drawer-content-wrapper {
     max-width: 96vw;
@@ -2163,6 +3329,42 @@ export default {
   .executor-page {
     min-height: 0;
     flex: 1;
+  }
+}
+
+.ai-strategy-generator {
+  display: grid;
+  gap: 14px;
+}
+
+.ai-strategy-generator-modal--dark {
+  .ant-modal-content,
+  .ant-modal-header,
+  .ant-modal-body,
+  .ant-modal-footer {
+    border-color: #303030;
+    background: #1f1f1f;
+  }
+
+  .ant-modal-title,
+  .ant-modal-close,
+  .ant-modal-body {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .ant-input {
+    border-color: #434343;
+    background: #141414;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .ant-alert-info {
+    border-color: rgba(82, 196, 26, 0.28);
+    background: rgba(82, 196, 26, 0.08);
+  }
+
+  .ant-alert-message {
+    color: rgba(255, 255, 255, 0.76);
   }
 }
 
@@ -2285,6 +3487,135 @@ export default {
   .publish-note .anticon {
     margin-top: 3px;
     color: var(--primary-color, #ff4d4f);
+  }
+
+  .publish-backtest-gate {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 64px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+
+    &.is-checking {
+      color: #1677ff;
+      border-color: rgba(22, 119, 255, 0.24);
+      background: rgba(22, 119, 255, 0.04);
+    }
+
+    &.is-passed {
+      color: #389e0d;
+      border-color: rgba(82, 196, 26, 0.34);
+      background: rgba(82, 196, 26, 0.07);
+    }
+
+    &.is-required {
+      color: #d48806;
+      border-color: rgba(250, 173, 20, 0.38);
+      background: rgba(250, 173, 20, 0.08);
+    }
+
+    &__icon {
+      display: flex;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: currentColor;
+
+      .anticon {
+        color: #fff;
+        font-size: 16px;
+      }
+    }
+
+    &__copy {
+      display: flex;
+      min-width: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 3px;
+
+      strong {
+        color: #1f2937;
+        font-size: 13px;
+      }
+
+      span {
+        color: #6b7280;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+    }
+
+    .ant-btn {
+      flex-shrink: 0;
+    }
+
+    &__button,
+    &__button:hover,
+    &__button:focus {
+      border-color: var(--primary-color, #52c41a);
+      background: var(--primary-color, #52c41a);
+      color: #fff;
+
+      .anticon {
+        color: #fff;
+      }
+    }
+
+    &__button:hover,
+    &__button:focus {
+      opacity: 0.9;
+    }
+  }
+
+  .publish-contract-preview {
+    padding: 12px;
+    border: 1px solid rgba(82, 196, 26, 0.28);
+    border-radius: 10px;
+    background: rgba(82, 196, 26, 0.06);
+
+    &__head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    &__grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+
+      span {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        padding: 8px;
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      small { color: #6b7280; }
+      b {
+        overflow: hidden;
+        color: #1f2937;
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    p {
+      margin: 8px 0 0;
+      color: #6b7280;
+      font-size: 12px;
+    }
   }
 
   .publish-section,
@@ -2600,6 +3931,7 @@ export default {
   }
 
   .publish-note,
+  .publish-backtest-gate,
   .publish-section,
   .publish-option-card,
   .indicator-convert-selector,
@@ -2608,6 +3940,15 @@ export default {
   .code-version-preview {
     border-color: rgba(255, 255, 255, 0.1);
     background: #1f1f1f;
+  }
+
+  .publish-backtest-gate {
+    &.is-checking { background: rgba(22, 119, 255, 0.12); }
+    &.is-passed { background: rgba(82, 196, 26, 0.12); }
+    &.is-required { background: rgba(250, 173, 20, 0.12); }
+
+    &__copy strong { color: rgba(255, 255, 255, 0.88); }
+    &__copy span { color: rgba(255, 255, 255, 0.58); }
   }
 
   .publish-option-card.active {

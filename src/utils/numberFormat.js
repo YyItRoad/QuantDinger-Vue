@@ -37,6 +37,20 @@ export function percentInputParser (value, decimals = 4) {
   return n == null ? '' : n
 }
 
+/** a-input-number formatter for stored ratios (0.95 is displayed as 95%). */
+export function ratioPercentInputFormatter (value, decimals = 2) {
+  if (value == null || value === '') return ''
+  const ratio = Number(value)
+  if (!Number.isFinite(ratio)) return String(value)
+  return `${formatPercentDisplay(ratio * 100, decimals)}%`
+}
+
+/** a-input-number parser that converts a displayed percent back to a stored ratio. */
+export function ratioPercentInputParser (value, decimals = 6) {
+  const percent = parsePercentInput(value, decimals)
+  return percent == null ? '' : roundTo(percent / 100, decimals)
+}
+
 /** Convert stored ratio (0.035) or percent (3.5) to UI percent. */
 export function ratioOrPercentToUiPercent (raw, defaultPct = 3, decimals = 4) {
   if (raw == null || raw === '') return defaultPct

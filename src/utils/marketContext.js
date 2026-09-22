@@ -21,10 +21,13 @@ export function normalizeExchangeId (value) {
 export function marketContextKey (context = {}) {
   const rawSymbol = String(context.symbol || '')
   const symbol = rawSymbol.split(':').find(part => part.includes('/')) || rawSymbol
-  return [
-    context.market || context.market_category || '',
-    symbol
-  ].join(':')
+  const market = String(context.market || context.market_category || '')
+  const base = [market, symbol].join(':')
+  const exchangeId = normalizeExchangeId(context.exchange_id || context.exchangeId)
+  const marketType = String(context.market_type || context.marketType || '').trim().toLowerCase()
+  const instrumentId = String(context.instrument_id || context.instrumentId || '').trim()
+  if (market !== 'Crypto' || (!exchangeId && !instrumentId)) return base
+  return [base, exchangeId, normalizeMarketType(marketType, market), instrumentId].join('|')
 }
 
 export function normalizeMarketContext (context = {}, defaults = {}) {

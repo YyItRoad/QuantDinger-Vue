@@ -1,7 +1,7 @@
 const overrides = {
   "zh-TW": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "搜尋標的、查看事件、分析行情、診斷策略和生成程式碼，都從這裡開始。",
+    "aiAssetAnalysis.copilot.subtitle": "在一個工作區研究標的、查看事件、比較市場，並形成可驗證的交易觀點。",
     "aiAssetAnalysis.copilot.welcomeTitle": "用一句話開始控制 QuantDinger",
     "aiAssetAnalysis.copilot.welcomeDesc": "可以問行情、解釋錯誤日誌、撰寫策略草稿，或上傳 K 線圖一起判斷。",
     "aiAssetAnalysis.copilot.placeholder": "例如：幫我診斷 BTC/USDT 1 小時趨勢，或上傳圖片詢問是否適合開倉...",
@@ -81,7 +81,7 @@ const overrides = {
   },
   "ja-JP": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "銘柄検索、イベント確認、相場分析、戦略診断、コード生成をこの画面で行えます。",
+    "aiAssetAnalysis.copilot.subtitle": "銘柄を調査し、イベントを確認し、市場を比較して、検証可能な投資仮説を一つの画面で組み立てます。",
     "aiAssetAnalysis.copilot.welcomeTitle": "一文で QuantDinger を操作",
     "aiAssetAnalysis.copilot.welcomeDesc": "相場を質問し、ログを説明させ、戦略を下書きし、チャート画像も一緒に診断できます。",
     "aiAssetAnalysis.copilot.placeholder": "例：BTC/USDT の1時間足を診断、または画像をアップロードしてエントリー可否を確認...",
@@ -161,7 +161,7 @@ const overrides = {
   },
   "ko-KR": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "종목 검색, 이벤트 확인, 시장 분석, 전략 진단, 코드 생성을 한 화면에서 진행합니다.",
+    "aiAssetAnalysis.copilot.subtitle": "한 화면에서 종목을 조사하고, 이벤트와 시장을 비교해 검증 가능한 투자 관점을 만듭니다.",
     "aiAssetAnalysis.copilot.welcomeTitle": "한 문장으로 QuantDinger 제어",
     "aiAssetAnalysis.copilot.welcomeDesc": "시장 질문, 로그 해석, 전략 초안 작성, 차트 이미지 진단을 함께 처리합니다.",
     "aiAssetAnalysis.copilot.placeholder": "예: BTC/USDT 1시간 추세를 진단하거나 이미지를 업로드해 진입 위험을 확인...",
@@ -241,7 +241,7 @@ const overrides = {
   },
   "de-DE": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "Suche Symbole, prüfe Ereignisse, analysiere Märkte, diagnostiziere Strategien und erstelle Code an einem Ort.",
+    "aiAssetAnalysis.copilot.subtitle": "Recherchieren Sie Symbole, prüfen Sie Ereignisse, vergleichen Sie Märkte und entwickeln Sie überprüfbare Handelsideen.",
     "aiAssetAnalysis.copilot.welcomeTitle": "QuantDinger mit einem Satz steuern",
     "aiAssetAnalysis.copilot.welcomeDesc": "Frage nach Märkten, lasse Logs erklären, entwirf Strategien oder lade ein Chartbild zur Diagnose hoch.",
     "aiAssetAnalysis.copilot.placeholder": "Beispiel: BTC/USDT 1H-Trend diagnostizieren oder ein Bild hochladen und das Einstiegsrisiko prüfen...",
@@ -300,7 +300,7 @@ const overrides = {
   },
   "fr-FR": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "Recherchez des symboles, inspectez les événements, analysez les marchés, diagnostiquez des stratégies et générez du code.",
+    "aiAssetAnalysis.copilot.subtitle": "Analysez des actifs, examinez les événements, comparez les marchés et formulez des thèses de trading vérifiables.",
     "aiAssetAnalysis.copilot.welcomeTitle": "Pilotez QuantDinger en une phrase",
     "aiAssetAnalysis.copilot.welcomeDesc": "Posez des questions de marché, expliquez des logs, rédigez des stratégies ou joignez une image de graphique.",
     "aiAssetAnalysis.copilot.placeholder": "Exemple : diagnostiquer la tendance BTC/USDT en 1H, ou téléverser une image et vérifier le risque d’entrée...",
@@ -359,7 +359,7 @@ const overrides = {
   },
   "ru-RU": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "Ищите тикеры, проверяйте события, анализируйте рынок, диагностируйте стратегии и генерируйте код в одном месте.",
+    "aiAssetAnalysis.copilot.subtitle": "Исследуйте инструменты, проверяйте события, сравнивайте рынки и формируйте проверяемые торговые гипотезы.",
     "aiAssetAnalysis.copilot.welcomeTitle": "Управляйте QuantDinger одной фразой",
     "aiAssetAnalysis.copilot.welcomeDesc": "Спрашивайте о рынке, разбирайте логи, создавайте стратегии или загружайте изображение графика.",
     "aiAssetAnalysis.copilot.placeholder": "Например: проанализировать тренд BTC/USDT 1H или загрузить изображение и оценить риск входа...",
@@ -418,7 +418,7 @@ const overrides = {
   },
   "vi-VN": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "Tìm mã, xem sự kiện, phân tích thị trường, chẩn đoán chiến lược và tạo mã trong một không gian.",
+    "aiAssetAnalysis.copilot.subtitle": "Nghiên cứu mã, kiểm tra sự kiện, so sánh thị trường và hình thành luận điểm giao dịch có thể kiểm chứng.",
     "aiAssetAnalysis.copilot.welcomeTitle": "Điều khiển QuantDinger bằng một câu",
     "aiAssetAnalysis.copilot.welcomeDesc": "Hỏi về thị trường, giải thích log, phác thảo chiến lược hoặc tải ảnh biểu đồ để chẩn đoán.",
     "aiAssetAnalysis.copilot.placeholder": "Ví dụ: chẩn đoán xu hướng BTC/USDT 1H, hoặc tải ảnh lên để hỏi rủi ro vào lệnh...",
@@ -477,7 +477,7 @@ const overrides = {
   },
   "th-TH": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "ค้นหาสัญลักษณ์ ตรวจเหตุการณ์ วิเคราะห์ตลาด วินิจฉัยกลยุทธ์ และสร้างโค้ดได้ในที่เดียว",
+    "aiAssetAnalysis.copilot.subtitle": "วิจัยสินทรัพย์ ตรวจสอบเหตุการณ์ เปรียบเทียบตลาด และสร้างมุมมองการซื้อขายที่ตรวจสอบได้ในที่เดียว",
     "aiAssetAnalysis.copilot.welcomeTitle": "ควบคุม QuantDinger ด้วยประโยคเดียว",
     "aiAssetAnalysis.copilot.welcomeDesc": "ถามตลาด อธิบาย log ร่างกลยุทธ์ หรืออัปโหลดภาพกราฟเพื่อวิเคราะห์",
     "aiAssetAnalysis.copilot.placeholder": "เช่น วิเคราะห์แนวโน้ม BTC/USDT 1H หรืออัปโหลดภาพเพื่อถามความเสี่ยงการเข้า...",
@@ -536,7 +536,7 @@ const overrides = {
   },
   "ar-SA": {
     "aiAssetAnalysis.copilot.title": "AI Copilot",
-    "aiAssetAnalysis.copilot.subtitle": "ابحث عن الرموز، راجع الأحداث، حلل السوق، شخّص الاستراتيجيات وأنشئ الكود من مكان واحد.",
+    "aiAssetAnalysis.copilot.subtitle": "ابحث الأصول، وراجع الأحداث، وقارن الأسواق، وصغ فرضيات تداول قابلة للتحقق في مساحة عمل واحدة.",
     "aiAssetAnalysis.copilot.welcomeTitle": "تحكم في QuantDinger بجملة واحدة",
     "aiAssetAnalysis.copilot.welcomeDesc": "اسأل عن السوق، اشرح السجلات، أنشئ مسودة استراتيجية أو ارفع صورة مخطط للتحليل.",
     "aiAssetAnalysis.copilot.placeholder": "مثال: حلل اتجاه BTC/USDT على إطار 1H، أو ارفع صورة واسأل عن مخاطر الدخول...",

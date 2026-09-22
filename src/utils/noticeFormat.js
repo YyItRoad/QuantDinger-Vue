@@ -260,7 +260,7 @@ function renderSignalTrade (p, t, { html = false } = {}) {
         <div class="qd-notice-card__chip">${escapeHtml([action, side].filter(Boolean).join(' ') || p.signalType || 'Signal')}</div>
       </div>
       <div class="qd-notice-card__grid">
-        ${rows.map(([label, value], index) => metricHtml(label, value, index === 0 ? 'is-wide' : '')).join('')}
+        ${rows.map(([label, value]) => metricHtml(label, value)).join('')}
       </div>
     </div>`
   return { title, message }

@@ -2,6 +2,7 @@ import axios from 'axios'
 // import store from '@/store'
 import storage from 'store'
 import notification from 'ant-design-vue/es/notification'
+import { translateStrategyRuntimeError } from './strategyRuntimeError'
 import { VueAxios } from './axios'
 import { ACCESS_TOKEN, USER_INFO, USER_ROLES } from '@/store/mutation-types'
 import i18n from '@/locales'
@@ -129,12 +130,31 @@ function normalizeInsufficientCreditsError (error) {
   )
 }
 
+function normalizePublishBacktestRequiredError (error) {
+  const envelope = error && error.response && error.response.data
+  const details = envelope && envelope.data
+  if (!details || !(details.requires_backtest || details.error_type === 'BACKTEST_REQUIRED')) return ''
+  return tt(
+    'strategyIde.publishBacktestRequired',
+    'Run at least one successful backtest before publishing.'
+  )
+}
+
 function normalizeBusinessErrorMessage (message, error) {
+  const publishBacktestRequired = normalizePublishBacktestRequiredError(error)
+  if (publishBacktestRequired) return publishBacktestRequired
   const backtestRangeLimit = normalizeBacktestRangeLimitError(error)
   if (backtestRangeLimit) return backtestRangeLimit
   const insufficientCredits = normalizeInsufficientCreditsError(error)
   if (insufficientCredits) return insufficientCredits
   if (!message) return ''
+  const readiness = String(message).match(/^(strategyV2\.(?:insufficientWarmupData|fundamentalDataMissing|universeHistoryUnavailable))(?::(.*))?$/s)
+  if (readiness) {
+    const translated = tt(readiness[1], readiness[1])
+    return readiness[2] ? `${translated} ${readiness[2]}` : translated
+  }
+  const strategyRuntimeMessage = translateStrategyRuntimeError(message, key => tt(key, key))
+  if (strategyRuntimeMessage !== String(message)) return strategyRuntimeMessage
   const liveConflict = message.match(/Live strategy conflict: another running strategy already uses the same API key\/exchange\/market\/symbol \(([^)]+)\)\. Please stop strategy (\d+)(?: \((.+)\))? first\./i)
   if (liveConflict) {
     const [, scope, strategyId, strategyName] = liveConflict

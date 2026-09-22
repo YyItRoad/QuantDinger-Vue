@@ -75,131 +75,224 @@
               </div>
             </div>
           </div>
-          <div class="code-panel-body">
-            <div class="ide-guide-bar">
-              <a-icon type="book" />
-              <span>{{ $t('indicatorIde.devGuideTooltip') }}</span>
-              <a href="https://www.quantdinger.com/docs-zh.html#strategy-overview" target="_blank" rel="noopener noreferrer" class="ide-guide-link" @click.stop>
-                {{ $t('indicatorIde.devGuide') }} <a-icon type="arrow-right" />
-              </a>
-            </div>
-            <div class="code-editor-wrapper">
-              <div ref="codeEditor" class="code-editor-area"></div>
-              <div v-if="selectedIndicatorCodeHidden" class="code-hidden-mask">
-                <a-icon type="lock" />
-                <strong>{{ $t('indicatorIde.hiddenCodeTitle') }}</strong>
-                <span>{{ $t('indicatorIde.hiddenCodeDesc') }}</span>
-              </div>
-              <transition name="fade">
-                <div
-                  v-if="aiGenerating"
-                  class="code-ai-overlay"
-                >
-                  <div class="code-ai-overlay-inner">
-                    <a-icon type="loading" spin style="font-size: 22px; color: var(--primary-color, #1890ff);" />
-                    <span>{{ $t('indicatorIde.generating') }}</span>
-                    <div class="code-ai-overlay-dots">
-                      <span class="dot dot1"></span><span class="dot dot2"></span><span class="dot dot3"></span>
-                    </div>
-                  </div>
-                  <div class="code-ai-overlay-tip">{{ ideAiCurrentTip }}</div>
+          <div ref="codePanelBody" class="code-panel-body" :class="{ 'is-resizing': codeAiResizing, 'ai-is-collapsed': !aiPanelExpanded }">
+            <div class="code-editor-section" :style="{ flexBasis: `${codeAiSplitRatio}%` }">
+              <div class="ide-guide-bar">
+                <div class="ide-guide-copy">
+                  <a-icon type="book" />
+                  <span>{{ $t('indicatorIde.devGuideTooltip') }}</span>
                 </div>
-              </transition>
-            </div>
-
-            <!-- Code quality (between editor and AI) -->
-            <div class="code-quality-panel">
-              <div class="code-quality-head">
-                <span class="code-quality-title">{{ $t('indicatorIde.codeQualityTitle') }}</span>
-                <a-button
-                  type="link"
-                  size="small"
-                  class="code-quality-recheck"
-                  :loading="codeQualityLoading"
-                  @click="runCodeQualityCheck"
-                >{{ $t('indicatorIde.codeQualityRecheck') }}</a-button>
+                <div class="ide-guide-actions">
+                  <a-popover v-if="codeQualityChecked && sortedCodeQualityHints.length" placement="bottomRight" trigger="hover">
+                    <template slot="content">
+                      <ul class="code-quality-popover-list">
+                        <li
+                          v-for="(h, idx) in sortedCodeQualityHints"
+                          :key="idx"
+                          :class="qualityHintClass(h)"
+                        >{{ formatQualityHint(h) }}</li>
+                      </ul>
+                    </template>
+                    <span class="code-quality-top-status" :class="codeQualityTopStatusClass">
+                      <a-icon :type="codeQualityTopStatusIcon" />
+                      <span>{{ codeQualityTopStatusText }}</span>
+                    </span>
+                  </a-popover>
+                  <span v-else-if="codeQualityChecked" class="code-quality-top-status code-quality-top-status--success">
+                    <a-icon type="check-circle" />
+                    <span>{{ $t('indicatorIde.codeQualityAllGood') }}</span>
+                  </span>
+                  <a-button
+                    size="small"
+                    class="code-quality-top-button"
+                    :loading="codeQualityLoading"
+                    @click="runCodeQualityCheck"
+                  ><a-icon v-if="!codeQualityLoading" type="safety-certificate" /> {{ $t('indicatorIde.codeQualityRecheck') }}</a-button>
+                  <a href="https://www.quantdinger.com/doc/trading/INDICATOR_DEV_GUIDE.html" target="_blank" rel="noopener noreferrer" class="ide-guide-link" @click.stop>
+                    {{ $t('indicatorIde.devGuide') }} <a-icon type="arrow-right" />
+                  </a>
+                </div>
               </div>
-              <a-spin v-if="codeQualityLoading" size="small" class="code-quality-spin" />
-              <ul v-else-if="sortedCodeQualityHints.length" class="code-quality-list">
-                <li
-                  v-for="(h, idx) in sortedCodeQualityHints"
-                  :key="idx"
-                  :class="qualityHintClass(h)"
-                >{{ formatQualityHint(h) }}</li>
-              </ul>
+              <div class="code-editor-wrapper">
+                <div ref="codeEditor" class="code-editor-area"></div>
+                <div v-if="selectedIndicatorCodeHidden" class="code-hidden-mask">
+                  <a-icon type="lock" />
+                  <strong>{{ $t('indicatorIde.hiddenCodeTitle') }}</strong>
+                  <span>{{ $t('indicatorIde.hiddenCodeDesc') }}</span>
+                </div>
+                <transition name="fade">
+                  <div
+                    v-if="aiGenerating"
+                    class="code-ai-overlay"
+                  >
+                    <div class="code-ai-overlay-inner">
+                      <a-icon type="loading" spin style="font-size: 22px; color: var(--primary-color, #1890ff);" />
+                      <span>{{ $t('indicatorIde.generating') }}</span>
+                      <div class="code-ai-overlay-dots">
+                        <span class="dot dot1"></span><span class="dot dot2"></span><span class="dot dot3"></span>
+                      </div>
+                    </div>
+                    <div class="code-ai-overlay-tip">{{ ideAiCurrentTip }}</div>
+                  </div>
+                </transition>
+              </div>
             </div>
 
             <div
-              v-if="aiDebugSummary"
-              class="ai-debug-card"
-              :class="`ai-debug-card--${aiDebugState()}`"
-            >
-              <div class="ai-debug-card__header">
-                <div class="ai-debug-card__badge">
-                  <a-icon :type="aiDebugStateIcon()" />
-                </div>
-                <div class="ai-debug-card__headline">
-                  <span class="ai-debug-card__tag">{{ $t('indicatorIde.aiQaTag') || 'AI QA' }}</span>
-                  <span class="ai-debug-card__title">{{ aiDebugSummary.title }}</span>
-                </div>
-                <a-icon type="close" class="ai-debug-card__dismiss" @click="aiDebugSummary = null" />
-              </div>
-              <div class="ai-debug-card__chips">
-                <span :class="['ai-debug-chip', `ai-debug-chip--${aiDebugState()}`]">{{ aiDebugStateLabel() }}</span>
-                <span v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-chip ai-debug-chip--success">
-                  <a-icon type="check" style="font-size: 10px;" /> {{ aiDebugSummary.fixed_messages.length }} {{ $t('indicatorIde.fixed') || 'fixed' }}
-                </span>
-                <span v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-chip ai-debug-chip--warning">
-                  <a-icon type="eye" style="font-size: 10px;" /> {{ aiDebugSummary.remaining_messages.length }} {{ $t('indicatorIde.toWatch') || 'to review' }}
-                </span>
-              </div>
-              <div v-if="aiDebugSummary.returned_text" class="ai-debug-card__body">
-                {{ aiDebugSummary.returned_text }}
-              </div>
-              <div v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-card__group ai-debug-card__group--fixed">
-                <div class="ai-debug-card__group-label"><a-icon type="check-circle" /> {{ $t('indicatorIde.autoFixed') || 'Auto fixed' }}</div>
-                <div v-for="(msg, idx) in aiDebugSummary.fixed_messages" :key="`fixed-${idx}`" class="ai-debug-card__item">
-                  <span class="ai-debug-card__bullet ai-debug-card__bullet--green"></span>{{ msg }}
-                </div>
-              </div>
-              <div v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-card__group ai-debug-card__group--remaining">
-                <div class="ai-debug-card__group-label"><a-icon type="warning" /> {{ $t('indicatorIde.needAttention') || 'Needs attention' }}</div>
-                <div v-for="(msg, idx) in aiDebugSummary.remaining_messages" :key="`remaining-${idx}`" class="ai-debug-card__item">
-                  <span class="ai-debug-card__bullet ai-debug-card__bullet--orange"></span>{{ msg }}
-                </div>
-              </div>
-            </div>
+              v-show="aiPanelExpanded"
+              class="code-ai-resizer"
+              role="separator"
+              aria-orientation="horizontal"
+              tabindex="0"
+              :aria-valuenow="Math.round(codeAiSplitRatio)"
+              :title="$t('indicatorIde.aiCollaborate')"
+              @mousedown="startCodeAiResize"
+              @dblclick="resetCodeAiSplit"
+              @keydown.up.prevent="adjustCodeAiSplit(-3)"
+              @keydown.down.prevent="adjustCodeAiSplit(3)"
+            ><span class="code-ai-resizer__grip"></span></div>
 
-            <!-- AI Generation Panel -->
-            <div class="ai-gen-panel">
-              <div class="ai-gen-header" @click="aiPanelExpanded = !aiPanelExpanded">
-                <a-icon type="robot" />
-                <span>{{ $t('indicatorIde.aiGenerate') }}</span>
-                <a-icon :type="aiPanelExpanded ? 'up' : 'down'" style="margin-left: auto;" />
+            <div class="ai-workspace-section" :class="{ 'is-collapsed': !aiPanelExpanded }">
+
+              <div
+                v-if="aiPanelExpanded && aiDebugSummary"
+                class="ai-debug-card"
+                :class="`ai-debug-card--${aiDebugState()}`"
+              >
+                <div class="ai-debug-card__header">
+                  <div class="ai-debug-card__badge">
+                    <a-icon :type="aiDebugStateIcon()" />
+                  </div>
+                  <div class="ai-debug-card__headline">
+                    <span class="ai-debug-card__tag">{{ $t('indicatorIde.aiQaTag') || 'AI QA' }}</span>
+                    <span class="ai-debug-card__title">{{ aiDebugSummary.title }}</span>
+                  </div>
+                  <a-icon type="close" class="ai-debug-card__dismiss" @click="aiDebugSummary = null" />
+                </div>
+                <div class="ai-debug-card__chips">
+                  <span :class="['ai-debug-chip', `ai-debug-chip--${aiDebugState()}`]">{{ aiDebugStateLabel() }}</span>
+                  <span v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-chip ai-debug-chip--success">
+                    <a-icon type="check" style="font-size: 10px;" /> {{ aiDebugSummary.fixed_messages.length }} {{ $t('indicatorIde.fixed') || 'fixed' }}
+                  </span>
+                  <span v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-chip ai-debug-chip--warning">
+                    <a-icon type="eye" style="font-size: 10px;" /> {{ aiDebugSummary.remaining_messages.length }} {{ $t('indicatorIde.toWatch') || 'to review' }}
+                  </span>
+                </div>
+                <div v-if="aiDebugSummary.returned_text" class="ai-debug-card__body">
+                  {{ aiDebugSummary.returned_text }}
+                </div>
+                <div v-if="aiDebugSummary.fixed_messages.length" class="ai-debug-card__group ai-debug-card__group--fixed">
+                  <div class="ai-debug-card__group-label"><a-icon type="check-circle" /> {{ $t('indicatorIde.autoFixed') || 'Auto fixed' }}</div>
+                  <div v-for="(msg, idx) in aiDebugSummary.fixed_messages" :key="`fixed-${idx}`" class="ai-debug-card__item">
+                    <span class="ai-debug-card__bullet ai-debug-card__bullet--green"></span>{{ msg }}
+                  </div>
+                </div>
+                <div v-if="aiDebugSummary.remaining_messages.length" class="ai-debug-card__group ai-debug-card__group--remaining">
+                  <div class="ai-debug-card__group-label"><a-icon type="warning" /> {{ $t('indicatorIde.needAttention') || 'Needs attention' }}</div>
+                  <div v-for="(msg, idx) in aiDebugSummary.remaining_messages" :key="`remaining-${idx}`" class="ai-debug-card__item">
+                    <span class="ai-debug-card__bullet ai-debug-card__bullet--orange"></span>{{ msg }}
+                  </div>
+                </div>
               </div>
-              <div v-show="aiPanelExpanded" class="ai-gen-body">
-                <div class="ai-helper-tip">{{ $t('indicatorIde.aiAssistHint') }}</div>
-                <a-textarea
-                  v-model="aiPrompt"
-                  class="ai-prompt-input"
-                  :placeholder="$t('indicatorIde.aiPromptPlaceholder')"
-                  :rows="6"
-                  :disabled="aiGenerating || selectedIndicatorCodeHidden"
-                  style="resize: vertical;"
-                  @pressEnter="handleAIGenerateEnterKey"
-                />
-                <a-button
-                  type="primary"
-                  size="small"
-                  block
-                  :loading="aiGenerating"
-                  :disabled="selectedIndicatorCodeHidden"
-                  @click="handleAIGenerate"
-                  style="margin-top: 8px;"
-                >
-                  <a-icon v-if="!aiGenerating" type="robot" />
-                  {{ aiGenerating ? $t('indicatorIde.generating') : $t('indicatorIde.generateCode') }}
-                </a-button>
+
+              <!-- Indicator-bound AI collaboration workspace -->
+              <div ref="aiGeneratorPanel" class="ai-gen-panel" :class="{ 'is-collapsed': !aiPanelExpanded }">
+                <div class="ai-gen-header" @click="aiPanelExpanded = !aiPanelExpanded">
+                  <a-icon type="robot" />
+                  <span>{{ $t('indicatorIde.aiCollaborate') }}</span>
+                  <span v-if="selectedIndicatorId && !selectedIndicatorCodeHidden" class="ai-memory-badge">
+                    <a-icon type="link" /> {{ $t('indicatorIde.aiMemoryActive') }}
+                  </span>
+                  <a-button
+                    v-if="aiMessages.length || aiCandidate"
+                    type="link"
+                    size="small"
+                    class="ai-clear-button"
+                    :disabled="aiGenerating"
+                    @click.stop="clearAiWorkspace"
+                  >{{ $t('indicatorIde.aiClearConversation') }}</a-button>
+                  <a-icon :type="aiPanelExpanded ? 'up' : 'down'" style="margin-left: auto;" />
+                </div>
+                <div v-show="aiPanelExpanded" class="ai-gen-body">
+                  <div v-if="!selectedIndicatorId || selectedIndicatorCodeHidden" class="ai-workspace-blocked">
+                    <a-icon :type="selectedIndicatorCodeHidden ? 'lock' : 'save'" />
+                    <span>{{ selectedIndicatorCodeHidden ? $t('indicatorIde.aiHiddenSourceUnavailable') : $t('indicatorIde.aiNoSavedIndicator') }}</span>
+                  </div>
+                  <template v-else>
+                    <div ref="aiConversation" class="ai-conversation">
+                      <div v-if="aiWorkspaceLoading" class="ai-workspace-loading"><a-icon type="loading" spin /></div>
+                      <div v-else-if="!aiMessages.length" class="ai-conversation-empty">
+                        <a-icon type="message" />
+                        <strong>{{ $t('indicatorIde.aiConversationEmptyTitle') }}</strong>
+                        <span>{{ $t('indicatorIde.aiConversationEmptyDesc') }}</span>
+                        <div class="ai-quick-prompts">
+                          <button v-for="item in aiQuickPrompts" :key="item.label" type="button" @click="useAiQuickPrompt(item)">{{ item.label }}</button>
+                        </div>
+                      </div>
+                      <div
+                        v-for="messageItem in aiMessages"
+                        :key="messageItem.localId || messageItem.id"
+                        :class="[
+                          'ai-message',
+                          `ai-message--${messageItem.role || 'assistant'}`,
+                          { 'ai-message--has-candidate': isActiveAiCandidateMessage(messageItem) }
+                        ]"
+                      >
+                        <div class="ai-message__role">
+                          {{ messageItem.role === 'user' ? $t('indicatorIde.aiYou') : 'AI' }}
+                          <span v-if="messageItem.role !== 'user' && messageItem.message_type === 'discussion'" class="ai-message__badge">{{ $t('indicatorIde.aiDiscussionBadge') }}</span>
+                          <span v-else-if="messageItem.role !== 'user' && messageItem.message_type === 'candidate'" class="ai-message__badge ai-message__badge--candidate">{{ $t('indicatorIde.aiCandidateBadge') }}</span>
+                        </div>
+                        <div class="ai-message__content" v-html="renderAiMessage(messageItem.content)" />
+                        <div
+                          v-if="isActiveAiCandidateMessage(messageItem)"
+                          class="ai-message-candidate"
+                          :class="{ 'ai-message-candidate--warning': !aiCandidateValidationPassed }"
+                        >
+                          <div class="ai-message-candidate__status">
+                            <a-icon :type="aiCandidateValidationPassed ? 'check-circle' : 'exclamation-circle'" />
+                            <span>{{ aiCandidateValidationPassed ? $t('indicatorIde.aiCandidateValid') : $t('indicatorIde.aiCandidateNeedsReview') }}</span>
+                          </div>
+                          <div class="ai-candidate-actions">
+                            <a-button size="small" @click="previewAiCandidate"><a-icon type="eye" /> {{ $t('indicatorIde.aiPreview') }}</a-button>
+                            <a-button size="small" type="primary" @click="applyAiCandidate"><a-icon type="check" /> {{ $t('indicatorIde.aiApply') }}</a-button>
+                            <a-button size="small" type="link" @click="discardAiCandidate">{{ $t('indicatorIde.aiDiscard') }}</a-button>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-if="aiGenerating" class="ai-message ai-message--assistant ai-message--thinking">
+                        <div class="ai-message__role">AI</div>
+                        <div class="ai-message__content"><a-icon type="loading" spin /> {{ $t('indicatorIde.aiThinking') }}</div>
+                      </div>
+                    </div>
+
+                    <div class="ai-composer">
+                      <a-textarea
+                        v-model="aiPrompt"
+                        class="ai-prompt-input"
+                        :placeholder="$t('indicatorIde.aiPromptPlaceholder')"
+                        :rows="3"
+                        :disabled="aiGenerating"
+                        @input="aiInteractionMode = 'auto'"
+                        @pressEnter="handleAIGenerateEnterKey"
+                      />
+                      <div class="ai-composer-toolbar">
+                        <span class="ai-composer-shortcut">{{ $t('indicatorIde.aiSendShortcut') }}</span>
+                        <a-button
+                          type="primary"
+                          class="ai-composer-send"
+                          :title="$t('indicatorIde.aiSend')"
+                          :loading="aiGenerating"
+                          :disabled="!aiPrompt.trim()"
+                          @click="handleAIGenerate"
+                        >
+                          <span v-if="!aiGenerating">{{ $t('indicatorIde.aiSend') }}</span>
+                        </a-button>
+                      </div>
+                    </div>
+                    <div class="ai-helper-tip">{{ $t('indicatorIde.aiSmartRoutingHint') }}</div>
+                  </template>
+                </div>
               </div>
             </div>
           </div>
@@ -246,20 +339,6 @@
                           </a-button>
                         </span>
                       </a-tooltip>
-                      <a-tooltip placement="bottomLeft">
-                        <template slot="title">
-                          {{ quickTradeDrawerVisible ? $t('indicatorIde.hideQuickTrade') : $t('indicatorIde.showQuickTrade') }}
-                        </template>
-                        <a-button
-                          class="chart-panel-qt-btn"
-                          size="small"
-                          :type="quickTradeDrawerVisible ? 'primary' : 'default'"
-                          @click="toggleQuickTradeDrawer"
-                        >
-                          <a-icon type="thunderbolt" theme="filled" />
-                          <span class="chart-panel-qt-label">{{ $t('quickTrade.title') }}</span>
-                        </a-button>
-                      </a-tooltip>
                       <a-tooltip :title="chartFullscreen ? $t('indicatorIde.exitFullscreen') : $t('indicatorIde.fullscreenChart')">
                         <a-button size="small" class="chart-panel-fs-btn" @click="toggleChartFullscreen"><a-icon :type="chartFullscreen ? 'fullscreen-exit' : 'fullscreen'" /></a-button>
                       </a-tooltip>
@@ -289,18 +368,23 @@
                         size="small"
                         show-search
                         allow-clear
+                        :loading="loadingWatchlist"
                         :filter-option="filterWatchlistOption"
                         :dropdown-class-name="isDarkTheme ? 'ide-watchlist-dropdown ide-watchlist-dropdown--dark' : 'ide-watchlist-dropdown'"
                         :get-popup-container="chartToolbarGetPopupContainer"
                         @change="handleWatchlistChange"
+                        @dropdownVisibleChange="onWatchlistDropdownVisibleChange"
                       >
                         <a-select-option
-                          v-for="w in watchlist"
+                          v-for="w in toolbarWatchlistOptions"
                           :key="watchlistContextKey(w)"
                           :value="watchlistContextKey(w)"
                         >
                           <span class="wl-opt-tag" :class="'wl-mkt-' + (w.market || '').toLowerCase()">{{ marketLabel(w.market) }}</span>
                           <strong class="wl-opt-symbol">{{ w.symbol }}</strong>
+                          <a-tag v-if="isExchangeEquityProduct(w)" color="blue" class="wl-product-tag">
+                            {{ productTypeLabel(w.product_type) }}
+                          </a-tag>
                           <span v-if="w.name" class="wl-opt-name">{{ w.name }}</span>
                         </a-select-option>
                         <a-select-option key="__add__" value="__add__" class="add-option">
@@ -420,32 +504,69 @@
                   />
                 </div>
               </div>
-              <div v-show="quickTradeDrawerVisible" class="ide-quick-right ide-quick-right--chart-fs">
+              <div
+                class="ide-quick-bottom ide-quick-bottom--chart-fs"
+                :class="{ 'ide-quick-bottom--collapsed': !quickTradeDrawerVisible }"
+              >
                 <div class="ide-quick-panel-head">
-                  <span class="ide-quick-panel-head-title">
-                    <a-icon type="thunderbolt" theme="filled" class="ide-quick-panel-head-icon" />
-                    {{ $t('quickTrade.title') }}
-                  </span>
-                  <a-button type="link" size="small" class="ide-quick-panel-close" @click="closeQuickTradeDrawer">
-                    <a-icon type="close" />
-                  </a-button>
+                  <button
+                    type="button"
+                    class="ide-quick-panel-head-main"
+                    :aria-expanded="quickTradeDrawerVisible ? 'true' : 'false'"
+                    @click="toggleQuickTradeDrawer"
+                  >
+                    <span class="ide-quick-panel-head-copy">
+                      <span class="ide-quick-panel-head-title">
+                        <a-icon type="thunderbolt" theme="filled" class="ide-quick-panel-head-icon" />
+                        {{ $t('quickTrade.title') }}
+                      </span>
+                      <span class="ide-quick-panel-head-meta">{{ qtSymbol }} · {{ market === 'Crypto' ? cryptoMarketType.toUpperCase() : 'SPOT' }}</span>
+                    </span>
+                  </button>
+                  <a-tooltip :title="$t('aiDecisionFilter.quickTradeHint')" placement="topRight">
+                    <div
+                      class="ide-quick-ai-filter"
+                      :class="{ 'is-enabled': quickTradeAiDecisionFilter }"
+                    >
+                      <a-icon type="safety" />
+                      <span>{{ $t('aiDecisionFilter.title') }}</span>
+                      <a-switch
+                        v-model="quickTradeAiDecisionFilter"
+                        :aria-label="$t('aiDecisionFilter.title')"
+                        size="small"
+                      />
+                    </div>
+                  </a-tooltip>
+                  <button
+                    type="button"
+                    class="ide-quick-panel-toggle"
+                    :title="quickTradeDrawerVisible ? $t('indicatorIde.hideQuickTrade') : $t('indicatorIde.showQuickTrade')"
+                    :aria-label="quickTradeDrawerVisible ? $t('indicatorIde.hideQuickTrade') : $t('indicatorIde.showQuickTrade')"
+                    @click="toggleQuickTradeDrawer"
+                  >
+                    <a-icon :type="quickTradeDrawerVisible ? 'down' : 'up'" />
+                  </button>
                 </div>
-                <div class="ide-quick-panel-body">
+                <div v-if="quickTradeDrawerVisible" class="ide-quick-panel-body">
                   <quick-trade-panel
                     key="ide-embedded-qt"
                     embedded
                     embedded-ide
+                    embedded-dock
                     :visible="true"
                     :symbol="qtSymbol"
                     :preset-side="qtSide"
                     :preset-price="qtPrice"
                     source="indicator"
                     :market="market"
+                    :ai-decision-filter-enabled="quickTradeAiDecisionFilter"
                     symbol-locked
                     :market-type="market === 'Crypto' ? cryptoMarketType : 'spot'"
                     :overlay-get-container="ideQtOverlayGetContainer"
+                    @collapse="toggleQuickTradeDrawer"
                     @order-success="onQuickTradeSuccess"
                     @update:symbol="handleQuickTradeSymbolChange"
+                    @market-type-change="handleCryptoMarketTypeChange"
                   />
                 </div>
               </div>
@@ -495,6 +616,13 @@
           <a-select-option value="swap">{{ $t('marketContext.swap') }}</a-select-option>
         </a-select>
       </div>
+      <a-alert
+        v-if="addMarketTab === 'Crypto'"
+        class="ide-exchange-product-hint"
+        type="info"
+        show-icon
+        :message="$t('marketContext.exchangeProductWatchlistHint')"
+      />
       <a-input-search
         v-model="addSearchKeyword"
         :placeholder="$t('backtest-center.config.symbolPlaceholder')"
@@ -515,12 +643,18 @@
           slot="renderItem"
           slot-scope="item"
           style="cursor: pointer;"
-          :class="{ 'add-item-active': addSelectedItem && addSelectedItem.symbol === item.symbol }"
+          :class="{ 'add-item-active': addSelectedItem && watchlistContextKey(addSelectedItem) === watchlistContextKey(item) }"
           @click="addSelectedItem = item"
         >
           <strong>{{ item.symbol }}</strong>
+          <a-tag v-if="isExchangeEquityProduct(item)" color="blue" style="margin-left: 8px;">
+            {{ productTypeLabel(item.product_type) }}
+          </a-tag>
+          <span v-if="item.underlying_symbol" style="color: #999; margin-left: 4px;">
+            {{ item.underlying_symbol }}
+          </span>
           <span v-if="item.name" style="color: #999; margin-left: 8px;">{{ item.name }}</span>
-          <a-icon v-if="addSelectedItem && addSelectedItem.symbol === item.symbol" type="check-circle" theme="filled" style="color: #52c41a; margin-left: auto;" />
+          <a-icon v-if="addSelectedItem && watchlistContextKey(addSelectedItem) === watchlistContextKey(item)" type="check-circle" theme="filled" style="color: #52c41a; margin-left: auto;" />
         </a-list-item>
       </a-list>
       <div v-if="addSearchResults.length === 0 && addSearchKeyword && addSearched" style="padding: 16px 0; text-align: center; color: #999;">
@@ -931,6 +1065,21 @@
         @pressEnter="confirmSaveAsIndicator"
       />
     </a-modal>
+    <a-modal
+      :title="$t('indicatorIde.aiCandidatePreviewTitle')"
+      :visible="aiPreviewVisible"
+      :footer="null"
+      width="760px"
+      :get-container="ideModalGetContainer"
+      :wrap-class-name="isDarkTheme ? 'ide-modal-wrap ide-modal-wrap--dark ai-candidate-preview-modal' : 'ide-modal-wrap ai-candidate-preview-modal'"
+      @cancel="aiPreviewVisible = false"
+    >
+      <div class="ai-preview-toolbar">
+        <span>{{ $t('indicatorIde.aiPreviewHint') }}</span>
+        <a-button size="small" type="primary" @click="applyAiCandidate">{{ $t('indicatorIde.aiApply') }}</a-button>
+      </div>
+      <pre class="ai-candidate-code-preview">{{ (aiCandidate && aiCandidate.code) || '' }}</pre>
+    </a-modal>
   </div>
 </template>
 
@@ -945,6 +1094,8 @@ import 'codemirror/addon/edit/matchbrackets'
 import 'codemirror/addon/selection/active-line'
 import moment from 'moment'
 import storage from 'store'
+import multiTabEvents from '@/components/MultiTab/events'
+import { routeCacheKey } from '@/components/MultiTab/cacheControl.mjs'
 import { ACCESS_TOKEN } from '@/store/mutation-types'
 import { baseMixin } from '@/store/app-mixin'
 import request from '@/utils/request'
@@ -955,6 +1106,7 @@ import { getNotificationSettings } from '@/api/user'
 import { getWatchlist, addWatchlist, searchSymbols } from '@/api/market'
 import { getPublicSettingsConfig } from '@/api/settings'
 import { extractIndicatorSignalLabels } from '@/utils/indicatorSignalOptions'
+import { renderSafeMarkdown } from '@/utils/safeMarkdown'
 import KlineChart from '@/views/indicator-analysis/components/KlineChart.vue'
 import QuickTradePanel from '@/components/QuickTradePanel/QuickTradePanel'
 import { Modal } from 'ant-design-vue'
@@ -1003,6 +1155,7 @@ export default {
       selectedIndicatorId: undefined,
       chartVisibleIndicatorIds: [],
       indicatorDropdownVisible: false,
+      indicatorsLoadedAt: 0,
       editorFullscreen: false,
       chartFullscreen: false,
       currentCode: '',
@@ -1021,11 +1174,13 @@ export default {
       currentInstrumentId: '',
       cryptoExchangeIds: CRYPTO_EXCHANGE_IDS,
       watchlist: [],
+      loadingWatchlist: false,
       selectedWatchlistKey: 'Crypto:BTC/USDT',
 
       activeIndicators: [],
       chartIndicatorRunning: true,
-      quickTradeDrawerVisible: false,
+      quickTradeDrawerVisible: true,
+      quickTradeAiDecisionFilter: false,
       paramDrawerVisible: false,
       indicatorParamOverrides: {},
       indicatorParamDraft: {},
@@ -1066,7 +1221,15 @@ export default {
       // AI generation
       aiPanelExpanded: true,
       aiPrompt: '',
+      aiInteractionMode: 'auto',
       aiGenerating: false,
+      aiWorkspaceLoading: false,
+      aiMessages: [],
+      aiThread: null,
+      aiCandidate: null,
+      aiPreviewVisible: false,
+      aiRequestBaseCode: '',
+      aiWorkspaceLoadToken: 0,
       aiDebugSummary: null,
       ideAiTipIndex: 0,
       ideAiTipTimer: null,
@@ -1080,6 +1243,9 @@ export default {
       ],
       codeQualityHints: [],
       codeQualityLoading: false,
+      codeQualityChecked: false,
+      codeAiSplitRatio: 58,
+      codeAiResizing: false,
 
       // Quick Trade drawer reuse
       qtSymbol: 'BTC/USDT',
@@ -1131,8 +1297,39 @@ export default {
         (a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9)
       )
     },
+    codeQualityTopStatusClass () {
+      const severity = String((this.sortedCodeQualityHints[0] && this.sortedCodeQualityHints[0].severity) || 'info').toLowerCase()
+      return {
+        'code-quality-top-status--error': severity === 'error' || severity === 'fatal',
+        'code-quality-top-status--warn': severity === 'warn' || severity === 'warning',
+        'code-quality-top-status--info': !['error', 'fatal', 'warn', 'warning'].includes(severity)
+      }
+    },
+    codeQualityTopStatusIcon () {
+      const severity = String((this.sortedCodeQualityHints[0] && this.sortedCodeQualityHints[0].severity) || 'info').toLowerCase()
+      if (severity === 'error' || severity === 'fatal') return 'close-circle'
+      if (severity === 'warn' || severity === 'warning') return 'exclamation-circle'
+      return 'info-circle'
+    },
+    codeQualityTopStatusText () {
+      const first = this.sortedCodeQualityHints[0]
+      if (!first) return this.$t('indicatorIde.codeQualityAllGood')
+      const suffix = this.sortedCodeQualityHints.length > 1 ? ` (+${this.sortedCodeQualityHints.length - 1})` : ''
+      return `${this.formatQualityHint(first)}${suffix}`
+    },
     ideAiCurrentTip () {
       return this.ideAiTips[this.ideAiTipIndex] || ''
+    },
+    aiQuickPrompts () {
+      return [
+        { label: this.$t('indicatorIde.aiQuickExplain'), mode: 'discussion' },
+        { label: this.$t('indicatorIde.aiQuickParameters'), mode: 'modify' },
+        { label: this.$t('indicatorIde.aiQuickSignals'), mode: 'modify' },
+        { label: this.$t('indicatorIde.aiQuickVisuals'), mode: 'modify' }
+      ]
+    },
+    aiCandidateValidationPassed () {
+      return !!(this.aiCandidate && this.aiCandidate.validation && this.aiCandidate.validation.success)
     },
     isDarkTheme () {
       return this.navTheme === 'dark' || this.navTheme === 'realdark'
@@ -1147,7 +1344,9 @@ export default {
       return !!(this.symbol && String(this.symbol).trim())
     },
     selectedIndicatorObj () {
-      return this.selectedIndicatorId ? this.indicators.find(i => i.id === this.selectedIndicatorId) : null
+      return this.selectedIndicatorId
+        ? this.indicators.find(i => Number(i.id) === Number(this.selectedIndicatorId))
+        : null
     },
     selectedIndicatorIsPurchased () {
       const o = this.selectedIndicatorObj
@@ -1187,6 +1386,24 @@ export default {
       }
       return list
     },
+    toolbarWatchlistOptions () {
+      const list = Array.isArray(this.watchlist) ? [...this.watchlist] : []
+      if (!this.market || !this.symbol) return list
+      const current = {
+        market: this.market,
+        symbol: this.symbol,
+        exchange_id: this.market === 'Crypto' ? this.cryptoExchangeId : '',
+        market_type: this.market === 'Crypto' ? this.cryptoMarketType : 'spot',
+        instrument_id: this.currentInstrumentId
+      }
+      const currentKey = marketContextKey(current)
+      if (list.some(item => this.watchlistContextKey(item) === currentKey)) return list
+      const sameSymbol = list.find(item => (
+        String(item && item.market || '') === String(this.market) &&
+        String(item && item.symbol || '') === String(this.symbol)
+      )) || {}
+      return [{ ...sameSymbol, ...current }, ...list]
+    },
     signalAlertSignalOptions () {
       return this.extractSignalAlertOptions(this.selectedIndicatorParamCode || this.currentCode)
     },
@@ -1210,6 +1427,7 @@ export default {
     }
   },
   created: async function () {
+    multiTabEvents.$on('cache-evict', this.handleTabCacheEviction)
     await this.loadMarketModules()
     await this.loadUserId()
     await this.initializeCryptoMarketSource()
@@ -1236,12 +1454,29 @@ export default {
       this.applyIdeOverlayContainers()
     })
   },
+  activated () {
+    if (this._saveShortcutListener) {
+      window.addEventListener('keydown', this._saveShortcutListener)
+    }
+    this.refreshIndicatorRouteSelection()
+    this.$nextTick(() => {
+      this.ensureChartReady()
+      this.applyIdeOverlayContainers()
+    })
+  },
+  deactivated () {
+    if (this._saveShortcutListener) {
+      window.removeEventListener('keydown', this._saveShortcutListener)
+    }
+  },
   beforeDestroy () {
+    this.stopCodeAiResize()
     if (this._persistIdeUiTimer) {
       clearTimeout(this._persistIdeUiTimer)
       this._persistIdeUiTimer = null
     }
-    this.persistIdeUiState()
+    if (!this._skipPersistOnDestroy) this.persistIdeUiState()
+    multiTabEvents.$off('cache-evict', this.handleTabCacheEviction)
     if (this.cmInstance) {
       this.cmInstance.toTextArea()
       this.cmInstance = null
@@ -1263,8 +1498,66 @@ export default {
     } catch (_) {}
   },
   methods: {
+    handleTabCacheEviction (route) {
+      const key = routeCacheKey(route)
+      const path = route && typeof route === 'object' ? route.path : ''
+      if (key !== 'IndicatorIDE' && path !== '/indicator-ide') return
+
+      this._skipPersistOnDestroy = true
+      if (this._persistIdeUiTimer) {
+        clearTimeout(this._persistIdeUiTimer)
+        this._persistIdeUiTimer = null
+      }
+      if (!this.userId) return
+      storage.remove(ideUiCacheStorageKey(this.userId))
+      storage.remove(ideSelectionStorageKey(this.userId))
+    },
+    adjustCodeAiSplit (delta) {
+      const next = Number(this.codeAiSplitRatio || 58) + Number(delta || 0)
+      this.codeAiSplitRatio = Math.max(28, Math.min(76, next))
+      this.refreshEditorAfterSplit()
+    },
+    resetCodeAiSplit () {
+      this.codeAiSplitRatio = 58
+      this.refreshEditorAfterSplit()
+    },
+    refreshEditorAfterSplit () {
+      this.$nextTick(() => {
+        if (this.cmInstance) this.cmInstance.refresh()
+      })
+    },
+    startCodeAiResize (event) {
+      if (event && event.button !== 0) return
+      const container = this.$refs.codePanelBody
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+      if (!rect.height) return
+      if (event) event.preventDefault()
+      this.codeAiResizing = true
+      this._codeAiResizeMove = (moveEvent) => {
+        const raw = ((moveEvent.clientY - rect.top) / rect.height) * 100
+        this.codeAiSplitRatio = Math.max(28, Math.min(76, raw))
+        this.refreshEditorAfterSplit()
+      }
+      this._codeAiResizeEnd = () => this.stopCodeAiResize()
+      document.body.classList.add('qd-code-ai-resizing')
+      window.addEventListener('mousemove', this._codeAiResizeMove)
+      window.addEventListener('mouseup', this._codeAiResizeEnd, { once: true })
+    },
+    stopCodeAiResize () {
+      if (this._codeAiResizeMove) window.removeEventListener('mousemove', this._codeAiResizeMove)
+      if (this._codeAiResizeEnd) window.removeEventListener('mouseup', this._codeAiResizeEnd)
+      this._codeAiResizeMove = null
+      this._codeAiResizeEnd = null
+      this.codeAiResizing = false
+      if (typeof document !== 'undefined') document.body.classList.remove('qd-code-ai-resizing')
+    },
     toggleCodeDrawer () {
+      this.indicatorDropdownVisible = false
       this.codeDrawerVisible = !this.codeDrawerVisible
+      this.$nextTick(() => {
+        this.ensureChartReady()
+      })
     },
     async loadMarketModules () {
       const options = await loadEnabledMarketOptions({ includeFeatures: ['research'] })
@@ -1352,9 +1645,7 @@ export default {
         if (s.market && s.symbol) {
           this.market = String(s.market)
           this.symbol = String(s.symbol)
-          this.currentInstrumentId = this.market === 'Crypto'
-            ? ''
-            : String(s.instrument_id || s.instrumentId || '')
+          this.currentInstrumentId = String(s.instrument_id || s.instrumentId || '')
           this.qtSymbol = this.symbol
           this.selectedWatchlistKey = marketContextKey({
             market: this.market,
@@ -1415,14 +1706,26 @@ export default {
 
         const market = String(saved.market || '')
         const symbol = String(saved.symbol || '')
-        const watchlistKey = marketContextKey({ market, symbol })
+        const watchlistKey = marketContextKey({
+          market,
+          symbol,
+          exchange_id: saved.exchangeId || saved.exchange_id,
+          market_type: saved.marketType || saved.market_type,
+          instrument_id: saved.instrumentId || saved.instrument_id
+        })
         const hasWatchlistItem = this.watchlist.some(item => this.watchlistContextKey(item) === watchlistKey)
         if (market && symbol && hasWatchlistItem) {
           this.market = market
           this.symbol = symbol
           this.qtSymbol = symbol
           this.selectedWatchlistKey = watchlistKey
-          this.currentInstrumentId = market === 'Crypto' ? '' : String(saved.instrumentId || '')
+          this.cryptoExchangeId = market === 'Crypto'
+            ? this.normalizeCryptoExchange(saved.exchangeId || saved.exchange_id)
+            : this.cryptoExchangeId
+          this.cryptoMarketType = market === 'Crypto'
+            ? normalizeMarketType(saved.marketType || saved.market_type, 'Crypto')
+            : this.cryptoMarketType
+          this.currentInstrumentId = String(saved.instrumentId || saved.instrument_id || '')
         }
 
         const indicatorId = Number(saved.indicatorId)
@@ -1444,6 +1747,8 @@ export default {
         storage.set(ideSelectionStorageKey(this.userId), JSON.stringify({
           market: this.market,
           symbol: this.symbol,
+          exchangeId: this.market === 'Crypto' ? this.cryptoExchangeId : '',
+          marketType: this.market === 'Crypto' ? this.cryptoMarketType : 'spot',
           instrumentId: this.currentInstrumentId,
           indicatorId: this.selectedIndicatorId,
           visibleIndicatorIds: this.chartVisibleIndicatorIds
@@ -1471,20 +1776,27 @@ export default {
       return this.normalizePersistedChartIndicators(this.activeIndicators)
     },
 
-    async loadIndicators () {
+    async loadIndicators ({ background = false } = {}) {
       if (!this.userId) return
-      this.loadingIndicators = true
-      try {
+      if (this._indicatorLoadPromise) return this._indicatorLoadPromise
+      const showLoading = !background || !this.indicators.length
+      if (showLoading) this.loadingIndicators = true
+      this._indicatorLoadPromise = (async () => {
         const res = await request({ url: '/api/indicator/getIndicators', method: 'get', params: { userid: this.userId } })
         if (res && res.data && Array.isArray(res.data)) {
           this.indicators = res.data.map(item => ({ ...item, type: 'python' }))
+          this.indicatorsLoadedAt = Date.now()
         }
+      })()
+      try {
+        await this._indicatorLoadPromise
       } catch (e) {
         console.warn('Load indicators failed:', e)
       } finally {
-        this.loadingIndicators = false
+        this._indicatorLoadPromise = null
+        if (showLoading) this.loadingIndicators = false
         this.pruneChartVisibleIndicatorIds()
-        this.applyIndicatorRouteSelection()
+        if (!background) this.applyIndicatorRouteSelection()
       }
     },
     applyIndicatorRouteSelection () {
@@ -1493,12 +1805,16 @@ export default {
       if (!raw) return
       const targetId = Number(raw)
       if (!targetId || !this.indicators.some(item => Number(item.id) === targetId)) return
-      if (Number(this.selectedIndicatorId) === targetId) return
       this.selectedIndicatorId = targetId
-      if (!this.chartVisibleIndicatorIds.some(id => Number(id) === targetId)) {
-        this.chartVisibleIndicatorIds = [targetId]
-      }
+      this.chartVisibleIndicatorIds = [targetId]
       this.onIndicatorChange(targetId)
+    },
+    async refreshIndicatorRouteSelection () {
+      const query = this.$route && this.$route.query ? this.$route.query : {}
+      const raw = query.indicator_id || query.indicatorId
+      if (!raw) return
+      if (this.loadingIndicators) return
+      await this.loadIndicators()
     },
     pruneChartVisibleIndicatorIds () {
       const set = new Set(this.indicators.map(i => Number(i.id)))
@@ -1506,16 +1822,25 @@ export default {
     },
     async loadWatchlist () {
       if (!this.userId) return
+      this.loadingWatchlist = true
       try {
         const res = await getWatchlist({ userid: this.userId })
         if (res && res.code === 1 && res.data) this.watchlist = res.data
         this.reconcileIdeMarketFromWatchlist()
-      } catch (_) { /* silent */ }
+      } catch (_) { /* silent */ } finally {
+        this.loadingWatchlist = false
+      }
     },
 
     reconcileIdeMarketFromWatchlist () {
       if (this.market && this.symbol) {
-        this.selectedWatchlistKey = marketContextKey({ market: this.market, symbol: this.symbol })
+        this.selectedWatchlistKey = marketContextKey({
+          market: this.market,
+          symbol: this.symbol,
+          exchange_id: this.market === 'Crypto' ? this.cryptoExchangeId : '',
+          market_type: this.market === 'Crypto' ? this.cryptoMarketType : 'spot',
+          instrument_id: this.currentInstrumentId
+        })
       }
       const key = this.selectedWatchlistKey
       if (!key || key === '__add__') return
@@ -1525,6 +1850,11 @@ export default {
       if (row) {
         this.market = String(row.market)
         this.symbol = String(row.symbol)
+        if (this.market === 'Crypto') {
+          this.cryptoExchangeId = this.normalizeCryptoExchange(row.exchange_id || row.exchangeId)
+          this.cryptoMarketType = normalizeMarketType(row.market_type || row.marketType, 'Crypto')
+        }
+        this.currentInstrumentId = String(row.instrument_id || row.instrumentId || '')
         this.qtSymbol = this.symbol
       }
     },
@@ -1586,6 +1916,8 @@ export default {
         if (val !== this.currentCode) {
           this.currentCode = val
           this.codeDirty = true
+          this.codeQualityChecked = false
+          this.codeQualityHints = []
         }
       })
       this.cmInstance.refresh()
@@ -2044,6 +2376,7 @@ export default {
         }
         this.syncSelectedIndicatorToChart()
         this.resetIndicatorParamDraft(true)
+        this.loadAiWorkspace(id)
       } else {
         this.currentCode = ''
         this.codeDirty = false
@@ -2053,6 +2386,7 @@ export default {
         }
         this.syncSelectedIndicatorToChart()
         this.indicatorParamDraft = {}
+        this.resetAiWorkspaceState()
       }
       this.$nextTick(() => this.applyCodeMirrorReadOnly())
     },
@@ -2160,8 +2494,19 @@ export default {
       this.chartIndicatorRunning = !this.chartIndicatorRunning
       this.syncSelectedIndicatorToChart()
     },
+    onWatchlistDropdownVisibleChange (visible) {
+      if (visible && !this.loadingWatchlist) this.loadWatchlist()
+    },
     onIndicatorDropdownVisibleChange (visible) {
       this.indicatorDropdownVisible = visible
+      if (!visible || this.loadingIndicators) return
+      if (!this.indicators.length) {
+        this.loadIndicators()
+        return
+      }
+      if (Date.now() - Number(this.indicatorsLoadedAt || 0) > 30000) {
+        this.loadIndicators({ background: true })
+      }
     },
     onChartIndicatorCheckChange (rawId, checked) {
       const id = Number(rawId)
@@ -2392,6 +2737,7 @@ export default {
             code,
             name: nextName,
             description: indicator.description || '',
+            allowEmptyDraft: true,
             userid: this.userId
           }
         })
@@ -2586,34 +2932,213 @@ export default {
     },
 
     handleAIGenerateEnterKey (e) {
-      if (e.ctrlKey || e.metaKey) this.handleAIGenerate()
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault()
+        const target = e.target
+        if (!target || typeof target.selectionStart !== 'number') {
+          this.aiPrompt = `${this.aiPrompt || ''}\n`
+          return
+        }
+        const start = target.selectionStart
+        const end = target.selectionEnd
+        const prompt = this.aiPrompt || ''
+        this.aiPrompt = `${prompt.slice(0, start)}\n${prompt.slice(end)}`
+        this.$nextTick(() => {
+          target.selectionStart = start + 1
+          target.selectionEnd = start + 1
+        })
+        return
+      }
+      e.preventDefault()
+      if (!this.aiGenerating && this.aiPrompt && this.aiPrompt.trim()) this.handleAIGenerate()
+    },
+    resetAiWorkspaceState () {
+      this.aiWorkspaceLoadToken += 1
+      this.aiWorkspaceLoading = false
+      this.aiMessages = []
+      this.aiThread = null
+      this.aiCandidate = null
+      this.aiPreviewVisible = false
+      this.aiRequestBaseCode = ''
+      this.aiDebugSummary = null
+    },
+    async loadAiWorkspace (indicatorId) {
+      const id = Number(indicatorId)
+      const indicator = this.indicators.find(item => Number(item.id) === id)
+      if (!id || !indicator || this.isIndicatorCodeHidden(indicator)) {
+        this.resetAiWorkspaceState()
+        return
+      }
+      const token = ++this.aiWorkspaceLoadToken
+      this.aiWorkspaceLoading = true
+      this.aiMessages = []
+      this.aiThread = null
+      this.aiCandidate = null
+      try {
+        const res = await request({ url: `/api/indicator/aiWorkspace/${id}`, method: 'get' })
+        if (token !== this.aiWorkspaceLoadToken || Number(this.selectedIndicatorId) !== id) return
+        if (res && res.code === 1 && res.data) {
+          this.aiThread = res.data.thread || null
+          this.aiMessages = Array.isArray(res.data.messages) ? res.data.messages : []
+          const candidate = res.data.candidate
+          if (candidate && candidate.candidate_code) {
+            this.aiCandidate = {
+              id: candidate.id,
+              code: candidate.candidate_code,
+              baseCodeHash: candidate.base_code_hash || '',
+              baseCodeMatchesCurrent: candidate.base_code_matches_current !== false,
+              validation: candidate.validation || {},
+              summary: candidate.summary || {}
+            }
+          }
+          this.$nextTick(this.scrollAiConversationToBottom)
+        }
+      } catch (e) {
+        if (token === this.aiWorkspaceLoadToken) {
+          this.$message.error((e && e.message) || this.$t('indicatorIde.aiWorkspaceLoadFailed'))
+        }
+      } finally {
+        if (token === this.aiWorkspaceLoadToken) this.aiWorkspaceLoading = false
+      }
+    },
+    scrollAiConversationToBottom () {
+      const el = this.$refs.aiConversation
+      if (el) el.scrollTop = el.scrollHeight
+    },
+    isActiveAiCandidateMessage (messageItem) {
+      if (!this.aiCandidate || !messageItem || messageItem.role === 'user' || messageItem.message_type !== 'candidate') return false
+      const candidateMessages = this.aiMessages.filter(item => item && item.role !== 'user' && item.message_type === 'candidate')
+      const latestCandidateMessage = candidateMessages[candidateMessages.length - 1]
+      const messageChangeId = Number(messageItem.change_id || 0)
+      const candidateId = Number(this.aiCandidate.id || 0)
+      if (messageChangeId && candidateId && messageChangeId === candidateId) return true
+      return latestCandidateMessage === messageItem
+    },
+    useAiQuickPrompt (item) {
+      const prompt = item && typeof item === 'object' ? item.label : item
+      this.aiPrompt = String(prompt || '')
+      this.aiInteractionMode = (item && item.mode) || 'auto'
+      this.$nextTick(() => {
+        const input = this.$el && this.$el.querySelector('.ai-prompt-input textarea')
+        if (input) input.focus()
+      })
+    },
+    clearAiWorkspace () {
+      if (!this.selectedIndicatorId) return
+      Modal.confirm({
+        title: this.$t('indicatorIde.aiClearConversation'),
+        content: this.$t('indicatorIde.aiClearConversationConfirm'),
+        okText: this.$t('indicatorIde.aiClearConversation'),
+        cancelText: this.$t('dashboard.indicator.editor.cancel'),
+        getContainer: () => this.resolveIdeFullscreenMountNode() || document.body,
+        onOk: async () => {
+          const res = await request({ url: `/api/indicator/aiWorkspace/${this.selectedIndicatorId}`, method: 'delete' })
+          if (res && res.code === 1) {
+            this.aiMessages = []
+            this.aiCandidate = null
+            this.aiThread = null
+            this.aiDebugSummary = null
+          }
+        }
+      })
+    },
+    previewAiCandidate () {
+      if (!this.aiCandidate || !this.aiCandidate.code) return
+      this.aiPreviewVisible = true
+      this.syncSelectedIndicatorToChart(this.aiCandidate.code)
+      this.$message.info(this.$t('indicatorIde.aiPreviewing'))
+    },
+    applyAiCandidate () {
+      if (!this.aiCandidate || !this.aiCandidate.code) return
+      const currentEditorCode = this.cmInstance ? this.cmInstance.getValue() : this.currentCode
+      const changedSinceRequest = this.aiCandidate.baseCodeMatchesCurrent === false ||
+        (!!this.codeDirty && (!this.aiCandidate.baseCode || currentEditorCode !== this.aiCandidate.baseCode))
+      if (changedSinceRequest) {
+        Modal.confirm({
+          title: this.$t('indicatorIde.aiEditorChangedTitle'),
+          content: this.$t('indicatorIde.aiEditorChangedDesc'),
+          okText: this.$t('indicatorIde.aiApply'),
+          cancelText: this.$t('dashboard.indicator.editor.cancel'),
+          getContainer: () => this.resolveIdeFullscreenMountNode() || document.body,
+          onOk: () => this.applyAiCandidateCode()
+        })
+        return
+      }
+      this.applyAiCandidateCode()
+    },
+    async applyAiCandidateCode () {
+      const candidate = this.aiCandidate
+      if (!candidate || !candidate.code) return
+      if (this.cmInstance) {
+        this.cmInstance.setValue(candidate.code)
+        this.cmInstance.refresh()
+      }
+      this.currentCode = candidate.code
+      this.codeDirty = true
+      this.aiPreviewVisible = false
+      this.syncSelectedIndicatorToChart(candidate.code)
+      await this.fetchCodeQualityHints(candidate.code)
+      if (candidate.id) {
+        request({
+          url: `/api/indicator/aiWorkspace/changes/${candidate.id}/status`,
+          method: 'post',
+          data: { status: 'applied' }
+        }).catch(() => {})
+      }
+      this.aiCandidate = null
+      this.$message.success(this.$t('indicatorIde.aiApplied'))
+    },
+    async discardAiCandidate () {
+      const candidate = this.aiCandidate
+      if (!candidate) return
+      if (candidate.id) {
+        try {
+          await request({
+            url: `/api/indicator/aiWorkspace/changes/${candidate.id}/status`,
+            method: 'post',
+            data: { status: 'discarded' }
+          })
+        } catch (e) {}
+      }
+      this.aiCandidate = null
+      this.aiPreviewVisible = false
+      this.syncSelectedIndicatorToChart(this.currentCode)
     },
     async handleAIGenerate () {
       if (this.selectedIndicatorCodeHidden) {
         this.$message.warning(this.$t('indicatorIde.saveBlockedHiddenCode'))
         return
       }
+      if (!this.selectedIndicatorId) {
+        this.$message.warning(this.$t('indicatorIde.aiNoSavedIndicator'))
+        return
+      }
       if (!this.aiPrompt || !this.aiPrompt.trim()) {
         this.$message.warning(this.$t('indicatorIde.aiPromptRequired'))
         return
       }
+      const userPrompt = this.aiPrompt.trim()
+      const requestMode = this.aiInteractionMode || 'auto'
       this.aiGenerating = true
       this.aiDebugSummary = null
       let existingCode = ''
       if (this.cmInstance) existingCode = this.cmInstance.getValue() || ''
-      if (this.cmInstance) {
-        this.cmInstance.setValue('# AI generating...\n')
-        this.cmInstance.refresh()
-      }
+      this.aiRequestBaseCode = existingCode
+      this.aiMessages.push({ role: 'user', content: userPrompt, message_type: requestMode === 'modify' ? 'change_request' : 'question', localId: `user-${Date.now()}` })
+      this.aiPrompt = ''
+      this.aiInteractionMode = 'auto'
+      this.$nextTick(this.scrollAiConversationToBottom)
       let generatedCode = ''
+      let workspaceMeta = null
       try {
         const url = '/api/indicator/aiGenerate'
         const token = storage.get(ACCESS_TOKEN)
         const lang = (this.$i18n && this.$i18n.locale) || 'en-US'
         const paramDefaults = this.parseIndicatorParamRaw(existingCode || this.currentCode || '')
         const requestBody = {
-          prompt: this.aiPrompt.trim(),
+          prompt: userPrompt,
           source: 'indicator_ide',
+          interactionMode: requestMode,
           context: {
             source: 'indicator_ide',
             market: this.market || '',
@@ -2668,14 +3193,9 @@ export default {
               if (json.debug && json.debug.human_summary) {
                 this.aiDebugSummary = this.normalizeAiDebugSummary(json.debug.human_summary)
               }
+              if (json.workspace) workspaceMeta = json.workspace
               if (json.content) {
                 generatedCode += json.content
-                const cleanedCode = this.cleanMarkdownCodeBlocks(generatedCode)
-                if (this.cmInstance) {
-                  this.cmInstance.setValue(cleanedCode)
-                  this.cmInstance.setCursor({ line: this.cmInstance.lineCount() - 1, ch: 0 })
-                  this.cmInstance.refresh()
-                }
               }
             } catch (err) {
               if (err instanceof Error && err.message) {
@@ -2684,22 +3204,42 @@ export default {
             }
           }
         }
-        if (this.cmInstance && generatedCode) {
-          const cleanedCode = this.cleanMarkdownCodeBlocks(generatedCode)
-          this.cmInstance.setValue(cleanedCode)
-          this.cmInstance.refresh()
-          this.currentCode = cleanedCode
-          this.codeDirty = true
-          this.syncSelectedIndicatorToChart(cleanedCode)
-          this.$message.success(this.$t('indicatorIde.aiGenerateSuccess'))
-          await this.fetchCodeQualityHints(cleanedCode)
-          if (this.codeQualityHints.some(h => h.severity === 'error')) {
+        const replyType = (workspaceMeta && workspaceMeta.reply_type) || 'candidate'
+        if (replyType === 'discussion') {
+          const assistantMessage = workspaceMeta && workspaceMeta.assistant_message
+          const answer = (assistantMessage && assistantMessage.content) || generatedCode.trim()
+          if (answer) {
+            this.aiMessages.push(assistantMessage || {
+              role: 'assistant',
+              content: answer,
+              message_type: 'discussion',
+              localId: `assistant-${Date.now()}`
+            })
             this.aiPanelExpanded = true
-            this.$message.warning(this.$t('indicatorIde.codeQualityHasErrors'))
-          } else if (this.codeQualityHints.length) {
-            this.aiPanelExpanded = true
-            this.$message.info(this.$t('indicatorIde.codeQualityHasSuggestions'))
+            this.$nextTick(this.scrollAiConversationToBottom)
+          } else {
+            this.$message.warning(this.$t('indicatorIde.aiNoAnswer'))
           }
+        } else if (generatedCode) {
+          const cleanedCode = this.cleanMarkdownCodeBlocks(generatedCode)
+          const assistantMessage = workspaceMeta && workspaceMeta.assistant_message
+          this.aiMessages.push(assistantMessage || {
+            role: 'assistant',
+            content: this.$t('indicatorIde.aiCandidateAssistantText'),
+            message_type: 'candidate',
+            localId: `assistant-${Date.now()}`
+          })
+          this.aiCandidate = {
+            id: workspaceMeta && workspaceMeta.change_id,
+            code: cleanedCode,
+            baseCode: existingCode,
+            baseCodeHash: (workspaceMeta && workspaceMeta.base_code_hash) || '',
+            validation: (workspaceMeta && workspaceMeta.validation) || {},
+            summary: (workspaceMeta && workspaceMeta.summary) || {}
+          }
+          this.aiPanelExpanded = true
+          this.$message.success(this.$t('indicatorIde.aiCandidateReady'))
+          this.$nextTick(this.scrollAiConversationToBottom)
         } else if (!generatedCode) {
           this.$message.warning(this.$t('indicatorIde.aiNoCode'))
         }
@@ -2710,15 +3250,14 @@ export default {
         } else {
           this.$message.error(errMsg)
         }
-        if (generatedCode && this.cmInstance) {
-          this.cmInstance.setValue(this.cleanMarkdownCodeBlocks(generatedCode))
-        } else if (this.cmInstance) {
-          this.cmInstance.setValue(existingCode || '')
-          this.cmInstance.refresh()
-        }
+        this.aiMessages.push({ role: 'assistant', content: errMsg, localId: `error-${Date.now()}` })
+        this.$nextTick(this.scrollAiConversationToBottom)
       } finally {
         this.aiGenerating = false
       }
+    },
+    renderAiMessage (value) {
+      return renderSafeMarkdown(value)
     },
     normalizeAiDebugSummary (summary) {
       if (!summary || typeof summary !== 'object') return null
@@ -2809,13 +3348,16 @@ export default {
       const c = (code != null ? String(code) : '').trim()
       if (!c) {
         this.codeQualityHints = []
+        this.codeQualityChecked = false
         return
       }
       this.codeQualityLoading = true
       try {
         this.codeQualityHints = await this.requestCodeQualityHints(c)
+        this.codeQualityChecked = true
       } catch (e) {
         this.codeQualityHints = []
+        this.codeQualityChecked = false
       } finally {
         this.codeQualityLoading = false
       }
@@ -2824,6 +3366,7 @@ export default {
       const c = (code != null ? String(code) : '').trim()
       if (!c) {
         this.codeQualityHints = [{ severity: 'error', code: 'EMPTY_CODE', params: {} }]
+        this.codeQualityChecked = true
         this.codeDrawerVisible = true
         this.codePanelExpanded = true
         this.$message.error(this.$t('indicatorIde.publishQualityBlockedWithReason', { reason: this.formatQualityHint(this.codeQualityHints[0]) }))
@@ -2832,7 +3375,9 @@ export default {
       this.codeQualityLoading = true
       try {
         this.codeQualityHints = await this.requestCodeQualityHints(c)
+        this.codeQualityChecked = true
       } catch (e) {
+        this.codeQualityChecked = false
         this.$message.error(this.$t('indicatorIde.publishQualityCheckFailed') + (e && e.message ? `: ${e.message}` : ''))
         return false
       } finally {
@@ -2892,19 +3437,6 @@ export default {
       }
       this.quickTradeDrawerVisible = !this.quickTradeDrawerVisible
     },
-    closeQuickTradeDrawer () {
-      this.quickTradeDrawerVisible = false
-    },
-    openQuickTrade () {
-      if (!this.isQuickTradeMarketSupported()) {
-        this.$message.warning(this.$t('quickTrade.unsupportedMarket'))
-        return
-      }
-      this.qtSymbol = this.symbol || ''
-      this.qtPrice = 0
-      this.qtSide = ''
-      this.quickTradeDrawerVisible = true
-    },
     onQuickTradeSuccess () {
       this.$message.success(this.$t('quickTrade.orderSuccess'))
     },
@@ -2912,36 +3444,6 @@ export default {
       if (newSymbol) {
         this.qtSymbol = newSymbol
       }
-    },
-    buildNewIndicatorStarterCode () {
-      const label = moment().format('YYYY-MM-DD HH:mm')
-      return (
-        `my_indicator_name = "New Indicator ${label}"\n` +
-        'my_indicator_description = "Chart-only indicator. Convert it to Strategy API V2 before backtesting or live trading."\n\n' +
-        '# @param fast_period int 10 Fast EMA period\n' +
-        '# @param slow_period int 30 Slow EMA period\n\n' +
-        'df = df.copy()\n' +
-        'fast_period = int(params.get(\'fast_period\', 10))\n' +
-        'slow_period = int(params.get(\'slow_period\', 30))\n\n' +
-        'ema_fast = df[\'close\'].ewm(span=fast_period, adjust=False).mean()\n' +
-        'ema_slow = df[\'close\'].ewm(span=slow_period, adjust=False).mean()\n\n' +
-        'golden = (ema_fast > ema_slow) & (ema_fast.shift(1) <= ema_slow.shift(1))\n' +
-        'death = (ema_fast < ema_slow) & (ema_fast.shift(1) >= ema_slow.shift(1))\n' +
-        'buy_marks = [df[\'low\'].iloc[i] * 0.995 if bool(golden.fillna(False).iloc[i]) else None for i in range(len(df))]\n' +
-        'sell_marks = [df[\'high\'].iloc[i] * 1.005 if bool(death.fillna(False).iloc[i]) else None for i in range(len(df))]\n\n' +
-        'output = {\n' +
-        '  \'name\': my_indicator_name,\n' +
-        '  \'plots\': [\n' +
-        '    {\'name\': \'EMA Fast\', \'data\': ema_fast.fillna(0).tolist(), \'color\': \'#52c41a\', \'overlay\': True},\n' +
-        '    {\'name\': \'EMA Slow\', \'data\': ema_slow.fillna(0).tolist(), \'color\': \'#1890ff\', \'overlay\': True}\n' +
-        '  ],\n' +
-        '  \'signals\': [\n' +
-        '    {\'type\': \'buy\', \'text\': \'Golden\', \'data\': buy_marks, \'color\': \'#52c41a\'},\n' +
-        '    {\'type\': \'sell\', \'text\': \'Death\', \'data\': sell_marks, \'color\': \'#ff4d4f\'}\n' +
-        '  ],\n' +
-        '  \'layers\': []\n' +
-        '}\n'
-      )
     },
     async handleCreateIndicator () {
       if (!this.userId) {
@@ -2963,7 +3465,7 @@ export default {
       }
     },
     async _createIndicatorInIde () {
-      const code = this.buildNewIndicatorStarterCode()
+      const code = ''
       this.creatingIndicator = true
       try {
         const res = await request({
@@ -2972,7 +3474,8 @@ export default {
           data: {
             userid: this.userId,
             id: 0,
-            code
+            code,
+            allowEmptyDraft: true
           }
         })
         if (res && res.code === 1) {
@@ -2988,15 +3491,13 @@ export default {
               this.chartVisibleIndicatorIds = [...this.chartVisibleIndicatorIds, tid]
             }
             this.selectedIndicatorId = targetId
-            this.currentCode = code
-            this.codeDirty = false
-            if (this.cmInstance) {
-              this.cmInstance.setValue(code)
-              this.cmInstance.refresh()
-            }
-            this.syncSelectedIndicatorToChart(code)
             const ind = this.indicators.find(i => i.id === targetId)
             if (ind) ind.code = code
+            // A newly-created indicator owns a fresh AI workspace. Select and
+            // load it immediately so the previous indicator's conversation can
+            // never remain visible until a manual save/reselect cycle.
+            this.onIndicatorChange(targetId)
+            this.aiPanelExpanded = true
             this.$message.success(this.$t('indicatorIde.newIndicatorCreated'))
           } else {
             this.$message.error(this.$t('indicatorIde.newIndicatorFailed'))
@@ -3086,6 +3587,7 @@ export default {
           symbol: this.symbol || '',
           exchange_id: this.market === 'Crypto' ? this.cryptoExchangeId : '',
           market_type: this.market === 'Crypto' ? this.cryptoMarketType : 'spot',
+          instrument_id: this.currentInstrumentId || '',
           timeframe: this.timeframe || '',
           source_indicator_id: String(indicator.id || '')
         }
@@ -3189,17 +3691,23 @@ export default {
         return
       }
       if (val) {
-        const row = (this.watchlist || []).find(
+        const row = this.toolbarWatchlistOptions.find(
           w => w && w.market && w.symbol && this.watchlistContextKey(w) === val
         )
         if (row) {
           this.market = String(row.market)
           this.symbol = String(row.symbol)
+          if (this.market === 'Crypto') {
+            this.cryptoExchangeId = this.normalizeCryptoExchange(row.exchange_id || row.exchangeId)
+            this.cryptoMarketType = normalizeMarketType(row.market_type || row.marketType, 'Crypto')
+          }
+          this.currentInstrumentId = String(row.instrument_id || row.instrumentId || '')
         } else {
-          const i = val.indexOf(':')
+          const legacyValue = String(val).split('|')[0]
+          const i = legacyValue.indexOf(':')
           if (i > 0) {
-            this.market = val.slice(0, i)
-            this.symbol = val.slice(i + 1)
+            this.market = legacyValue.slice(0, i)
+            this.symbol = legacyValue.slice(i + 1)
           }
         }
         this.qtSymbol = this.symbol
@@ -3219,14 +3727,34 @@ export default {
       const t = this.$t(key)
       return t !== key ? t : m
     },
+    isExchangeEquityProduct (item) {
+      return ['tokenized_equity', 'stock_perpetual', 'direct_equity'].includes(String(item && item.product_type || '').toLowerCase())
+    },
+    productTypeLabel (productType) {
+      const key = `marketContext.product.${String(productType || 'crypto').toLowerCase()}`
+      const translated = this.$t(key)
+      return translated !== key ? translated : String(productType || '')
+    },
     handleCryptoExchangeChange (value) {
       this.cryptoExchangeId = this.normalizeCryptoExchange(value)
       this.currentInstrumentId = ''
+      this.selectedWatchlistKey = marketContextKey({
+        market: this.market,
+        symbol: this.symbol,
+        exchange_id: this.cryptoExchangeId,
+        market_type: this.cryptoMarketType
+      })
       this.persistCryptoMarketSource()
     },
     handleCryptoMarketTypeChange (value) {
       this.cryptoMarketType = normalizeMarketType(value, 'Crypto')
       this.currentInstrumentId = ''
+      this.selectedWatchlistKey = marketContextKey({
+        market: this.market,
+        symbol: this.symbol,
+        exchange_id: this.cryptoExchangeId,
+        market_type: this.cryptoMarketType
+      })
       this.persistCryptoMarketSource()
     },
 
@@ -3340,10 +3868,18 @@ export default {
         await this.loadWatchlist()
         this.selectedWatchlistKey = marketContextKey({
           market: mkt,
-          symbol: item.symbol
+          symbol: item.symbol,
+          exchange_id: item.exchange_id || (mkt === 'Crypto' ? this.cryptoExchangeId : ''),
+          market_type: item.market_type || (mkt === 'Crypto' ? this.cryptoMarketType : 'spot'),
+          instrument_id: item.instrument_id || ''
         })
         this.market = mkt
         this.symbol = item.symbol
+        if (mkt === 'Crypto') {
+          this.cryptoExchangeId = this.normalizeCryptoExchange(item.exchange_id || this.cryptoExchangeId)
+          this.cryptoMarketType = normalizeMarketType(item.market_type || this.cryptoMarketType, 'Crypto')
+        }
+        this.currentInstrumentId = String(item.instrument_id || '')
         this.showAddModal = false
       } catch (e) {
         this.$message.error(e.message || 'Failed')
@@ -3375,10 +3911,10 @@ export default {
       this.schedulePersistIdeUiState()
     },
     '$route.query.indicator_id' () {
-      this.applyIndicatorRouteSelection()
+      this.refreshIndicatorRouteSelection()
     },
     '$route.query.indicatorId' () {
-      this.applyIndicatorRouteSelection()
+      this.refreshIndicatorRouteSelection()
     },
     chartVisibleIndicatorIds: {
       deep: true,
@@ -3392,7 +3928,8 @@ export default {
     selectedIndicatorIsPurchased () {
       this.$nextTick(() => this.applyCodeMirrorReadOnly())
     },
-    selectedIndicatorCodeHidden () {
+    selectedIndicatorCodeHidden (hidden) {
+      if (hidden) this.resetAiWorkspaceState()
       this.$nextTick(() => this.applyCodeMirrorReadOnly())
     },
     isDarkTheme () {
@@ -3447,10 +3984,12 @@ export default {
 .indicator-ide {
   display: flex;
   flex-direction: column;
-  min-height: var(--ide-shell-height, calc(100vh - 64px));
-  height: auto;
+  height: var(--ide-shell-height, calc(100vh - 64px));
+  min-height: 0;
+  max-height: var(--ide-shell-height, calc(100vh - 64px));
   width: 100%;
   padding: 0;
+  overflow: hidden;
   background: #fff;
   box-sizing: border-box;
 }
@@ -3496,24 +4035,6 @@ export default {
     border-color: var(--primary-color, @primary-color) !important;
     color: var(--primary-color, @primary-color) !important;
   }
-}
-.chart-panel-qt-btn {
-  border-radius: 8px !important;
-  font-weight: 600;
-  display: inline-flex !important;
-  align-items: center;
-  gap: 4px;
-  height: 28px !important;
-  padding: 0 10px !important;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-.chart-panel-qt-label {
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  max-width: 88px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 @media (max-width: 1180px) {
   .chart-panel-action-btn {
@@ -4007,7 +4528,7 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 
 // ===== Main =====
-.ide-main { display: flex; flex: 1 1 auto; overflow: visible; min-height: 0; align-items: stretch; }
+.ide-main { display: flex; flex: 1 1 auto; overflow: hidden; min-height: 0; align-items: stretch; }
 
 .ide-code-rail {
   flex: 0 0 34px;
@@ -4074,11 +4595,11 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 
 .ide-left {
-  width: 30%;
-  min-width: 280px;
-  max-width: 400px;
-  height: calc(var(--ide-shell-height, calc(100vh - 64px)) - 8px);
-  max-height: calc(var(--ide-shell-height, calc(100vh - 64px)) - 8px);
+  width: 38%;
+  min-width: 420px;
+  max-width: 600px;
+  height: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -4111,7 +4632,27 @@ body.dark .ide-signal-alert-modal-wrap {
   overflow: hidden;
   &.collapsed { flex: 0 0 auto; }
 }
-.code-panel-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.code-panel-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  &.is-resizing { user-select: none; }
+  &.ai-is-collapsed .code-editor-section {
+    flex: 1 1 auto !important;
+    max-height: none;
+  }
+}
+.code-editor-section {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+  max-height: calc(100% - 250px);
+  overflow: hidden;
+}
 .code-editor-wrapper { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
 .code-hidden-mask {
   position: absolute;
@@ -4464,20 +5005,69 @@ body.dark .ide-signal-alert-modal-wrap {
 .ide-guide-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 10px;
   padding: 5px 12px;
   font-size: 11px;
   color: #8c8c8c;
   background: #f8f9fb;
   border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
-  > .anticon { color: #bfbfbf; font-size: 12px; }
+}
+.ide-guide-copy,
+.ide-guide-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+.ide-guide-copy {
+  overflow: hidden;
+  > .anticon { flex: 0 0 auto; color: #bfbfbf; font-size: 12px; }
+  > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.ide-guide-actions { flex: 0 0 auto; }
+.code-quality-top-button {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  height: 24px !important;
+  padding: 0 8px !important;
+  border-radius: 8px !important;
+  color: #475569 !important;
+  font-size: 10px !important;
+}
+.code-quality-top-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 190px;
+  height: 22px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid #d9d9d9;
+  border-radius: 999px;
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: help;
+  > span { overflow: hidden; text-overflow: ellipsis; }
+}
+.code-quality-top-status--success { color: #389e0d; border-color: #b7eb8f; background: #f6ffed; }
+.code-quality-top-status--error { color: #cf1322; border-color: #ffa39e; background: #fff1f0; }
+.code-quality-top-status--warn { color: #d46b08; border-color: #ffd591; background: #fff7e6; }
+.code-quality-top-status--info { color: #096dd9; border-color: #91d5ff; background: #e6f7ff; }
+.code-quality-popover-list {
+  max-width: 420px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.6;
+  li + li { margin-top: 4px; }
 }
 .ide-guide-link {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  margin-left: auto;
   padding: 1px 8px;
   font-size: 11px;
   font-weight: 500;
@@ -4492,6 +5082,51 @@ body.dark .ide-signal-alert-modal-wrap {
     color: #fff;
     background: var(--primary-color, #1890ff);
     border-color: var(--primary-color, #1890ff);
+  }
+}
+
+.code-ai-resizer {
+  position: relative;
+  z-index: 4;
+  flex: 0 0 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid #edf0f4;
+  border-bottom: 1px solid #edf0f4;
+  outline: none;
+  background: #f8fafc;
+  cursor: row-resize;
+  transition: border-color 0.15s, background 0.15s;
+  &:hover,
+  &:focus,
+  .is-resizing & {
+    border-color: color-mix(in srgb, var(--primary-color, #1890ff) 42%, #dbe3ec);
+    background: color-mix(in srgb, var(--primary-color, #1890ff) 8%, #fff);
+  }
+}
+.code-ai-resizer__grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 38px;
+  height: 3px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 -3px 0 rgba(203, 213, 225, 0.55), 0 3px 0 rgba(203, 213, 225, 0.55);
+}
+.ai-workspace-section {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 240px;
+  overflow: hidden;
+  background: #fafbfc;
+  &.is-collapsed {
+    flex: 0 0 42px;
+    min-height: 42px;
+    max-height: 42px;
   }
 }
 
@@ -4517,75 +5152,281 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 
 // ===== AI Panel =====
-.ai-gen-panel { flex-shrink: 0; border-top: 1px solid #eee; }
+.ai-gen-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #f8fafc;
+  &.is-collapsed {
+    flex: 0 0 42px;
+    min-height: 42px;
+  }
+}
 .ai-gen-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
+  gap: 8px;
+  min-height: 42px;
+  padding: 7px 12px;
   font-size: 12px;
-  font-weight: 600;
-  color: #333;
+  font-weight: 700;
+  color: #1e293b;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
   cursor: pointer;
   user-select: none;
   transition: background 0.15s;
   &:hover { background: #f5f7fa; }
+  > .anticon:first-child {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: #fff;
+    background: linear-gradient(135deg, #52c41a, #389e0d);
+    box-shadow: 0 4px 10px rgba(82, 196, 26, 0.2);
+  }
 }
-.ai-gen-body { padding: 8px 10px 10px; }
-.ai-gen-body ::v-deep .ai-prompt-input textarea {
-  min-height: 132px;
+.ai-gen-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px 12px 12px;
+  overflow: hidden;
+  background: #fafbfc;
+}
+.ai-memory-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #389e0d;
+  background: #f6ffed;
+  border: 1px solid #d9f7be;
+  font-size: 10px;
+  font-weight: 500;
+}
+.ai-clear-button { height: 20px !important; padding: 0 3px !important; font-size: 10px !important; }
+.ai-conversation {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 120px;
+  max-height: none;
+  padding: 10px;
+  overflow-y: auto;
+  resize: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.02);
+  scrollbar-width: thin;
+}
+.ai-workspace-loading,
+.ai-conversation-empty,
+.ai-workspace-blocked {
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 7px;
+  color: #8491a5;
+  text-align: left;
+  font-size: 11px;
+}
+.ai-conversation-empty > .anticon,
+.ai-workspace-blocked > .anticon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 17px;
+  color: var(--primary-color, #52c41a);
+  background: rgba(82, 196, 26, 0.1);
+}
+.ai-conversation-empty strong { color: #25324a; font-size: 12px; }
+.ai-quick-prompts { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin-top: 6px; }
+.ai-quick-prompts button {
+  padding: 4px 8px;
+  border: 1px solid #dce3ec;
+  border-radius: 999px;
+  color: #526079;
+  background: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  &:hover { color: var(--primary-color, #52c41a); border-color: var(--primary-color, #52c41a); }
+}
+.ai-message { max-width: 92%; margin-bottom: 10px; }
+.ai-message--user { margin-left: auto; }
+.ai-message__role { margin: 0 4px 3px; color: #96a0b2; font-size: 9px; }
+.ai-message--user .ai-message__role { text-align: right; }
+.ai-message__content {
+  padding: 8px 10px;
+  border-radius: 10px 10px 10px 3px;
+  color: #354056;
+  background: #f1f4f8;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: normal;
+  word-break: break-word;
+}
+.ai-message__content ::v-deep p { margin: 0 0 7px; }
+.ai-message__content ::v-deep p:last-child { margin-bottom: 0; }
+.ai-message__content ::v-deep h3,
+.ai-message__content ::v-deep h4,
+.ai-message__content ::v-deep h5 { margin: 9px 0 4px; color: inherit; font-size: 12px; line-height: 1.45; }
+.ai-message__content ::v-deep ul,
+.ai-message__content ::v-deep ol { margin: 5px 0 7px; padding-left: 19px; }
+.ai-message__content ::v-deep li { margin: 2px 0; }
+.ai-message__content ::v-deep blockquote { margin: 7px 0; padding: 5px 8px; border-left: 3px solid var(--primary-color, #52c41a); color: #68758a; background: rgba(82, 196, 26, 0.06); }
+.ai-message__content ::v-deep hr { margin: 7px 0; border: 0; border-top: 1px solid rgba(127, 140, 160, 0.2); }
+.ai-message__content ::v-deep code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: #d46b08;
+  background: rgba(250, 140, 22, 0.1);
+  font-family: 'Fira Code', Consolas, monospace;
+  font-size: 10px;
+}
+.ai-message__content ::v-deep .qd-markdown-code {
+  margin: 6px 0;
+  padding: 8px;
+  overflow-x: auto;
+  border-radius: 6px;
+  color: #d9e2f1;
+  background: #1f2430;
+  font: 10px/1.5 'Fira Code', Consolas, monospace;
+  white-space: pre;
+}
+.ai-message__content ::v-deep .qd-markdown-code code { padding: 0; color: inherit; background: transparent; }
+.ai-message__content ::v-deep a { color: #1677ff; text-decoration: underline; }
+.ai-message__content ::v-deep .qd-markdown-table-wrap { max-width: 100%; margin: 7px 0; overflow-x: auto; }
+.ai-message__content ::v-deep .qd-markdown-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.ai-message__content ::v-deep .qd-markdown-table th,
+.ai-message__content ::v-deep .qd-markdown-table td { padding: 5px 6px; border: 1px solid rgba(127, 140, 160, 0.22); text-align: left; }
+.ai-message--user .ai-message__content {
+  border-radius: 10px 10px 3px 10px;
+  color: #24570f;
+  background: #f0f9eb;
+  border: 1px solid #d9f7be;
+}
+.ai-message--has-candidate .ai-message__content {
+  border-radius: 10px 10px 0 0;
+}
+.ai-message--thinking { opacity: 0.75; }
+.ai-message__badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: #1677ff;
+  background: #e6f4ff;
+  font-size: 8px;
+  font-weight: 500;
+}
+.ai-message__badge--candidate { color: #389e0d; background: #f6ffed; }
+.ai-message-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid #d9f7be;
+  border-radius: 0 0 10px 3px;
+  background: #f6ffed;
+}
+.ai-message-candidate--warning { border-color: #ffd591; background: #fff7e6; }
+.ai-message-candidate__status { display: flex; align-items: center; gap: 6px; color: #389e0d; font-size: 9px; }
+.ai-message-candidate--warning .ai-message-candidate__status { color: #d46b08; }
+.ai-candidate-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.ai-candidate-actions .ant-btn { font-size: 10px; padding: 0 7px; }
+.ai-composer {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #dbe3ed;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+}
+.ai-composer ::v-deep .ai-prompt-input textarea {
+  min-height: 76px;
+  max-height: 150px;
+  padding: 8px 10px;
+  resize: vertical;
   line-height: 1.45;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.ai-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 3px;
+  padding: 0 2px;
+}
+.ai-composer-shortcut {
+  min-width: 0;
+  color: #9aa4b3;
+  font-size: 9px;
+  line-height: 1.4;
+}
+.ai-composer-send {
+  width: auto;
+  min-width: 116px;
+  height: 32px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 7px rgba(82, 196, 26, 0.22);
 }
 .ai-helper-tip {
-  margin-bottom: 6px;
+  margin-top: 5px;
   font-size: 11px;
   color: #8c8c8c;
   line-height: 1.5;
+}
+.ai-preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; color: #718096; font-size: 12px; }
+.ai-candidate-code-preview {
+  max-height: 62vh;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 8px;
+  color: #d4d4d4;
+  background: #1e1e1e;
+  font: 12px/1.55 'Fira Code', 'Consolas', monospace;
+  white-space: pre;
 }
 .ai-helper-links {
   margin-top: 6px;
   font-size: 11px;
 }
 
-.code-quality-panel {
-  flex-shrink: 0;
-  margin-top: 0;
-  padding: 8px 10px 10px;
-  border-top: 1px solid #eee;
-}
-.code-quality-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-.code-quality-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: #445066;
-}
-.code-quality-recheck { padding: 0 !important; height: auto !important; font-size: 11px !important; }
-.code-quality-spin { display: block; margin: 8px 0; }
-.code-quality-list {
-  margin: 0;
-  padding-left: 16px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: #595959;
-}
-.code-quality-list li { margin-bottom: 4px; }
 .quality-hint--error { color: #cf1322; }
 .quality-hint--warn { color: #d46b08; }
 .quality-hint--info { color: var(--primary-color-active, #096dd9); }
 
 .ai-debug-card {
+  flex: 0 1 auto;
+  max-height: 38%;
   margin: 10px 10px 0;
   padding: 0;
   border: 1px solid #e6f4ff;
   border-radius: 10px;
   background: #fff;
-  overflow: hidden;
+  overflow: auto;
   font-size: 12px;
 }
 .ai-debug-card--success { border-color: #b7eb8f; }
@@ -4907,8 +5748,8 @@ body.dark .ide-signal-alert-modal-wrap {
   overflow: hidden;
   align-self: stretch;
   flex: 1 1 0;
-  height: calc(var(--ide-shell-height, calc(100vh - 64px)) - 8px);
-  max-height: calc(var(--ide-shell-height, calc(100vh - 64px)) - 8px);
+  height: 100%;
+  max-height: 100%;
 }
 .ide-workspace-pane--chart {
   display: flex;
@@ -4918,28 +5759,63 @@ body.dark .ide-signal-alert-modal-wrap {
   overflow: hidden;
 }
 
-.ide-quick-right {
-  width: 30%;
-  min-width: 280px;
-  max-width: 400px;
-  flex-shrink: 0;
+.ide-quick-bottom {
+  width: 100%;
+  flex: 0 0 clamp(360px, 39vh, 470px);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid #e8e8e8;
+  border-top: 1px solid #e8e8e8;
   background: #f8fafc;
   overflow: hidden;
   min-height: 0;
-  align-self: stretch;
+  box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.08);
+  transition: flex-basis 180ms ease;
+}
+.ide-quick-bottom--collapsed {
+  flex-basis: 40px;
 }
 .ide-quick-panel-head {
+  width: 100%;
+  min-height: 40px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 0 12px;
   background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: background 160ms ease;
+}
+.ide-quick-panel-head-main {
+  min-width: 0;
+  min-height: 39px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  &:hover .ide-quick-panel-head-title {
+    color: @primary-color;
+  }
+  &:focus-visible {
+    outline: 2px solid fade(@primary-color, 55%);
+    outline-offset: 2px;
+  }
+}
+.ide-quick-panel-head-copy {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
 }
 .ide-quick-panel-head-title {
   display: inline-flex;
@@ -4950,16 +5826,61 @@ body.dark .ide-signal-alert-modal-wrap {
   color: #0f172a;
   letter-spacing: 0.02em;
 }
+.ide-quick-panel-head-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
 .ide-quick-panel-head-icon {
   font-size: 16px;
   color: @primary-color;
 }
-.ide-quick-panel-close {
-  color: #64748b !important;
-  padding: 0 4px !important;
-  &:hover {
-    color: #0f172a !important;
+.ide-quick-ai-filter {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .72);
+  transition: border-color .18s ease, color .18s ease, background .18s ease;
+  > .anticon { color: #94a3b8; }
+  &:hover,
+  &:focus-within { border-color: fade(@primary-color, 55%); }
+  &.is-enabled {
+    color: #15803d;
+    border-color: rgba(34, 197, 94, .34);
+    background: rgba(34, 197, 94, .08);
+    > .anticon { color: #16a34a; }
   }
+}
+.ide-quick-panel-toggle {
+  width: 28px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  border: 0;
+  color: #64748b;
+  background: rgba(15, 23, 42, 0.05);
+  cursor: pointer;
+  &:focus-visible {
+    outline: 2px solid fade(@primary-color, 55%);
+    outline-offset: 2px;
+  }
+}
+@media (max-width: 760px) {
+  .ide-quick-ai-filter > span:not(.ant-switch) { display: none; }
 }
 .ide-quick-panel-body {
   flex: 1;
@@ -4979,29 +5900,12 @@ body.dark .ide-signal-alert-modal-wrap {
   ::v-deep .quick-trade-embedded {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-x: hidden;
   }
   ::v-deep .qt-embedded-split--cols {
-    flex-direction: column;
-    // Each form card already owns the same 14px outer margin as the symbol
-    // summary. Extra column padding made the trading form 24px narrower.
-    padding-left: 0;
-    padding-right: 0;
-  }
-  ::v-deep .qt-embedded-split--cols .qt-embedded-col-left,
-  ::v-deep .qt-embedded-split--cols .qt-embedded-col-right {
-    width: 100%;
-    max-width: 100%;
-    box-sizing: border-box;
-    padding-left: 0;
-    padding-right: 0;
-    margin-left: 0;
-  }
-  ::v-deep .qt-embedded-split--cols .qt-embedded-col-right {
-    border-left: none;
-    border-top: 1px solid rgba(15, 23, 42, 0.08);
-    padding-top: 12px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 }
 
@@ -5037,21 +5941,18 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 .ide-chart-fs-row {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   align-items: stretch;
 }
-.ide-quick-right--chart-fs {
-  flex: 0 0 auto;
-  width: 30%;
-  min-width: 260px;
-  max-width: 400px;
+.ide-quick-bottom--chart-fs {
+  width: 100%;
+  max-width: none;
   align-self: stretch;
-  border-left: 1px solid #e8e8e8;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
   z-index: 2;
 }
@@ -5435,12 +6336,25 @@ body.dark .ide-signal-alert-modal-wrap {
     color: rgba(255, 255, 255, 0.65);
   }
   .ide-left { background: #181818; border-right-color: #303030; }
+  .ai-gen-panel { border-top-color: #303030; background: #171717; }
+  .ai-gen-header { color: rgba(255,255,255,0.82); background: #1a1a1a; border-bottom-color: #303030; &:hover { background: #202020; } }
+  .ai-gen-body { background: #171717; }
+  .ai-memory-badge { color: #95de64; background: rgba(82,196,26,0.12); border-color: rgba(82,196,26,0.28); }
+  .ai-conversation { background: #1f1f1f; border-color: #363636; }
+  .ai-conversation-empty strong { color: rgba(255,255,255,0.86); }
+  .ai-quick-prompts button { color: rgba(255,255,255,0.65); background: #262626; border-color: #434343; }
+  .ai-message__content { color: rgba(255,255,255,0.78); background: #2a2a2a; }
+  .ai-message--user .ai-message__content { color: #b7eb8f; background: rgba(82,196,26,0.11); border-color: rgba(82,196,26,0.28); }
+  .ai-message-candidate { background: rgba(82,196,26,0.09); border-color: rgba(82,196,26,0.34); }
+  .ai-message-candidate--warning { background: rgba(250,140,22,0.09); border-color: rgba(250,140,22,0.34); }
+  .ai-composer { background: #1f1f1f; border-color: #3a3a3a; box-shadow: none; }
+  .ai-composer ::v-deep textarea { color: rgba(255,255,255,0.82); background: transparent; border-color: transparent; }
   .ide-chart-fs-root {
     background: #141414;
     border-bottom-color: #303030;
   }
-  .ide-quick-right--chart-fs {
-    border-left-color: #303030;
+  .ide-quick-bottom--chart-fs {
+    border-top-color: #303030;
   }
   .chart-panel {
     background: #141414;
@@ -5458,35 +6372,42 @@ body.dark .ide-signal-alert-modal-wrap {
       color: rgba(255, 255, 255, 0.45);
     }
   }
-  .chart-panel-qt-btn.ant-btn-default {
-    background: #262626;
-    border-color: #434343;
-    color: rgba(255, 255, 255, 0.85);
-    box-shadow: none;
-    &:hover {
-      border-color: var(--primary-color, #1890ff);
-      color: var(--primary-color, #1890ff);
-    }
-  }
-  .ide-quick-right {
+  .ide-quick-bottom {
     background: #141414;
-    border-left-color: #303030;
+    border-top-color: #303030;
+    box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.32);
   }
   .ide-quick-panel-head {
     background: linear-gradient(180deg, #1f1f1f 0%, #1a1a1a 100%);
     border-bottom-color: #303030;
   }
+  .ide-quick-panel-head-main:hover .ide-quick-panel-head-title { color: var(--primary-color, #52c41a); }
   .ide-quick-panel-head-title {
     color: rgba(255, 255, 255, 0.92);
+  }
+  .ide-quick-panel-head-meta {
+    color: rgba(255, 255, 255, 0.45);
   }
   .ide-quick-panel-head-icon {
     color: var(--primary-color, #1890ff);
   }
-  .ide-quick-panel-close {
-    color: rgba(255, 255, 255, 0.45) !important;
-    &:hover {
-      color: rgba(255, 255, 255, 0.88) !important;
+  .ide-quick-ai-filter {
+    color: rgba(255, 255, 255, .62);
+    background: rgba(255, 255, 255, .05);
+    border-color: #3a3a3a;
+    > .anticon { color: rgba(255, 255, 255, .48); }
+    &:hover,
+    &:focus-within { border-color: rgba(82, 196, 26, .55); }
+    &.is-enabled {
+      color: #95de64;
+      background: rgba(82, 196, 26, .1);
+      border-color: rgba(82, 196, 26, .38);
+      > .anticon { color: #73d13d; }
     }
+  }
+  .ide-quick-panel-toggle {
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.06);
   }
   .ide-quick-panel-body {
     ::v-deep .qt-embedded-split--cols .qt-embedded-col-right {
@@ -5504,9 +6425,6 @@ body.dark .ide-signal-alert-modal-wrap {
   .param-section { border-bottom-color: #303030; }
   .param-label { color: rgba(255,255,255,0.78); }
   .field-label { color: rgba(255,255,255,0.58); }
-  .optimizer-workflow-step--method {
-    border-top-color: #303030;
-  }
   .params-card {
     background: #1f1f1f;
     border-color: #303030;
@@ -5588,8 +6506,17 @@ body.dark .ide-signal-alert-modal-wrap {
     background: #1a1a1a;
     border-bottom-color: #303030;
     color: rgba(255, 255, 255, 0.45);
-    > .anticon { color: rgba(255, 255, 255, 0.3); }
   }
+  .ide-guide-copy > .anticon { color: rgba(255, 255, 255, 0.3); }
+  .code-quality-top-button {
+    border-color: #434343 !important;
+    color: rgba(255,255,255,0.72) !important;
+    background: #262626 !important;
+  }
+  .code-quality-top-status--success { color: #95de64; border-color: rgba(82,196,26,0.4); background: rgba(82,196,26,0.1); }
+  .code-quality-top-status--error { color: #ff7875; border-color: rgba(255,77,79,0.4); background: rgba(255,77,79,0.1); }
+  .code-quality-top-status--warn { color: #ffc069; border-color: rgba(250,140,22,0.4); background: rgba(250,140,22,0.1); }
+  .code-quality-top-status--info { color: #69c0ff; border-color: rgba(24,144,255,0.4); background: rgba(24,144,255,0.1); }
   .ide-guide-link {
     color: var(--primary-color, #1890ff);
     background: var(--primary-color-soft, rgba(24, 144, 255, 0.1));
@@ -5601,9 +6528,9 @@ body.dark .ide-signal-alert-modal-wrap {
     }
   }
   .ai-helper-tip, .publish-form .publish-hint { color: rgba(255,255,255,0.45); }
-  .code-quality-panel { border-top-color: #303030; }
-  .code-quality-title { color: rgba(255,255,255,0.78); }
-  .code-quality-list { color: rgba(255,255,255,0.55); }
+  .code-ai-resizer { border-color: #303030; background: #1d1d1d; }
+  .code-ai-resizer__grip { background: #595959; box-shadow: 0 -3px 0 rgba(89,89,89,0.55), 0 3px 0 rgba(89,89,89,0.55); }
+  .ai-workspace-section { background: #171717; }
   .ai-debug-card {
     border-color: #303030; background: #1f1f1f;
   }
@@ -6538,6 +7465,10 @@ body.dark .ide-param-modal-wrap {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+.ide-exchange-product-hint {
+  margin-top: 10px;
 }
 
 .ant-select-dropdown.ide-qt-select-dropdown {
