@@ -24,13 +24,14 @@
         :loading="loading"
         row-key="id"
         :pagination="pagination"
-        :scroll="{ x: tab === 'records' ? 850 : 540 }"
+        :scroll="{ x: tab === 'records' ? 900 : 540 }"
         @change="pageChanged">
         <template slot="instrument" slot-scope="text, row">
           <strong>{{ row.symbol }}</strong><div class="analysis-secondary">{{ context(row) }}</div>
         </template>
         <template slot="timeframe" slot-scope="text">{{ timeframeLabel(text) }}</template>
         <template slot="phase" slot-scope="text"><a-tag :color="phaseColor(text)">{{ phaseLabel(text) }}</a-tag></template>
+        <template slot="confidence" slot-scope="text">{{ text }}/5</template>
         <template slot="date" slot-scope="text">{{ formatTime(text) }}</template>
         <template slot="action" slot-scope="text, row">
           <a-button v-if="tab === 'records'" type="link" size="small" @click="openDetail(row.id)">查看详情</a-button>
@@ -114,6 +115,7 @@ export default {
         base.push(
           { title: '阶段', dataIndex: 'phase', scopedSlots: { customRender: 'phase' }, width: 120 },
           { title: '分析结论', dataIndex: 'summary' },
+          { title: '置信度', dataIndex: 'confidence', scopedSlots: { customRender: 'confidence' }, width: 50 },
           { title: '完成时间', dataIndex: 'created_at', scopedSlots: { customRender: 'date' }, width: 180 }
         )
       }
