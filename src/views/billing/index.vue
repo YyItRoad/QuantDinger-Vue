@@ -1,5 +1,5 @@
 <template>
-  <div class="billing-page" :class="{ 'theme-dark': isDarkTheme }">
+  <div class="billing-page qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
     <div class="page-header">
       <h2 class="page-title">
         <a-icon type="wallet" />

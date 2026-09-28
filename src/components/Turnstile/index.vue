@@ -1,52 +1,70 @@
 <template>
   <div class="turnstile-container" v-if="enabled">
     <div ref="turnstileRef" :id="containerId"></div>
-    <div v-if="error" class="turnstile-error">
+    <div v-if="error" class="turnstile-error" role="alert" aria-live="assertive">
       {{ error }}
-      <a @click="reset">{{ $t('user.security.retry') || 'Retry' }}</a>
+      <a href="#" @click.prevent="$emit('retry')">{{ $t('user.security.retry') }}</a>
     </div>
   </div>
 </template>
 
 <script>
-let turnstileScriptLoaded = false
-let turnstileScriptLoading = false
-const turnstileCallbacks = []
+let turnstileScriptPromise = null
+
+function hasTurnstileApi () {
+  return Boolean(window.turnstile && typeof window.turnstile.render === 'function')
+}
 
 function loadTurnstileScript () {
-  return new Promise((resolve, reject) => {
-    if (turnstileScriptLoaded) {
+  if (hasTurnstileApi()) return Promise.resolve()
+  if (turnstileScriptPromise) return turnstileScriptPromise
+
+  turnstileScriptPromise = new Promise((resolve, reject) => {
+    let script = document.querySelector('script[data-quantdinger-turnstile]')
+    let settled = false
+    let pollTimer = null
+    let timeout = null
+    const clearTimers = () => {
+      if (pollTimer) clearInterval(pollTimer)
+      if (timeout) clearTimeout(timeout)
+    }
+    const finish = () => {
+      if (settled || !hasTurnstileApi()) return
+      settled = true
+      clearTimers()
       resolve()
+    }
+    const fail = (code) => {
+      if (settled) return
+      settled = true
+      clearTimers()
+      if (script && typeof script.remove === 'function') script.remove()
+      reject(new Error(code))
+    }
+
+    timeout = setTimeout(() => fail('turnstile_load_timeout'), 15000)
+    pollTimer = setInterval(finish, 50)
+
+    if (script) {
+      script.addEventListener('load', finish, { once: true })
+      script.addEventListener('error', () => fail('turnstile_script_load_failed'), { once: true })
       return
     }
 
-    turnstileCallbacks.push({ resolve, reject })
-
-    if (turnstileScriptLoading) {
-      return
-    }
-
-    turnstileScriptLoading = true
-
-    const script = document.createElement('script')
+    script = document.createElement('script')
     script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
     script.async = true
     script.defer = true
-
-    script.onload = () => {
-      turnstileScriptLoaded = true
-      turnstileCallbacks.forEach(cb => cb.resolve())
-      turnstileCallbacks.length = 0
-    }
-
-    script.onerror = () => {
-      turnstileScriptLoading = false
-      turnstileCallbacks.forEach(cb => cb.reject(new Error('Failed to load Turnstile script')))
-      turnstileCallbacks.length = 0
-    }
-
+    script.dataset.quantdingerTurnstile = 'true'
+    script.addEventListener('load', finish, { once: true })
+    script.addEventListener('error', () => fail('turnstile_script_load_failed'), { once: true })
     document.head.appendChild(script)
+  }).catch(error => {
+    turnstileScriptPromise = null
+    throw error
   })
+
+  return turnstileScriptPromise
 }
 
 export default {
@@ -91,29 +109,37 @@ export default {
       pendingResolve: null,
       pendingReject: null,
       pendingTimer: null,
+      initPromise: null,
+      destroyed: false,
       containerId: `turnstile-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     }
   },
 
   mounted () {
     if (this.enabled && this.siteKey) {
-      this.initTurnstile()
+      this.initTurnstile().catch(() => {})
     }
   },
 
   beforeDestroy () {
+    this.destroyed = true
+    if (this.pendingReject) {
+      this.pendingReject(new Error('turnstile_destroyed'))
+      this.clearPending()
+    }
     this.cleanup()
   },
 
   watch: {
     siteKey (newVal) {
       if (newVal && this.enabled) {
-        this.initTurnstile()
+        this.cleanup()
+        this.initTurnstile().catch(() => {})
       }
     },
     enabled (newVal) {
       if (newVal && this.siteKey) {
-        this.initTurnstile()
+        this.initTurnstile().catch(() => {})
       } else {
         this.cleanup()
       }
@@ -121,28 +147,36 @@ export default {
   },
 
   methods: {
-    translate (key, fallback) {
-      const value = this.$t ? this.$t(key) : ''
-      return value && value !== key ? value : fallback
-    },
-
-    async initTurnstile () {
-      try {
-        await loadTurnstileScript()
-        this.renderWidget()
-      } catch (e) {
-        this.error = this.translate('user.security.loadFailed', 'Failed to load verification')
-        console.error('Turnstile init error:', e)
+    initTurnstile () {
+      if (!this.enabled || !this.siteKey) {
+        return Promise.reject(new Error('turnstile_not_configured'))
       }
+      if (this.widgetId !== null) return Promise.resolve(this.widgetId)
+      if (this.initPromise) return this.initPromise
+
+      this.initPromise = loadTurnstileScript()
+        .then(() => this.$nextTick())
+        .then(() => {
+          if (this.destroyed) throw new Error('turnstile_destroyed')
+          if (this.widgetId !== null) return this.widgetId
+          return this.renderWidget()
+        })
+        .catch(error => {
+          this.error = this.$t('user.security.loadFailed')
+          console.error('Turnstile init error:', error)
+          this.$emit('error', error)
+          throw error
+        })
+        .finally(() => {
+          this.initPromise = null
+        })
+
+      return this.initPromise
     },
 
     renderWidget () {
-      if (!window.turnstile || !this.$refs.turnstileRef) {
-        return
-      }
-
-      // Clean up existing widget
-      this.cleanup()
+      if (!hasTurnstileApi()) throw new Error('turnstile_api_unavailable')
+      if (!this.$refs.turnstileRef) throw new Error('turnstile_container_unavailable')
 
       this.widgetId = window.turnstile.render(this.$refs.turnstileRef, {
         sitekey: this.siteKey,
@@ -161,15 +195,25 @@ export default {
         },
         'error-callback': (code) => {
           this.token = null
-          this.error = this.translate('user.security.verificationFailed', 'Verification failed')
+          this.error = this.$t('user.security.verificationFailed')
           if (this.pendingReject) {
-            this.pendingReject(code)
+            this.pendingReject(new Error(String(code || 'turnstile_verification_failed')))
             this.clearPending()
           }
           if (code) {
             console.warn('Turnstile verification error:', code)
           }
           this.$emit('error', code)
+        },
+        'unsupported-callback': () => {
+          const error = new Error('turnstile_browser_unsupported')
+          this.token = null
+          this.error = this.$t('user.security.verificationFailed')
+          if (this.pendingReject) {
+            this.pendingReject(error)
+            this.clearPending()
+          }
+          this.$emit('error', error)
         },
         'expired-callback': () => {
           this.token = null
@@ -180,6 +224,7 @@ export default {
           this.$emit('expired')
         }
       })
+      return this.widgetId
     },
 
     clearPending () {
@@ -195,24 +240,22 @@ export default {
       if (!this.enabled) {
         return Promise.resolve('')
       }
-      if (!window.turnstile || this.widgetId === null) {
-        await this.initTurnstile()
-      }
-      if (!window.turnstile || this.widgetId === null) {
-        return Promise.reject(new Error('turnstile_unavailable'))
-      }
       if (this.pendingReject) {
         this.pendingReject(new Error('replaced'))
       }
       this.clearPending()
       this.token = null
       this.error = null
+      await this.initTurnstile()
+      if (!hasTurnstileApi() || this.widgetId === null) {
+        throw new Error('turnstile_unavailable')
+      }
       return new Promise((resolve, reject) => {
         this.pendingResolve = resolve
         this.pendingReject = reject
         this.pendingTimer = setTimeout(() => {
           const err = new Error('turnstile_timeout')
-          this.error = this.translate('user.security.verificationFailed', 'Verification failed')
+          this.error = this.$t('user.security.verificationFailed')
           this.clearPending()
           reject(err)
           this.$emit('error', err)
@@ -220,10 +263,15 @@ export default {
         try {
           if (this.execution === 'execute') {
             window.turnstile.execute(this.widgetId)
+          } else if (this.token) {
+            resolve(this.token)
+            this.clearPending()
           }
         } catch (e) {
+          this.error = this.$t('user.security.verificationFailed')
           this.clearPending()
           reject(e)
+          this.$emit('error', e)
         }
       })
     },

@@ -13,7 +13,70 @@
             :class="{ active: activeDrawingTool === tool.name }"
             @click="selectDrawingTool(tool.name)"
           >
-            <a-icon :type="tool.icon" />
+            <svg class="drawing-tool-icon" viewBox="0 0 20 20" aria-hidden="true">
+              <g v-if="tool.name === 'measure'">
+                <line x1="10" y1="3" x2="10" y2="17" />
+                <polyline points="7,6 10,3 13,6" />
+                <polyline points="7,14 10,17 13,14" />
+                <line x1="5" y1="3" x2="15" y2="3" />
+                <line x1="5" y1="17" x2="15" y2="17" />
+              </g>
+              <g v-else-if="tool.name === 'line'">
+                <line x1="4" y1="15" x2="16" y2="5" />
+                <circle cx="4" cy="15" r="1.4" />
+                <circle cx="16" cy="5" r="1.4" />
+              </g>
+              <g v-else-if="tool.name === 'horizontalLine'">
+                <line x1="2" y1="10" x2="18" y2="10" />
+              </g>
+              <g v-else-if="tool.name === 'horizontalRay'">
+                <circle cx="4" cy="10" r="1.5" />
+                <line x1="5.5" y1="10" x2="18" y2="10" />
+              </g>
+              <g v-else-if="tool.name === 'horizontalSegment'">
+                <line x1="4" y1="10" x2="16" y2="10" />
+                <line x1="4" y1="6" x2="4" y2="14" />
+                <line x1="16" y1="6" x2="16" y2="14" />
+              </g>
+              <g v-else-if="tool.name === 'verticalLine'">
+                <line x1="10" y1="2" x2="10" y2="18" />
+              </g>
+              <g v-else-if="tool.name === 'ray'">
+                <circle cx="4" cy="16" r="1.5" />
+                <line x1="5" y1="15" x2="17" y2="3" />
+              </g>
+              <g v-else-if="tool.name === 'arrow'">
+                <line x1="3" y1="16" x2="16" y2="4" />
+                <polyline points="10,4 16,4 16,10" />
+              </g>
+              <g v-else-if="tool.name === 'straightLine'">
+                <line x1="2" y1="18" x2="18" y2="2" />
+              </g>
+              <g v-else-if="tool.name === 'parallelStraightLine'">
+                <line x1="1" y1="14" x2="13" y2="2" />
+                <line x1="7" y1="18" x2="19" y2="6" />
+              </g>
+              <g v-else-if="tool.name === 'rectangle'">
+                <rect x="3" y="4" width="14" height="12" rx="1" />
+              </g>
+              <g v-else-if="tool.name === 'priceLine'">
+                <line x1="2" y1="10" x2="11" y2="10" />
+                <rect x="11" y="6" width="7" height="8" rx="1" />
+                <text x="14.5" y="11.9">$</text>
+              </g>
+              <g v-else-if="tool.name === 'priceChannelLine'">
+                <line x1="2" y1="13" x2="14" y2="3" />
+                <line x1="6" y1="17" x2="18" y2="7" />
+                <line class="drawing-tool-icon__dash" x1="4" y1="15" x2="16" y2="5" />
+              </g>
+              <g v-else-if="tool.name === 'fibonacciLine'">
+                <line x1="2" y1="3" x2="18" y2="3" />
+                <line x1="4" y1="7" x2="18" y2="7" />
+                <line x1="6" y1="11" x2="18" y2="11" />
+                <line x1="8" y1="15" x2="18" y2="15" />
+                <line x1="10" y1="18" x2="18" y2="18" />
+              </g>
+            </svg>
           </div>
         </a-tooltip>
         <a-divider type="vertical" />
@@ -220,6 +283,10 @@ export default {
       type: String,
       default: 'light'
     },
+    candleType: {
+      type: String,
+      default: 'candle_solid'
+    },
     activeIndicators: {
       type: Array,
       default: () => []
@@ -270,6 +337,15 @@ export default {
 
     const chartRef = shallowRef(null)
     const chartTheme = ref(props.theme || 'light')
+    const supportedCandleTypes = new Set([
+      'candle_solid',
+      'candle_stroke',
+      'candle_up_stroke',
+      'candle_down_stroke',
+      'ohlc',
+      'area'
+    ])
+    const normalizedCandleType = () => supportedCandleTypes.has(props.candleType) ? props.candleType : 'candle_solid'
     let chartResizeObserver = null
     let chartResizeRafId = null
     let volEnsureRafId = null
@@ -574,10 +650,14 @@ export default {
       },
       { name: 'line', title: proxy.$t('dashboard.indicator.drawing.line'), icon: 'line' },
       { name: 'horizontalLine', title: proxy.$t('dashboard.indicator.drawing.horizontalLine'), icon: 'minus' },
+      { name: 'horizontalRay', title: proxy.$t('dashboard.indicator.drawing.horizontalRay'), icon: 'arrow-right' },
+      { name: 'horizontalSegment', title: proxy.$t('dashboard.indicator.drawing.horizontalSegment'), icon: 'minus' },
       { name: 'verticalLine', title: proxy.$t('dashboard.indicator.drawing.verticalLine'), icon: 'column-width' },
       { name: 'ray', title: proxy.$t('dashboard.indicator.drawing.ray'), icon: 'arrow-right' },
+      { name: 'arrow', title: proxy.$t('dashboard.indicator.drawing.arrow'), icon: 'arrow-right' },
       { name: 'straightLine', title: proxy.$t('dashboard.indicator.drawing.straightLine'), icon: 'menu' },
       { name: 'parallelStraightLine', title: proxy.$t('dashboard.indicator.drawing.parallelLine'), icon: 'menu' },
+      { name: 'rectangle', title: proxy.$t('dashboard.indicator.drawing.rectangle'), icon: 'border' },
       { name: 'priceLine', title: proxy.$t('dashboard.indicator.drawing.priceLine'), icon: 'dollar' },
       { name: 'priceChannelLine', title: proxy.$t('dashboard.indicator.drawing.priceChannel'), icon: 'border' },
       { name: 'fibonacciLine', title: proxy.$t('dashboard.indicator.drawing.fibonacciLine'), icon: 'rise' }
@@ -703,6 +783,59 @@ export default {
           { key: 'k', labelKey: 'indicatorIde.editor.kSmoothing', type: 'number', min: 1, max: 20, step: 1 },
           { key: 'd', labelKey: 'indicatorIde.editor.dSmoothing', type: 'number', min: 1, max: 20, step: 1 }
         ]
+      },
+      {
+        id: 'vwap',
+        name: 'Volume Weighted Average Price',
+        shortName: 'VWAP',
+        type: 'line',
+        defaultParams: { period: 20 },
+        paramSchema: [{ key: 'period', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 500, step: 1 }]
+      },
+      {
+        id: 'sar',
+        name: 'Parabolic SAR',
+        shortName: 'SAR',
+        type: 'native',
+        singleInstance: true,
+        defaultParams: { start: 2, step: 2, max: 20 },
+        paramSchema: []
+      },
+      {
+        id: 'roc',
+        name: 'Rate of Change',
+        shortName: 'ROC',
+        type: 'native',
+        singleInstance: true,
+        defaultParams: { period: 12, smoothing: 6 },
+        paramSchema: [{ key: 'period', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 300, step: 1 }]
+      },
+      {
+        id: 'mtm',
+        name: 'Momentum',
+        shortName: 'MTM',
+        type: 'native',
+        singleInstance: true,
+        defaultParams: { period: 12, smoothing: 6 },
+        paramSchema: [{ key: 'period', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 300, step: 1 }]
+      },
+      {
+        id: 'bias',
+        name: 'Bias Ratio',
+        shortName: 'BIAS',
+        type: 'native',
+        singleInstance: true,
+        defaultParams: { short: 6, medium: 12, long: 24 },
+        paramSchema: []
+      },
+      {
+        id: 'trix',
+        name: 'Triple Exponential Average',
+        shortName: 'TRIX',
+        type: 'native',
+        singleInstance: true,
+        defaultParams: { period: 12, smoothing: 9 },
+        paramSchema: [{ key: 'period', labelKey: 'indicatorIde.editor.period', type: 'number', min: 1, max: 300, step: 1 }]
       }
     ])
 
@@ -854,10 +987,14 @@ export default {
       const toolMap = {
         line: 'segment',
         horizontalLine: 'horizontalStraightLine',
+        horizontalRay: 'horizontalRayLine',
+        horizontalSegment: 'horizontalSegment',
         verticalLine: 'verticalStraightLine',
         ray: 'rayLine',
+        arrow: 'qdArrow',
         straightLine: 'straightLine',
         parallelStraightLine: 'parallelStraightLine',
+        rectangle: 'qdRectangle',
         priceLine: 'priceLine',
         priceChannelLine: 'priceChannelLine',
         fibonacciLine: 'fibonacciLine',
@@ -952,6 +1089,13 @@ export default {
       if (!indicator || !indicator.id) return
       if (indicator.id === 'vol') {
         toggleVolumePane()
+        return
+      }
+      if (indicator.singleInstance && isIndicatorActive(indicator.id)) {
+        const activeInstance = props.activeIndicators.find(item => item.id === indicator.id)
+        if (activeInstance) {
+          removeIndicatorInstance(activeInstance)
+        }
         return
       }
       const fallbackColor = getIndicatorColor(activePresetIndicators.value.length)
@@ -1067,12 +1211,12 @@ export default {
           textColor: '#d1d4dc',
           textColorSecondary: '#787b86',
           borderColor: '#2a2a2a',
-          gridLineColor: '#252525',
-          gridLineColorDashed: '#363c4e',
-          tooltipBg: 'rgba(25, 27, 32, 0.95)',
-          tooltipBorder: '#333',
-          tooltipText: '#ccc',
-          tooltipTextSecondary: '#888',
+          gridLineColor: 'rgba(255, 255, 255, 0.055)',
+          gridLineColorDashed: '#4a4d57',
+          tooltipBg: 'rgba(27, 27, 27, 0.96)',
+          tooltipBorder: '#303030',
+          tooltipText: '#d1d4dc',
+          tooltipTextSecondary: '#787b86',
           axisLabelColor: '#787b86',
           splitAreaColor: ['rgba(250,250,250,0.05)', 'rgba(200,200,200,0.02)'],
           dataZoomBorder: '#2a2a2a',
@@ -1084,16 +1228,16 @@ export default {
       } else {
         return {
           backgroundColor: '#fff',
-          textColor: '#333',
-          textColorSecondary: '#666',
-          borderColor: '#e8e8e8',
-          gridLineColor: '#e8e8e8',
-          gridLineColorDashed: '#e8e8e8',
+          textColor: '#131722',
+          textColorSecondary: '#6a6d78',
+          borderColor: '#e0e3eb',
+          gridLineColor: '#f0f3fa',
+          gridLineColorDashed: '#d6d9e0',
           tooltipBg: 'rgba(255, 255, 255, 0.95)',
-          tooltipBorder: '#e8e8e8',
-          tooltipText: '#333',
-          tooltipTextSecondary: '#666',
-          axisLabelColor: '#666',
+          tooltipBorder: '#e0e3eb',
+          tooltipText: '#131722',
+          tooltipTextSecondary: '#6a6d78',
+          axisLabelColor: '#6a6d78',
           splitAreaColor: ['rgba(250,250,250,0.05)', 'rgba(200,200,200,0.02)'],
           dataZoomBorder: '#e8e8e8',
           dataZoomFiller: 'rgba(24, 144, 255, 0.15)',
@@ -1106,9 +1250,9 @@ export default {
 
     const getIndicatorColor = (idx) => {
       if (chartTheme.value === 'dark') {
-        return ['#13c2c2', '#e040fb', '#ffeb3b', '#00e676', '#ff6d00', '#9c27b0'][idx % 6]
+        return ['#2962ff', '#ff9800', '#ab47bc', '#26a69a', '#ef5350', '#78909c'][idx % 6]
       } else {
-        return ['#13c2c2', '#9c27b0', '#f57c00', '#1976d2', '#c2185b', '#7b1fa2'][idx % 6]
+        return ['#2962ff', '#f57c00', '#7b1fa2', '#00897b', '#d32f2f', '#546e7a'][idx % 6]
       }
     }
 
@@ -2162,6 +2306,62 @@ registerOverlay({
     }
 
     registerOverlay({
+      name: 'qdRectangle',
+      totalStep: 3,
+      lock: false,
+      needDefaultPointFigure: true,
+      needDefaultXAxisFigure: true,
+      needDefaultYAxisFigure: true,
+      createPointFigures: ({ coordinates }) => {
+        if (!coordinates[0] || !coordinates[1]) return []
+        const x = Math.min(coordinates[0].x, coordinates[1].x)
+        const y = Math.min(coordinates[0].y, coordinates[1].y)
+        const width = Math.abs(coordinates[1].x - coordinates[0].x)
+        const height = Math.abs(coordinates[1].y - coordinates[0].y)
+        return [{
+          type: 'rect',
+          attrs: { x, y, width, height },
+          styles: {
+            style: 'stroke_fill',
+            color: chartTheme.value === 'dark' ? 'rgba(41, 98, 255, 0.10)' : 'rgba(41, 98, 255, 0.08)',
+            borderColor: '#5b8cff',
+            borderSize: 1
+          }
+        }]
+      }
+    })
+
+    registerOverlay({
+      name: 'qdArrow',
+      totalStep: 3,
+      lock: false,
+      needDefaultPointFigure: true,
+      needDefaultXAxisFigure: true,
+      needDefaultYAxisFigure: true,
+      createPointFigures: ({ coordinates }) => {
+        if (!coordinates[0] || !coordinates[1]) return []
+        const start = coordinates[0]
+        const end = coordinates[1]
+        const angle = Math.atan2(end.y - start.y, end.x - start.x)
+        const headLength = 10
+        const wingOne = {
+          x: end.x - headLength * Math.cos(angle - Math.PI / 6),
+          y: end.y - headLength * Math.sin(angle - Math.PI / 6)
+        }
+        const wingTwo = {
+          x: end.x - headLength * Math.cos(angle + Math.PI / 6),
+          y: end.y - headLength * Math.sin(angle + Math.PI / 6)
+        }
+        const styles = { style: 'stroke', color: '#5b8cff', size: 1.5 }
+        return [
+          { type: 'line', attrs: { coordinates: [start, end] }, styles },
+          { type: 'line', attrs: { coordinates: [end, wingOne] }, styles },
+          { type: 'line', attrs: { coordinates: [end, wingTwo] }, styles }
+        ]
+      }
+    })
+
+    registerOverlay({
       name: 'priceRangeMeasure',
       totalStep: 3,
       lock: false,
@@ -3046,6 +3246,15 @@ registerOverlay({
         }
 
         updateChartTheme()
+        if (typeof chartRef.value.setOffsetRightDistance === 'function') {
+          chartRef.value.setOffsetRightDistance(64)
+        }
+        if (typeof chartRef.value.setRightMinVisibleBarCount === 'function') {
+          chartRef.value.setRightMinVisibleBarCount(4)
+        }
+        if (typeof chartRef.value.setBarSpace === 'function') {
+          chartRef.value.setBarSpace(8)
+        }
         nextTick(() => _ensureWmLayer())
 
         if (container && !shiftMeasurePointerDownHandler) {
@@ -3083,10 +3292,14 @@ registerOverlay({
               const toolMap = {
                 line: 'segment',
                 horizontalLine: 'horizontalStraightLine',
+                horizontalRay: 'horizontalRayLine',
+                horizontalSegment: 'horizontalSegment',
                 verticalLine: 'verticalStraightLine',
                 ray: 'rayLine',
+                arrow: 'qdArrow',
                 straightLine: 'straightLine',
                 parallelStraightLine: 'parallelStraightLine',
+                rectangle: 'qdRectangle',
                 priceLine: 'priceLine',
                 priceChannelLine: 'priceChannelLine',
                 fibonacciLine: 'fibonacciLine',
@@ -3237,6 +3450,9 @@ registerOverlay({
 
       const theme = themeConfig.value
       const isDark = chartTheme.value === 'dark'
+      const chartFontFamily = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+      const upColor = '#089981'
+      const downColor = '#f23645'
 
       chartRef.value.setStyles({
         grid: {
@@ -3244,31 +3460,78 @@ registerOverlay({
           horizontal: {
             show: true,
             color: theme.gridLineColor,
-            style: 'dashed',
+            style: 'solid',
             size: 1
           },
           vertical: {
             show: true,
-            color: isDark ? 'rgba(255, 255, 255, 0.045)' : 'rgba(17, 24, 39, 0.045)',
+            color: theme.gridLineColor,
             style: 'solid',
             size: 1
           }
         },
         candle: {
+          type: normalizedCandleType(),
           priceMark: {
             show: true,
             high: {
               show: true,
-              color: theme.axisLabelColor
+              color: theme.axisLabelColor,
+              textOffset: 5,
+              textSize: 10,
+              textFamily: chartFontFamily,
+              textWeight: 'normal'
             },
             low: {
               show: true,
-              color: theme.axisLabelColor
+              color: theme.axisLabelColor,
+              textOffset: 5,
+              textSize: 10,
+              textFamily: chartFontFamily,
+              textWeight: 'normal'
+            },
+            last: {
+              show: true,
+              upColor,
+              downColor,
+              noChangeColor: theme.axisLabelColor,
+              line: {
+                show: true,
+                style: 'dashed',
+                dashedValue: [3, 3],
+                size: 1
+              },
+              text: {
+                show: true,
+                color: '#ffffff',
+                size: 11,
+                family: chartFontFamily,
+                weight: '600',
+                paddingLeft: 5,
+                paddingRight: 5,
+                paddingTop: 3,
+                paddingBottom: 3,
+                borderRadius: 2
+              }
             }
           },
           tooltip: {
             showRule: 'always',
             showType: 'standard',
+            offsetLeft: 8,
+            offsetTop: 31,
+            offsetRight: 8,
+            offsetBottom: 5,
+            text: {
+              size: 11,
+              family: chartFontFamily,
+              weight: 'normal',
+              color: theme.textColorSecondary,
+              marginLeft: 4,
+              marginRight: 6,
+              marginTop: 2,
+              marginBottom: 2
+            },
             labels: [
               proxy.$t('dashboard.indicator.tooltip.time'),
               proxy.$t('dashboard.indicator.tooltip.open'),
@@ -3291,32 +3554,99 @@ registerOverlay({
             }
           },
           bar: {
-            upColor: isDark ? '#0ecb81' : '#13c2c2',
-            downColor: isDark ? '#f6465d' : '#fa541c',
-            noChangeColor: theme.borderColor
+            upColor,
+            downColor,
+            noChangeColor: theme.axisLabelColor,
+            upBorderColor: upColor,
+            downBorderColor: downColor,
+            noChangeBorderColor: theme.axisLabelColor,
+            upWickColor: upColor,
+            downWickColor: downColor,
+            noChangeWickColor: theme.axisLabelColor
           },
           area: {
             point: { animation: false, animationDuration: 0 }
           }
         },
         indicator: {
+          ohlc: {
+            upColor: 'rgba(8, 153, 129, 0.72)',
+            downColor: 'rgba(242, 54, 69, 0.72)',
+            noChangeColor: theme.axisLabelColor
+          },
+          lastValueMark: {
+            show: false
+          },
           tooltip: {
             showRule: 'always',
-            showType: 'standard'
+            showType: 'standard',
+            showName: true,
+            showParams: true,
+            offsetLeft: 8,
+            offsetTop: 4,
+            offsetRight: 8,
+            offsetBottom: 4,
+            text: {
+              size: 11,
+              family: chartFontFamily,
+              weight: 'normal',
+              color: theme.textColorSecondary,
+              marginLeft: 4,
+              marginRight: 6,
+              marginTop: 2,
+              marginBottom: 2
+            }
           }
         },
         xAxis: {
           show: true,
           axisLine: {
-            show: true,
+            show: false,
             color: theme.borderColor
+          },
+          tickLine: {
+            show: false,
+            color: theme.borderColor,
+            size: 1,
+            length: 0
+          },
+          tickText: {
+            show: true,
+            color: theme.axisLabelColor,
+            size: 11,
+            family: chartFontFamily,
+            weight: 'normal',
+            marginStart: 4,
+            marginEnd: 4
           }
         },
         yAxis: {
           show: true,
           axisLine: {
-            show: false
+            show: false,
+            color: theme.borderColor
+          },
+          tickLine: {
+            show: false,
+            color: theme.borderColor,
+            size: 1,
+            length: 0
+          },
+          tickText: {
+            show: true,
+            color: theme.axisLabelColor,
+            size: 11,
+            family: chartFontFamily,
+            weight: 'normal',
+            marginStart: 5,
+            marginEnd: 5
           }
+        },
+        separator: {
+          size: 1,
+          color: theme.borderColor,
+          fill: true,
+          activeBackgroundColor: isDark ? 'rgba(120, 123, 134, 0.12)' : 'rgba(106, 109, 120, 0.08)'
         },
         crosshair: {
           show: true,
@@ -3325,8 +3655,22 @@ registerOverlay({
             line: {
               show: true,
               style: 'dashed',
-              color: theme.gridLineColor,
-              size: 1
+              color: theme.gridLineColorDashed,
+              size: 1,
+              dashedValue: [4, 3]
+            },
+            text: {
+              show: true,
+              color: '#ffffff',
+              backgroundColor: isDark ? '#363a45' : '#6a6d78',
+              size: 11,
+              family: chartFontFamily,
+              weight: 'normal',
+              paddingLeft: 5,
+              paddingRight: 5,
+              paddingTop: 3,
+              paddingBottom: 3,
+              borderRadius: 2
             }
           },
           vertical: {
@@ -3334,8 +3678,22 @@ registerOverlay({
             line: {
               show: true,
               style: 'dashed',
-              color: theme.gridLineColor,
-              size: 1
+              color: theme.gridLineColorDashed,
+              size: 1,
+              dashedValue: [4, 3]
+            },
+            text: {
+              show: true,
+              color: '#ffffff',
+              backgroundColor: isDark ? '#363a45' : '#6a6d78',
+              size: 11,
+              family: chartFontFamily,
+              weight: 'normal',
+              paddingLeft: 5,
+              paddingRight: 5,
+              paddingTop: 3,
+              paddingBottom: 3,
+              borderRadius: 2
             }
           }
         },
@@ -4542,6 +4900,143 @@ registerOverlay({
               })
             } catch (err) {
             }
+          } else if (indicator.id === 'vwap') {
+            const period = indicator.params?.period || 20
+            try {
+              addMainPaneOverlayEntry({
+                signature: buildUniqueIndicatorName(`VWAP_${period}`),
+                figures: [buildLineFigure(`vwap_${indicatorInstanceKey}`, `VWAP(${period})`, color, lineWidth)],
+                calc: (kLineDataList) => {
+                  const rows = []
+                  const priceVolumes = []
+                  const volumes = []
+                  let priceVolumeSum = 0
+                  let volumeSum = 0
+                  kLineDataList.forEach((bar, barIndex) => {
+                    const volume = Number(bar.volume) || 0
+                    const typicalPrice = (Number(bar.high) + Number(bar.low) + Number(bar.close)) / 3
+                    const priceVolume = typicalPrice * volume
+                    priceVolumes.push(priceVolume)
+                    volumes.push(volume)
+                    priceVolumeSum += priceVolume
+                    volumeSum += volume
+                    if (barIndex >= period) {
+                      priceVolumeSum -= priceVolumes[barIndex - period]
+                      volumeSum -= volumes[barIndex - period]
+                    }
+                    rows.push({
+                      [`vwap_${indicatorInstanceKey}`]: volumeSum > 0 ? priceVolumeSum / volumeSum : null
+                    })
+                  })
+                  return rows
+                }
+              })
+            } catch (err) {
+            }
+          } else if (indicator.id === 'sar') {
+            const start = indicator.params?.start || 2
+            const step = indicator.params?.step || 2
+            const max = indicator.params?.max || 20
+            const figureKey = `sar_${indicatorInstanceKey}`
+            try {
+              addMainPaneOverlayEntry({
+                signature: buildUniqueIndicatorName(`SAR_${start}_${step}_${max}`),
+                figures: [{
+                  key: figureKey,
+                  title: `SAR(${start},${step},${max})`,
+                  type: 'circle',
+                  styles: (data) => {
+                    const sarValue = data?.current?.indicatorData?.[figureKey]
+                    const bar = data?.current?.kLineData
+                    const midpoint = bar ? (Number(bar.high) + Number(bar.low)) / 2 : 0
+                    return {
+                      color: Number(sarValue) < midpoint ? '#089981' : '#f23645',
+                      size: Math.max(2, lineWidth)
+                    }
+                  }
+                }],
+                calc: (kLineDataList) => {
+                  const startAf = start / 100
+                  const stepAf = step / 100
+                  const maxAf = max / 100
+                  let acceleration = startAf
+                  let extremePoint = -100
+                  let increasing = false
+                  let sar = 0
+                  return kLineDataList.map((bar, barIndex) => {
+                    const previousSar = sar
+                    const high = Number(bar.high)
+                    const low = Number(bar.low)
+                    if (increasing) {
+                      if (extremePoint === -100 || extremePoint < high) {
+                        extremePoint = high
+                        acceleration = Math.min(acceleration + stepAf, maxAf)
+                      }
+                      sar = previousSar + acceleration * (extremePoint - previousSar)
+                      const previousLow = Number(kLineDataList[Math.max(1, barIndex) - 1].low)
+                      const lowMin = Math.min(previousLow, low)
+                      if (sar > low) {
+                        sar = extremePoint
+                        acceleration = startAf
+                        extremePoint = -100
+                        increasing = false
+                      } else if (sar > lowMin) {
+                        sar = lowMin
+                      }
+                    } else {
+                      if (extremePoint === -100 || extremePoint > low) {
+                        extremePoint = low
+                        acceleration = Math.min(acceleration + stepAf, maxAf)
+                      }
+                      sar = previousSar + acceleration * (extremePoint - previousSar)
+                      const previousHigh = Number(kLineDataList[Math.max(1, barIndex) - 1].high)
+                      const highMax = Math.max(previousHigh, high)
+                      if (sar < high) {
+                        sar = extremePoint
+                        acceleration = 0
+                        extremePoint = -100
+                        increasing = true
+                      } else if (sar < highMax) {
+                        sar = highMax
+                      }
+                    }
+                    return { [figureKey]: sar }
+                  })
+                }
+              })
+            } catch (err) {
+            }
+          } else if (['roc', 'mtm', 'bias', 'trix'].includes(indicator.id)) {
+            const nativeConfigs = {
+              roc: {
+                name: 'ROC',
+                params: [indicator.params?.period || 12, indicator.params?.smoothing || 6]
+              },
+              mtm: {
+                name: 'MTM',
+                params: [indicator.params?.period || 12, indicator.params?.smoothing || 6]
+              },
+              bias: {
+                name: 'BIAS',
+                params: [indicator.params?.short || 6, indicator.params?.medium || 12, indicator.params?.long || 24]
+              },
+              trix: {
+                name: 'TRIX',
+                params: [indicator.params?.period || 12, indicator.params?.smoothing || 9]
+              }
+            }
+            const nativeConfig = nativeConfigs[indicator.id]
+            try {
+              const paneId = chartRef.value.createIndicator(
+                { name: nativeConfig.name, calcParams: nativeConfig.params },
+                false,
+                { height: 100, dragEnabled: true }
+              )
+              if (paneId) {
+                addedIndicatorIds.value.push({ paneId, name: nativeConfig.name })
+              }
+            } catch (err) {
+            }
           } else if (indicator.id === 'macd') {
             const fast = indicator.params?.fast || 12
             const slow = indicator.params?.slow || 26
@@ -5032,6 +5527,10 @@ registerOverlay({
       nextTick(() => _ensureWmLayer())
     })
 
+    watch(() => props.candleType, () => {
+      if (chartRef.value) updateChartTheme()
+    })
+
     watch(() => props.activeIndicators, (newVal, oldVal) => {
       if (chartRef.value && klineData.value.length > 0) {
         nextTick(() => {
@@ -5310,14 +5809,14 @@ registerOverlay({
 
 .drawing-toolbar {
   flex-shrink: 0;
-  width: 40px;
+  width: 34px;
   background: #fff;
-  border-right: 1px solid #e8e8e8;
+  border-right: 1px solid #e0e3eb;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 4px;
-  gap: 4px;
+  padding: 6px 3px;
+  gap: 2px;
   z-index: 10;
   overflow-y: auto;
   overflow-x: hidden;
@@ -5329,43 +5828,72 @@ registerOverlay({
 }
 
 .drawing-tool-btn {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: all 0.2s;
   color: #666;
   font-size: 16px;
   user-select: none;
 }
 
+.drawing-tool-icon {
+  width: 19px;
+  height: 19px;
+  display: block;
+  overflow: visible;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.drawing-tool-icon circle {
+  fill: currentColor;
+  stroke: none;
+}
+
+.drawing-tool-icon text {
+  fill: currentColor;
+  stroke: none;
+  font-size: 6px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.drawing-tool-icon__dash {
+  stroke-dasharray: 2 2;
+}
+
 .chart-left.theme-dark .drawing-tool-btn {
-  color: #d1d4dc;
+  color: #787b86;
 }
 
 .drawing-tool-btn:hover {
-  background: #f0f2f5;
-  color: var(--primary-color, #1890ff);
+  background: #f0f3fa;
+  color: #2962ff;
 }
 
 .chart-left.theme-dark .drawing-tool-btn:hover {
   background: #252525;
-  color: #13c2c2;
+  color: #d1d4dc;
 }
 
 .drawing-tool-btn.active {
-  background: #e6f7ff;
-  color: var(--primary-color, #1890ff);
-  border: 1px solid var(--primary-color, #1890ff);
+  background: #e8f0ff;
+  color: #2962ff;
+  border: 1px solid transparent;
 }
 
 .chart-left.theme-dark .drawing-tool-btn.active {
   background: #252525;
-  color: #13c2c2;
-  border-color: #13c2c2;
+  color: #5b8cff;
+  border-color: transparent;
 }
 
 .drawing-toolbar .ant-divider-vertical {
@@ -5377,11 +5905,12 @@ registerOverlay({
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 3px;
+  min-height: 32px;
+  padding: 3px 6px;
   background: #fff;
-  border-bottom: 1px solid #e8e8e8;
-  flex-wrap: wrap;
+  border-bottom: 1px solid #e0e3eb;
+  flex-wrap: nowrap;
   z-index: 1;
   position: relative;
   width: 100%;
@@ -5398,31 +5927,54 @@ registerOverlay({
 }
 
 .indicator-active-bar {
+  position: absolute;
+  top: 36px;
+  left: 8px;
+  right: 56px;
+  z-index: 9;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 0 12px 10px;
-  background: #fff;
-  border-bottom: 1px solid #f0f0f0;
+  gap: 4px;
+  flex-wrap: nowrap;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: transparent;
+  border: 0;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+
+.indicator-active-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .chart-left.theme-dark .indicator-active-bar {
-  background: #141414;
-  border-bottom-color: #2a2a2a;
+  background: transparent;
+  border-color: transparent;
 }
 
 .indicator-active-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: #f7faff;
-  border: 1px solid #d6e4ff;
-  color: #1f1f1f;
-  font-size: 12px;
-  line-height: 1;
+  gap: 5px;
+  min-height: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid transparent;
+  color: #434651;
+  font-size: 10px;
+  line-height: 20px;
+  white-space: nowrap;
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.indicator-active-chip:hover {
+  background: #fff;
+  border-color: #e0e3eb;
 }
 
 .indicator-active-chip--hidden {
@@ -5432,9 +5984,14 @@ registerOverlay({
 }
 
 .chart-left.theme-dark .indicator-active-chip {
-  background: rgba(24, 144, 255, 0.12);
-  border-color: rgba(24, 144, 255, 0.28);
-  color: rgba(255, 255, 255, 0.88);
+  background: transparent;
+  border-color: transparent;
+  color: #b2b5be;
+}
+
+.chart-left.theme-dark .indicator-active-chip:hover {
+  background: #252525;
+  border-color: #303030;
 }
 
 .chart-left.theme-dark .indicator-active-chip--hidden {
@@ -5445,7 +6002,7 @@ registerOverlay({
 
 .indicator-active-chip__label {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .indicator-active-chip__action {
@@ -5600,52 +6157,53 @@ registerOverlay({
 }
 
 .indicator-btn {
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #666;
-  background: #f0f2f5;
-  border: 1px solid #e8e8e8;
-  border-radius: 4px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 22px;
+  color: #6a6d78;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
-  min-width: 40px;
+  min-width: 36px;
   text-align: center;
   user-select: none;
 }
 
 .chart-left.theme-dark .indicator-btn {
-  color: #d1d4dc;
-  background: #252525;
-  border-color: #2a2a2a;
+  color: #787b86;
+  background: transparent;
+  border-color: transparent;
 }
 
 .indicator-btn:hover {
-  color: var(--primary-color, #1890ff);
-  border-color: var(--primary-color, #1890ff);
-  background: #f0f8ff;
+  color: #131722;
+  border-color: transparent;
+  background: #f0f3fa;
 }
 
 .chart-left.theme-dark .indicator-btn:hover {
-  color: #13c2c2;
-  border-color: #13c2c2;
+  color: #d1d4dc;
+  border-color: transparent;
   background: #252525;
 }
 
 .indicator-btn.active {
-  color: var(--primary-color, #1890ff);
-  background: #fff;
-  border-color: var(--primary-color, #1890ff);
-  border-width: 2px;
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+  color: #2962ff;
+  background: #e8f0ff;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .chart-left.theme-dark .indicator-btn.active {
-  color: #13c2c2;
-  background: #252525;
-  border-color: #13c2c2;
-  box-shadow: 0 0 0 2px rgba(19, 194, 194, 0.2);
+  color: #5b8cff;
+  background: rgba(41, 98, 255, 0.16);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .kline-chart-container {

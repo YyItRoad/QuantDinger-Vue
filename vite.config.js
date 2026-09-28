@@ -59,8 +59,8 @@ const resolveManualChunk = (id) => {
   if (id.includes('@ant-design-vue/pro-layout')) return 'ant-pro-layout'
   if (id.includes('ant-design-vue')) return 'ant-design-vue'
   if (id.includes('@ant-design') || id.includes('@antv')) return 'ant-ecosystem'
-  if (id.includes('echarts') || id.includes('klinecharts') || id.includes('viser-vue')) return 'charts'
-  if (id.includes('codemirror') || id.includes('vue-quill-editor') || id.includes('wangeditor')) return 'editors'
+  if (id.includes('echarts') || id.includes('klinecharts')) return 'charts'
+  if (id.includes('codemirror')) return 'editors'
   if (id.includes('pyodide') || id.includes('comlink')) return 'py-runtime'
   if (id.includes('vue')) return 'vue-core'
   if (
@@ -69,8 +69,7 @@ const resolveManualChunk = (id) => {
     id.includes('lodash-es') ||
     id.includes('crypto-js') ||
     id.includes('store') ||
-    id.includes('nprogress') ||
-    id.includes('md5')
+    id.includes('nprogress')
   ) {
     return 'vendor-utils'
   }

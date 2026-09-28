@@ -27,7 +27,8 @@ const defaultRoutePath = '/ai-asset-analysis'
 
 router.beforeEach((to, from, next) => {
   NProgress.start() // start progress bar
-  to.meta && typeof to.meta.title !== 'undefined' && setDocumentTitle(`${i18nRender(to.meta.title)} - ${domTitle}`)
+  const routeTitle = to.meta && typeof to.meta.title !== 'undefined' ? i18nRender(to.meta.title) : ''
+  setDocumentTitle(routeTitle ? `${routeTitle} - ${domTitle}` : domTitle)
 
   // Check whether we have a token (local-only auth).
   let token = storage.get(ACCESS_TOKEN)

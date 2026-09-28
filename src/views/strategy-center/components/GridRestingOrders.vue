@@ -2,10 +2,10 @@
   <section class="grid-orders-panel" :class="{ 'theme-dark': isDark }">
     <header class="grid-orders-head">
       <div>
-        <h3>{{ $t('strategyCenter.gridOrders.title') }}</h3>
-        <p>{{ $t('strategyCenter.gridOrders.description') }}</p>
+        <h3>{{ $t(isVirtual ? 'strategyCenter.gridOrders.virtualTitle' : 'strategyCenter.gridOrders.title') }}</h3>
+        <p>{{ $t(isVirtual ? 'strategyCenter.gridOrders.virtualDescription' : 'strategyCenter.gridOrders.description') }}</p>
       </div>
-      <a-button icon="sync" :loading="loading" @click="load(true)">{{ $t('strategyCenter.gridOrders.reconcile') }}</a-button>
+      <a-button icon="sync" :loading="loading" @click="load(true)">{{ $t(isVirtual ? 'strategyCenter.gridOrders.refresh' : 'strategyCenter.gridOrders.reconcile') }}</a-button>
     </header>
 
     <a-alert
@@ -15,7 +15,13 @@
       :message="$t('strategyCenter.gridOrders.syncFailed')"
       :description="syncErrorDescription"
     />
-    <div class="grid-order-summary">
+    <div v-if="isVirtual" class="grid-order-summary">
+      <div><span>{{ $t('strategyCenter.gridOrders.open') }}</span><strong>{{ summary.total || orders.length }}</strong></div>
+      <div><span>{{ $t('strategyCenter.gridOrders.source') }}</span><strong>{{ $t('strategyCenter.gridOrders.virtualAccount') }}</strong></div>
+      <div><span>{{ $t('strategyCenter.gridOrders.matching') }}</span><strong>{{ $t('strategyCenter.gridOrders.priceTrigger') }}</strong></div>
+      <div><span>{{ $t('strategyCenter.gridOrders.lastEvaluated') }}</span><strong>{{ formatTime(summary.last_reconciled_at) }}</strong></div>
+    </div>
+    <div v-else class="grid-order-summary">
       <div><span>{{ $t('strategyCenter.gridOrders.open') }}</span><strong>{{ summary.total || orders.length }}</strong></div>
       <div><span>{{ $t('strategyCenter.gridOrders.verified') }}</span><strong>{{ summary.exchange_audit_completed ? (summary.verified_exchange_orders || 0) : '-' }}</strong></div>
       <div :class="{ danger: Number(summary.unverified_orders || 0) > 0 }"><span>{{ $t('strategyCenter.gridOrders.unverified') }}</span><strong>{{ summary.unverified_orders || 0 }}</strong></div>
@@ -35,18 +41,23 @@
         <a-tag :color="String(row.side).toLowerCase() === 'buy' ? 'green' : 'red'">{{ row.side || '-' }}</a-tag>
       </template>
       <template slot="status" slot-scope="value">
-        <a-tag :color="statusColor(value)">{{ $t(`strategyCenter.gridOrders.exchangeStatus.${value || 'unverified'}`) }}</a-tag>
+        <a-tag :color="statusColor(value)">{{ statusLabel(value) }}</a-tag>
       </template>
-      <template slot="number" slot-scope="value">{{ formatNumber(value) }}</template>
+      <template slot="price" slot-scope="value">
+        <span class="number-with-unit"><span>{{ formatPrice(value) }}</span><small v-if="displayUnits.quote">{{ displayUnits.quote }}</small></span>
+      </template>
+      <template slot="quantity" slot-scope="value">
+        <span class="number-with-unit"><span>{{ formatQuantity(value) }}</span><small v-if="displayUnits.base">{{ displayUnits.base }}</small></span>
+      </template>
       <template slot="exchangeOrderId" slot-scope="value">
-        <code :class="{ missing: !value }">{{ value || $t('strategyCenter.gridOrders.notVerified') }}</code>
+        <code :class="{ missing: !value }">{{ value || $t(isVirtual ? 'strategyCenter.gridOrders.notAvailable' : 'strategyCenter.gridOrders.notVerified') }}</code>
       </template>
       <template slot="updatedAt" slot-scope="value">{{ formatTime(value) }}</template>
       <template slot="emptyText">
         <div class="grid-orders-empty">
           <a-icon type="warning" />
-          <strong>{{ $t('strategyCenter.gridOrders.empty') }}</strong>
-          <span>{{ $t('strategyCenter.gridOrders.emptyHint') }}</span>
+          <strong>{{ $t(isVirtual ? 'strategyCenter.gridOrders.virtualEmpty' : 'strategyCenter.gridOrders.empty') }}</strong>
+          <span>{{ $t(isVirtual ? 'strategyCenter.gridOrders.virtualEmptyHint' : 'strategyCenter.gridOrders.emptyHint') }}</span>
         </div>
       </template>
     </a-table>
@@ -72,6 +83,21 @@ export default {
     }
   },
   computed: {
+    isVirtual () {
+      return Boolean(this.summary.virtual_mode)
+    },
+    displayUnits () {
+      if (!this.isVirtual) return { base: '', quote: '' }
+      const row = this.orders.find(item => item && item.symbol) || {}
+      const raw = String(row.symbol || '').trim()
+      const instrument = (raw.split(':').find(part => part.includes('/')) || raw)
+        .split('@')[0]
+        .trim()
+      const parts = instrument.split('/').map(part => part.trim()).filter(Boolean)
+      return parts.length >= 2
+        ? { base: parts[0], quote: parts[1] }
+        : { base: '', quote: '' }
+    },
     syncErrorDescription () {
       const code = String(this.summary.sync_error || '')
       const known = ['grid_runner_not_available', 'grid_exchange_client_unavailable', 'grid_exchange_audit_rate_limited', 'grid_exchange_orders_unverified', 'grid_exchange_snapshot_failed']
@@ -82,11 +108,11 @@ export default {
         { title: this.$t('strategyCenter.gridOrders.cell'), dataIndex: 'cell_index', width: 72 },
         { title: this.$t('strategyCenter.gridOrders.purpose'), dataIndex: 'purpose_label', width: 130 },
         { title: this.$t('strategyCenter.gridOrders.side'), dataIndex: 'side', scopedSlots: { customRender: 'side' }, width: 80 },
-        { title: this.$t('strategyCenter.gridOrders.price'), dataIndex: 'exchange_price', scopedSlots: { customRender: 'number' }, width: 120 },
-        { title: this.$t('strategyCenter.gridOrders.quantity'), dataIndex: 'exchange_quantity', scopedSlots: { customRender: 'number' }, width: 130 },
-        { title: this.$t('strategyCenter.gridOrders.filled'), dataIndex: 'exchange_filled_quantity', scopedSlots: { customRender: 'number' }, width: 120 },
+        { title: this.columnTitle('strategyCenter.gridOrders.price', this.displayUnits.quote), dataIndex: 'exchange_price', scopedSlots: { customRender: 'price' }, width: 150 },
+        { title: this.columnTitle('strategyCenter.gridOrders.quantity', this.displayUnits.base), dataIndex: 'exchange_quantity', scopedSlots: { customRender: 'quantity' }, width: 150 },
+        { title: this.columnTitle('strategyCenter.gridOrders.filled', this.displayUnits.base), dataIndex: 'exchange_filled_quantity', scopedSlots: { customRender: 'quantity' }, width: 140 },
         { title: this.$t('strategyCenter.gridOrders.status'), dataIndex: 'exchange_status', scopedSlots: { customRender: 'status' }, width: 140 },
-        { title: this.$t('strategyCenter.gridOrders.exchangeOrderId'), dataIndex: 'exchange_order_id', scopedSlots: { customRender: 'exchangeOrderId' }, width: 210 },
+        { title: this.$t(this.isVirtual ? 'strategyCenter.gridOrders.virtualOrderId' : 'strategyCenter.gridOrders.exchangeOrderId'), dataIndex: 'exchange_order_id', scopedSlots: { customRender: 'exchangeOrderId' }, width: 210 },
         { title: this.$t('strategyCenter.gridOrders.updatedAt'), dataIndex: 'updated_at', scopedSlots: { customRender: 'updatedAt' }, width: 170 }
       ]
     }
@@ -140,10 +166,29 @@ export default {
       if (['cancelled', 'rejected', 'failed'].includes(status)) return 'red'
       return 'blue'
     },
-    formatNumber (value) {
+    statusLabel (value) {
+      const status = String(value || 'unverified').toLowerCase()
+      if (this.isVirtual && status === 'open') return this.$t('strategyCenter.gridOrders.virtualOpen')
+      return this.$t(`strategyCenter.gridOrders.exchangeStatus.${status}`)
+    },
+    columnTitle (key, unit) {
+      const label = this.$t(key)
+      return unit ? `${label} (${unit})` : label
+    },
+    formatPrice (value) {
       if (value === null || value === undefined || value === '') return '-'
       const number = Number(value)
-      return Number.isFinite(number) ? number.toLocaleString(undefined, { maximumFractionDigits: 12 }) : '-'
+      if (!Number.isFinite(number)) return '-'
+      const magnitude = Math.abs(number)
+      const digits = magnitude >= 1000 ? 2 : magnitude >= 1 ? 4 : magnitude >= 0.01 ? 6 : 8
+      return number.toLocaleString(undefined, { maximumFractionDigits: digits })
+    },
+    formatQuantity (value) {
+      if (value === null || value === undefined || value === '') return '-'
+      const number = Number(value)
+      if (!Number.isFinite(number)) return '-'
+      if (number !== 0 && Math.abs(number) < 1e-8) return number.toExponential(4)
+      return number.toLocaleString(undefined, { maximumFractionDigits: 8 })
     },
     formatTime (value) {
       if (!value) return '-'
@@ -166,6 +211,8 @@ export default {
 .grid-order-summary strong { margin-top: 4px; color: #202938; }
 .grid-order-summary .danger strong, code.missing { color: #f5222d; }
 code { color: #1677ff; word-break: break-all; }
+.number-with-unit { display: inline-flex; align-items: baseline; gap: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.number-with-unit small { color: #7a8594; font-size: 11px; }
 .grid-orders-empty { padding: 36px; display: flex; flex-direction: column; align-items: center; gap: 7px; color: #7a8594; }
 .grid-orders-empty strong { color: #202938; }
 .grid-orders-panel ::v-deep .ant-table { color: #354052; background: #fff; }
@@ -181,6 +228,7 @@ code { color: #1677ff; word-break: break-all; }
 .grid-orders-panel.theme-dark .grid-order-summary .danger strong,
 .grid-orders-panel.theme-dark code.missing { color: #ff7875; }
 .grid-orders-panel.theme-dark code { color: #91caff; }
+.grid-orders-panel.theme-dark .number-with-unit small { color: #8b949e; }
 .grid-orders-panel.theme-dark .grid-orders-empty { color: #8b949e; }
 .grid-orders-panel.theme-dark .grid-orders-empty strong { color: #e5e7eb; }
 .grid-orders-panel.theme-dark ::v-deep .ant-table { color: #d7dbe1; background: #121416; }

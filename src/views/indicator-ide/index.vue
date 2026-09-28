@@ -243,7 +243,7 @@
                           <span v-if="messageItem.role !== 'user' && messageItem.message_type === 'discussion'" class="ai-message__badge">{{ $t('indicatorIde.aiDiscussionBadge') }}</span>
                           <span v-else-if="messageItem.role !== 'user' && messageItem.message_type === 'candidate'" class="ai-message__badge ai-message__badge--candidate">{{ $t('indicatorIde.aiCandidateBadge') }}</span>
                         </div>
-                        <div class="ai-message__content" v-html="renderAiMessage(messageItem.content)" />
+                        <div class="ai-message__content" v-html="renderAiMessage(messageItem)" />
                         <div
                           v-if="isActiveAiCandidateMessage(messageItem)"
                           class="ai-message-candidate"
@@ -255,7 +255,7 @@
                           </div>
                           <div class="ai-candidate-actions">
                             <a-button size="small" @click="previewAiCandidate"><a-icon type="eye" /> {{ $t('indicatorIde.aiPreview') }}</a-button>
-                            <a-button size="small" type="primary" @click="applyAiCandidate"><a-icon type="check" /> {{ $t('indicatorIde.aiApply') }}</a-button>
+                            <a-button size="small" type="primary" :disabled="!aiCandidateValidationPassed" @click="applyAiCandidate"><a-icon type="check" /> {{ $t('indicatorIde.aiApply') }}</a-button>
                             <a-button size="small" type="link" @click="discardAiCandidate">{{ $t('indicatorIde.aiDiscard') }}</a-button>
                           </div>
                         </div>
@@ -306,7 +306,10 @@
             class="ide-chart-fs-root"
             :class="{ 'ide-panel--fullscreen': chartFullscreen }"
           >
-            <div class="ide-chart-fs-row">
+            <div
+              class="ide-chart-fs-row"
+              :class="{ 'ide-chart-fs-row--trade-open': quickTradeDrawerVisible }"
+            >
               <div class="chart-panel">
                 <div class="chart-panel-toolbar">
                   <div class="chart-panel-toolbar-top">
@@ -319,7 +322,7 @@
                         @click="openSignalAlertModal"
                       >
                         <a-icon type="bell" />
-                        <span>通知</span>
+                        <span>{{ $t('indicatorIde.signalAlert.title') }}</span>
                         <em>{{ runningSignalAlertCount }}</em>
                       </a-button>
                       <a-tooltip
@@ -420,6 +423,37 @@
                         </a-select>
                       </div>
                     </div>
+                    <div class="ide-toolbar-group ide-toolbar-group--chart-type">
+                      <span class="ide-toolbar-label">{{ $t('indicatorIde.chartType.label') }}</span>
+                      <a-dropdown
+                        :trigger="['click']"
+                        placement="bottomLeft"
+                        :get-popup-container="chartToolbarGetPopupContainer"
+                        :overlay-class-name="isDarkTheme ? 'ide-chart-type-dropdown ide-chart-type-dropdown--dark' : 'ide-chart-type-dropdown'"
+                      >
+                        <a-button
+                          size="small"
+                          class="ide-chart-type-trigger"
+                          :title="currentChartTypeLabel"
+                          :aria-label="currentChartTypeLabel"
+                        >
+                          <span class="ide-chart-type-icon" :class="`ide-chart-type-icon--${chartCandleType}`" aria-hidden="true">
+                            <i></i><i></i><i></i>
+                          </span>
+                          <a-icon type="down" />
+                        </a-button>
+                        <a-menu slot="overlay" :selected-keys="[chartCandleType]" @click="onChartTypeMenuClick">
+                          <a-menu-item v-for="option in chartTypeOptions" :key="option.value">
+                            <span class="ide-chart-type-menu-item">
+                              <span class="ide-chart-type-icon" :class="`ide-chart-type-icon--${option.value}`" aria-hidden="true">
+                                <i></i><i></i><i></i>
+                              </span>
+                              <span>{{ option.label }}</span>
+                            </span>
+                          </a-menu-item>
+                        </a-menu>
+                      </a-dropdown>
+                    </div>
                     <div class="ide-toolbar-group ide-toolbar-group--tf">
                       <span class="ide-toolbar-label">{{ $t('indicatorIde.toolbar.timeframe') }}</span>
                       <a-radio-group
@@ -458,6 +492,10 @@
                         </a-button>
                         <div slot="overlay" class="ide-indicator-overlay" @mousedown.stop @click.stop>
                           <div class="ide-indicator-overlay-hint">{{ $t('indicatorIde.chartPickHint') }}</div>
+                          <button type="button" class="ide-indicator-market-entry" @click="openIndicatorMarketPicker">
+                            <span><a-icon type="shop" /> {{ $t('indicatorIde.marketPicker.open') }}</span>
+                            <a-icon type="right" />
+                          </button>
                           <a-spin v-if="loadingIndicators" size="small" style="padding: 12px;" />
                           <div v-else-if="!indicators.length" class="ide-indicator-overlay-empty">{{ $t('indicatorIde.noIndicatorsYet') }}</div>
                           <div v-else class="ide-indicator-overlay-list">
@@ -497,6 +535,7 @@
                     :instrument-id="currentInstrumentId"
                     :timeframe="timeframe"
                     :theme="chartTheme"
+                    :candle-type="chartCandleType"
                     :activeIndicators="activeIndicators"
                     :userId="userId"
                     :realtime-enabled="klineRealtimeEnabled"
@@ -504,72 +543,76 @@
                   />
                 </div>
               </div>
-              <div
-                class="ide-quick-bottom ide-quick-bottom--chart-fs"
-                :class="{ 'ide-quick-bottom--collapsed': !quickTradeDrawerVisible }"
+              <aside
+                class="ide-quick-drawer"
+                :class="{ 'ide-quick-drawer--collapsed': !quickTradeDrawerVisible }"
               >
-                <div class="ide-quick-panel-head">
-                  <button
-                    type="button"
-                    class="ide-quick-panel-head-main"
-                    :aria-expanded="quickTradeDrawerVisible ? 'true' : 'false'"
-                    @click="toggleQuickTradeDrawer"
-                  >
-                    <span class="ide-quick-panel-head-copy">
-                      <span class="ide-quick-panel-head-title">
-                        <a-icon type="thunderbolt" theme="filled" class="ide-quick-panel-head-icon" />
-                        {{ $t('quickTrade.title') }}
+                <div v-if="quickTradeDrawerVisible" class="ide-quick-drawer-content">
+                  <div class="ide-quick-panel-head">
+                    <div class="ide-quick-panel-head-main">
+                      <span class="ide-quick-panel-head-copy">
+                        <span class="ide-quick-panel-head-title">
+                          <a-icon type="thunderbolt" theme="filled" class="ide-quick-panel-head-icon" />
+                          {{ $t('quickTrade.title') }}
+                        </span>
+                        <span class="ide-quick-panel-head-meta">{{ qtSymbol }} · {{ market === 'Crypto' ? cryptoMarketType.toUpperCase() : 'SPOT' }}</span>
                       </span>
-                      <span class="ide-quick-panel-head-meta">{{ qtSymbol }} · {{ market === 'Crypto' ? cryptoMarketType.toUpperCase() : 'SPOT' }}</span>
-                    </span>
-                  </button>
-                  <a-tooltip :title="$t('aiDecisionFilter.quickTradeHint')" placement="topRight">
-                    <div
-                      class="ide-quick-ai-filter"
-                      :class="{ 'is-enabled': quickTradeAiDecisionFilter }"
-                    >
-                      <a-icon type="safety" />
-                      <span>{{ $t('aiDecisionFilter.title') }}</span>
-                      <a-switch
-                        v-model="quickTradeAiDecisionFilter"
-                        :aria-label="$t('aiDecisionFilter.title')"
-                        size="small"
-                      />
                     </div>
-                  </a-tooltip>
-                  <button
-                    type="button"
-                    class="ide-quick-panel-toggle"
-                    :title="quickTradeDrawerVisible ? $t('indicatorIde.hideQuickTrade') : $t('indicatorIde.showQuickTrade')"
-                    :aria-label="quickTradeDrawerVisible ? $t('indicatorIde.hideQuickTrade') : $t('indicatorIde.showQuickTrade')"
-                    @click="toggleQuickTradeDrawer"
-                  >
-                    <a-icon :type="quickTradeDrawerVisible ? 'down' : 'up'" />
-                  </button>
+                    <div class="ide-quick-panel-head-actions">
+                      <a-tooltip :title="$t('aiDecisionFilter.quickTradeHint')" placement="bottomRight">
+                        <div
+                          class="ide-quick-ai-filter"
+                          :class="{ 'is-enabled': quickTradeAiDecisionFilter }"
+                        >
+                          <a-icon type="safety" />
+                          <span>{{ $t('aiDecisionFilter.title') }}</span>
+                          <a-switch
+                            v-model="quickTradeAiDecisionFilter"
+                            :aria-label="$t('aiDecisionFilter.title')"
+                            size="small"
+                          />
+                        </div>
+                      </a-tooltip>
+                    </div>
+                  </div>
+                  <div class="ide-quick-panel-body">
+                    <quick-trade-panel
+                      key="ide-embedded-qt"
+                      embedded
+                      embedded-ide
+                      embedded-dock
+                      side-dock
+                      :visible="true"
+                      :symbol="qtSymbol"
+                      :preset-side="qtSide"
+                      :preset-price="qtPrice"
+                      source="indicator"
+                      :market="market"
+                      :ai-decision-filter-enabled="quickTradeAiDecisionFilter"
+                      symbol-locked
+                      :market-type="market === 'Crypto' ? cryptoMarketType : 'spot'"
+                      :overlay-get-container="ideQtOverlayGetContainer"
+                      @collapse="toggleQuickTradeDrawer"
+                      @order-success="onQuickTradeSuccess"
+                      @update:symbol="handleQuickTradeSymbolChange"
+                      @market-type-change="handleCryptoMarketTypeChange"
+                    />
+                  </div>
                 </div>
-                <div v-if="quickTradeDrawerVisible" class="ide-quick-panel-body">
-                  <quick-trade-panel
-                    key="ide-embedded-qt"
-                    embedded
-                    embedded-ide
-                    embedded-dock
-                    :visible="true"
-                    :symbol="qtSymbol"
-                    :preset-side="qtSide"
-                    :preset-price="qtPrice"
-                    source="indicator"
-                    :market="market"
-                    :ai-decision-filter-enabled="quickTradeAiDecisionFilter"
-                    symbol-locked
-                    :market-type="market === 'Crypto' ? cryptoMarketType : 'spot'"
-                    :overlay-get-container="ideQtOverlayGetContainer"
-                    @collapse="toggleQuickTradeDrawer"
-                    @order-success="onQuickTradeSuccess"
-                    @update:symbol="handleQuickTradeSymbolChange"
-                    @market-type-change="handleCryptoMarketTypeChange"
-                  />
-                </div>
-              </div>
+                <button
+                  type="button"
+                  class="ide-quick-drawer-rail"
+                  :class="{ 'is-open': quickTradeDrawerVisible }"
+                  :title="quickTradeDrawerVisible ? $t('indicatorIde.hideQuickTrade') : $t('indicatorIde.showQuickTrade')"
+                  :aria-label="quickTradeDrawerVisible ? $t('indicatorIde.hideQuickTrade') : $t('indicatorIde.showQuickTrade')"
+                  :aria-expanded="quickTradeDrawerVisible"
+                  @click="toggleQuickTradeDrawer"
+                >
+                  <a-icon type="thunderbolt" theme="filled" class="ide-quick-panel-head-icon" />
+                  <a-icon :type="quickTradeDrawerVisible ? 'double-right' : 'double-left'" class="ide-quick-drawer-rail__arrow" />
+                  <span>{{ $t('quickTrade.title') }}</span>
+                </button>
+              </aside>
             </div>
           </div>
         </div>
@@ -1076,10 +1119,17 @@
     >
       <div class="ai-preview-toolbar">
         <span>{{ $t('indicatorIde.aiPreviewHint') }}</span>
-        <a-button size="small" type="primary" @click="applyAiCandidate">{{ $t('indicatorIde.aiApply') }}</a-button>
+        <a-button size="small" type="primary" :disabled="!aiCandidateValidationPassed" @click="applyAiCandidate">{{ $t('indicatorIde.aiApply') }}</a-button>
       </div>
       <pre class="ai-candidate-code-preview">{{ (aiCandidate && aiCandidate.code) || '' }}</pre>
     </a-modal>
+    <indicator-market-picker
+      :visible="indicatorMarketVisible"
+      :dark="isDarkTheme"
+      :get-container="ideModalGetContainer"
+      @close="indicatorMarketVisible = false"
+      @acquired="handleMarketIndicatorAcquired"
+    />
   </div>
 </template>
 
@@ -1107,8 +1157,10 @@ import { getWatchlist, addWatchlist, searchSymbols } from '@/api/market'
 import { getPublicSettingsConfig } from '@/api/settings'
 import { extractIndicatorSignalLabels } from '@/utils/indicatorSignalOptions'
 import { renderSafeMarkdown } from '@/utils/safeMarkdown'
+import { applyCodeEditsToCodeMirror, applyExactCodeEdits, candidateCodeEditOperations, setCodeMirrorValueWithHighlight } from '@/utils/codeEdits'
 import KlineChart from '@/views/indicator-analysis/components/KlineChart.vue'
 import QuickTradePanel from '@/components/QuickTradePanel/QuickTradePanel'
+import IndicatorMarketPicker from './components/IndicatorMarketPicker.vue'
 import { Modal } from 'ant-design-vue'
 import message from 'ant-design-vue/es/message'
 
@@ -1143,10 +1195,15 @@ function indicatorParamDefaultsStorageKey (userId) {
   return `qd_indicator_param_defaults_v2_${u}`
 }
 
+function chartTypeStorageKey (userId) {
+  const u = userId != null && userId !== '' ? String(userId) : '0'
+  return `qd_indicator_chart_type_v1_${u}`
+}
+
 export default {
   name: 'IndicatorIDE',
   mixins: [baseMixin],
-  components: { KlineChart, QuickTradePanel },
+  components: { KlineChart, QuickTradePanel, IndicatorMarketPicker },
   data () {
     return {
       userId: null,
@@ -1155,6 +1212,7 @@ export default {
       selectedIndicatorId: undefined,
       chartVisibleIndicatorIds: [],
       indicatorDropdownVisible: false,
+      indicatorMarketVisible: false,
       indicatorsLoadedAt: 0,
       editorFullscreen: false,
       chartFullscreen: false,
@@ -1169,6 +1227,7 @@ export default {
       market: 'Crypto',
       symbol: 'BTC/USDT',
       timeframe: '1D',
+      chartCandleType: 'candle_solid',
       cryptoExchangeId: 'binance',
       cryptoMarketType: 'spot',
       currentInstrumentId: '',
@@ -1179,7 +1238,7 @@ export default {
 
       activeIndicators: [],
       chartIndicatorRunning: true,
-      quickTradeDrawerVisible: true,
+      quickTradeDrawerVisible: false,
       quickTradeAiDecisionFilter: false,
       paramDrawerVisible: false,
       indicatorParamOverrides: {},
@@ -1337,6 +1396,20 @@ export default {
     chartTheme () {
       return this.isDarkTheme ? 'dark' : 'light'
     },
+    chartTypeOptions () {
+      return [
+        { value: 'candle_solid', label: this.$t('indicatorIde.chartType.candleSolid') },
+        { value: 'candle_stroke', label: this.$t('indicatorIde.chartType.candleStroke') },
+        { value: 'candle_up_stroke', label: this.$t('indicatorIde.chartType.candleUpStroke') },
+        { value: 'candle_down_stroke', label: this.$t('indicatorIde.chartType.candleDownStroke') },
+        { value: 'ohlc', label: this.$t('indicatorIde.chartType.ohlc') },
+        { value: 'area', label: this.$t('indicatorIde.chartType.area') }
+      ]
+    },
+    currentChartTypeLabel () {
+      const current = this.chartTypeOptions.find(option => option.value === this.chartCandleType)
+      return current ? current.label : this.$t('indicatorIde.chartType.candleSolid')
+    },
     ideQtOverlayGetContainer () {
       return (trigger) => this.chartToolbarGetPopupContainer(trigger)
     },
@@ -1430,6 +1503,7 @@ export default {
     multiTabEvents.$on('cache-evict', this.handleTabCacheEviction)
     await this.loadMarketModules()
     await this.loadUserId()
+    this.restoreChartTypePreference()
     await this.initializeCryptoMarketSource()
     this.loadIndicatorParamDefaults()
     await this.loadIndicators()
@@ -1498,6 +1572,17 @@ export default {
     } catch (_) {}
   },
   methods: {
+    restoreChartTypePreference () {
+      const supported = new Set(['candle_solid', 'candle_stroke', 'candle_up_stroke', 'candle_down_stroke', 'ohlc', 'area'])
+      const saved = storage.get(chartTypeStorageKey(this.userId))
+      if (supported.has(saved)) this.chartCandleType = saved
+    },
+    onChartTypeMenuClick ({ key }) {
+      const supported = new Set(['candle_solid', 'candle_stroke', 'candle_up_stroke', 'candle_down_stroke', 'ohlc', 'area'])
+      if (!supported.has(key)) return
+      this.chartCandleType = key
+      storage.set(chartTypeStorageKey(this.userId), key)
+    },
     handleTabCacheEviction (route) {
       const key = routeCacheKey(route)
       const path = route && typeof route === 'object' ? route.path : ''
@@ -1642,6 +1727,9 @@ export default {
         if (s.timeframe && Object.prototype.hasOwnProperty.call(TF_MAX_DAYS, s.timeframe)) {
           this.timeframe = s.timeframe
         }
+        if (typeof s.quickTradeDrawerVisible === 'boolean') {
+          this.quickTradeDrawerVisible = s.quickTradeDrawerVisible
+        }
         if (s.market && s.symbol) {
           this.market = String(s.market)
           this.symbol = String(s.symbol)
@@ -1691,7 +1779,8 @@ export default {
       try {
         const payload = {
           timeframe: this.timeframe,
-          activeIndicators: this.serializeChartIndicators()
+          activeIndicators: this.serializeChartIndicators(),
+          quickTradeDrawerVisible: this.quickTradeDrawerVisible
         }
         storage.set(ideUiCacheStorageKey(this.userId), JSON.stringify(payload))
       } catch (_) { /* ignore quota */ }
@@ -2508,6 +2597,22 @@ export default {
         this.loadIndicators({ background: true })
       }
     },
+    openIndicatorMarketPicker () {
+      this.indicatorDropdownVisible = false
+      this.indicatorMarketVisible = true
+    },
+    async handleMarketIndicatorAcquired ({ item }) {
+      await this.loadIndicators({ background: true })
+      const marketId = Number(item && item.id)
+      const name = String((item && item.name) || '')
+      const local = this.indicators.find(indicator => Number(indicator.source_indicator_id) === marketId) ||
+        [...this.indicators].reverse().find(indicator => Number(indicator.is_buy) === 1 && String(indicator.name || '') === name)
+      if (!local) return
+      this.selectedIndicatorId = local.id
+      this.chartVisibleIndicatorIds = [Number(local.id)]
+      this.onIndicatorChange(local.id)
+      this.persistIdeSelectionPreference()
+    },
     onChartIndicatorCheckChange (rawId, checked) {
       const id = Number(rawId)
       if (isNaN(id)) return
@@ -3049,42 +3154,73 @@ export default {
       this.$message.info(this.$t('indicatorIde.aiPreviewing'))
     },
     applyAiCandidate () {
-      if (!this.aiCandidate || !this.aiCandidate.code) return
-      const currentEditorCode = this.cmInstance ? this.cmInstance.getValue() : this.currentCode
-      const changedSinceRequest = this.aiCandidate.baseCodeMatchesCurrent === false ||
-        (!!this.codeDirty && (!this.aiCandidate.baseCode || currentEditorCode !== this.aiCandidate.baseCode))
-      if (changedSinceRequest) {
+      if (!this.aiCandidate || !this.aiCandidate.code || !this.aiCandidateValidationPassed) return
+      if (this.aiCandidateHasSourceConflict()) {
         Modal.confirm({
           title: this.$t('indicatorIde.aiEditorChangedTitle'),
           content: this.$t('indicatorIde.aiEditorChangedDesc'),
           okText: this.$t('indicatorIde.aiApply'),
           cancelText: this.$t('dashboard.indicator.editor.cancel'),
           getContainer: () => this.resolveIdeFullscreenMountNode() || document.body,
-          onOk: () => this.applyAiCandidateCode()
+          onOk: () => this.applyAiCandidateCode(true)
         })
         return
       }
       this.applyAiCandidateCode()
     },
-    async applyAiCandidateCode () {
+    aiCandidateHasSourceConflict (candidate = this.aiCandidate) {
+      if (!candidate) return false
+      const currentEditorCode = this.cmInstance ? this.cmInstance.getValue() : this.currentCode
+      return candidate.baseCodeMatchesCurrent === false ||
+        (!!this.codeDirty && (!candidate.baseCode || currentEditorCode !== candidate.baseCode))
+    },
+    async autoApplyAiCandidate () {
+      if (!this.aiCandidate || !this.aiCandidate.code || !this.aiCandidateValidationPassed) return false
+      if (this.aiCandidateHasSourceConflict()) return false
+      await this.applyAiCandidateCode()
+      return true
+    },
+    markLatestAiCandidateApplied () {
+      for (let index = this.aiMessages.length - 1; index >= 0; index -= 1) {
+        const item = this.aiMessages[index]
+        if (!item || item.role === 'user' || item.message_type !== 'candidate') continue
+        this.$set(item, 'change_status', 'applied')
+        this.$set(item, 'content', this.$t('indicatorIde.aiApplied'))
+        break
+      }
+    },
+    async applyAiCandidateCode (forceFullReplacement = false) {
       const candidate = this.aiCandidate
       if (!candidate || !candidate.code) return
+      const operations = candidateCodeEditOperations(candidate)
+      let nextCode = candidate.code
+      let useCodeEdits = !forceFullReplacement && operations.length > 0 && this.cmInstance
+      if (useCodeEdits) {
+        try {
+          const preview = applyExactCodeEdits(this.cmInstance.getValue(), operations)
+          useCodeEdits = preview.code === candidate.code
+        } catch (_) {
+          useCodeEdits = false
+        }
+      }
       if (this.cmInstance) {
-        this.cmInstance.setValue(candidate.code)
+        if (useCodeEdits) nextCode = applyCodeEditsToCodeMirror(this.cmInstance, operations)
+        else nextCode = setCodeMirrorValueWithHighlight(this.cmInstance, candidate.code)
         this.cmInstance.refresh()
       }
-      this.currentCode = candidate.code
+      this.currentCode = nextCode
       this.codeDirty = true
       this.aiPreviewVisible = false
-      this.syncSelectedIndicatorToChart(candidate.code)
-      await this.fetchCodeQualityHints(candidate.code)
+      this.syncSelectedIndicatorToChart(nextCode)
+      await this.fetchCodeQualityHints(nextCode)
       if (candidate.id) {
-        request({
+        await request({
           url: `/api/indicator/aiWorkspace/changes/${candidate.id}/status`,
           method: 'post',
           data: { status: 'applied' }
         }).catch(() => {})
       }
+      this.markLatestAiCandidateApplied()
       this.aiCandidate = null
       this.$message.success(this.$t('indicatorIde.aiApplied'))
     },
@@ -3150,7 +3286,7 @@ export default {
             paramDefaults
           }
         }
-        if (existingCode.trim()) requestBody.existingCode = existingCode.trim()
+        if (existingCode.trim()) requestBody.existingCode = existingCode
 
         const response = await fetch(url, {
           method: 'POST',
@@ -3238,7 +3374,8 @@ export default {
             summary: (workspaceMeta && workspaceMeta.summary) || {}
           }
           this.aiPanelExpanded = true
-          this.$message.success(this.$t('indicatorIde.aiCandidateReady'))
+          const autoApplied = await this.autoApplyAiCandidate()
+          if (!autoApplied) this.$message.success(this.$t('indicatorIde.aiCandidateReady'))
           this.$nextTick(this.scrollAiConversationToBottom)
         } else if (!generatedCode) {
           this.$message.warning(this.$t('indicatorIde.aiNoCode'))
@@ -3256,8 +3393,14 @@ export default {
         this.aiGenerating = false
       }
     },
-    renderAiMessage (value) {
-      return renderSafeMarkdown(value)
+    renderAiMessage (messageItem) {
+      const item = messageItem && typeof messageItem === 'object'
+        ? messageItem
+        : { content: messageItem }
+      const content = item.change_status === 'applied'
+        ? this.$t('indicatorIde.aiApplied')
+        : item.content
+      return renderSafeMarkdown(content)
     },
     normalizeAiDebugSummary (summary) {
       if (!summary || typeof summary !== 'object') return null
@@ -3410,8 +3553,8 @@ export default {
     },
     cleanMarkdownCodeBlocks (code) {
       if (!code || typeof code !== 'string') return code
+      if (!/```/.test(code)) return code
       let c = code.trim()
-      if (!/```/.test(c)) return c
       c = c.replace(/^```[\w]*\s*\n?/i, '')
       if (c.startsWith('```')) c = c.replace(/^```\s*\n?/g, '')
       if (c.endsWith('```')) c = c.replace(/\n?```\s*$/g, '')
@@ -3947,7 +4090,11 @@ export default {
       })
     },
     quickTradeDrawerVisible () {
-      this.$nextTick(() => this.ensureChartReady())
+      this.schedulePersistIdeUiState()
+      this.$nextTick(() => {
+        this.ensureChartReady()
+        window.setTimeout(() => this.ensureChartReady(), 220)
+      })
     },
     paramsPanelExpanded () {
       this.$nextTick(() => this.ensureChartReady())
@@ -4001,7 +4148,7 @@ export default {
   flex-shrink: 0;
 }
 .chart-panel-action-btn {
-  height: 28px !important;
+  height: 30px !important;
   padding: 0 12px !important;
   border-radius: 8px !important;
   display: inline-flex !important;
@@ -4067,13 +4214,13 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: 5px;
   min-width: 0;
-  padding: 6px 10px 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 .ide-toolbar-label {
   font-size: 10px;
@@ -4119,6 +4266,96 @@ export default {
 .ide-toolbar-select--indicator {
   width: 220px;
   max-width: 42vw;
+}
+.ide-toolbar-group--chart-type {
+  flex: 0 0 auto;
+}
+.ide-chart-type-trigger {
+  width: 46px;
+  height: 30px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  color: #475569;
+  border-color: #e2e8f0;
+  border-radius: 8px;
+  box-shadow: none;
+}
+.ide-chart-type-icon {
+  position: relative;
+  width: 19px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  color: currentColor;
+  overflow: hidden;
+
+  i {
+    position: relative;
+    z-index: 1;
+    width: 4px;
+    height: 9px;
+    display: block;
+    border: 1px solid currentColor;
+    background: currentColor;
+    box-sizing: border-box;
+  }
+  i::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    left: 50%;
+    border-left: 1px solid currentColor;
+    transform: translateX(-50%);
+  }
+  i:nth-child(1) { height: 7px; }
+  i:nth-child(2) { height: 12px; }
+  i:nth-child(3) { height: 8px; }
+}
+.ide-chart-type-icon--candle_stroke i {
+  background: transparent;
+}
+.ide-chart-type-icon--candle_up_stroke i:nth-child(1),
+.ide-chart-type-icon--candle_up_stroke i:nth-child(3) {
+  background: transparent;
+}
+.ide-chart-type-icon--candle_down_stroke i:nth-child(2) {
+  background: transparent;
+}
+.ide-chart-type-icon--ohlc {
+  i {
+    width: 1px;
+    height: 14px !important;
+    border: 0;
+    background: currentColor;
+  }
+  i::before,
+  i::after {
+    content: '';
+    position: absolute;
+    width: 3px;
+    border-top: 1px solid currentColor;
+  }
+  i::before {
+    top: 4px;
+    left: -3px;
+    bottom: auto;
+    transform: none;
+  }
+  i::after {
+    right: -3px;
+    bottom: 4px;
+  }
+}
+.ide-chart-type-icon--area {
+  background: linear-gradient(180deg, currentColor 0%, rgba(71, 85, 105, 0.08) 100%);
+  clip-path: polygon(0 72%, 28% 48%, 49% 62%, 76% 20%, 100% 38%, 100% 100%, 0 100%);
+  opacity: .9;
+  i { display: none; }
 }
 .ide-indicator-multiselect-trigger {
   display: inline-flex;
@@ -4748,15 +4985,15 @@ body.dark .ide-signal-alert-modal-wrap {
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 7px 10px;
+  min-height: 38px;
+  padding: 5px 10px;
   font-size: 12px;
   font-weight: 600;
   color: #333;
   border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
   user-select: none;
-  transition: background 0.15s;
-  &:hover { background: #f5f7fa; }
+  transition: color 0.15s;
 }
 .panel-title__leading {
   display: flex;
@@ -5010,7 +5247,7 @@ body.dark .ide-signal-alert-modal-wrap {
   padding: 5px 12px;
   font-size: 11px;
   color: #8c8c8c;
-  background: #f8f9fb;
+  background: transparent;
   border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
 }
@@ -5143,12 +5380,25 @@ body.dark .ide-signal-alert-modal-wrap {
     font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
     line-height: 1.55;
   }
+  ::v-deep .CodeMirror-linebackground.ai-code-edit-line {
+    background: rgba(24, 144, 255, 0.14);
+    background: color-mix(in srgb, var(--primary-color, #1890ff) 18%, transparent);
+    animation: indicator-ai-code-edit-highlight 8s ease-out forwards;
+  }
+  ::v-deep .ai-code-edit-wrap {
+    box-shadow: inset 3px 0 0 var(--primary-color, #1890ff);
+  }
   ::v-deep .CodeMirror-vscrollbar,
   ::v-deep .CodeMirror-hscrollbar {
     &::-webkit-scrollbar { width: 5px; height: 5px; }
     &::-webkit-scrollbar-thumb { background: #c8c8c8; border-radius: 3px; }
     &::-webkit-scrollbar-track { background: transparent; }
   }
+}
+
+@keyframes indicator-ai-code-edit-highlight {
+  0%, 72% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 // ===== AI Panel =====
@@ -5196,7 +5446,7 @@ body.dark .ide-signal-alert-modal-wrap {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 10px 12px 12px;
+  padding: 8px 10px 10px;
   overflow: hidden;
   background: #fafbfc;
 }
@@ -5218,13 +5468,13 @@ body.dark .ide-signal-alert-modal-wrap {
   height: auto;
   min-height: 120px;
   max-height: none;
-  padding: 10px;
+  padding: 8px 2px;
   overflow-y: auto;
   resize: none;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.02);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   scrollbar-width: thin;
 }
 .ai-workspace-loading,
@@ -5759,30 +6009,94 @@ body.dark .ide-signal-alert-modal-wrap {
   overflow: hidden;
 }
 
-.ide-quick-bottom {
-  width: 100%;
-  flex: 0 0 clamp(360px, 39vh, 470px);
+.ide-quick-drawer {
+  width: clamp(370px, 28vw, 440px);
+  flex: 0 0 clamp(370px, 28vw, 440px);
   display: flex;
-  flex-direction: column;
-  border-top: 1px solid #e8e8e8;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid #e8e8e8;
   background: #f8fafc;
   overflow: hidden;
-  min-height: 0;
-  box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.08);
-  transition: flex-basis 180ms ease;
+  box-shadow: -10px 0 28px rgba(15, 23, 42, 0.08);
+  transition: width 180ms ease, flex-basis 180ms ease;
 }
-.ide-quick-bottom--collapsed {
-  flex-basis: 40px;
+.ide-quick-drawer--collapsed {
+  width: 34px;
+  flex-basis: 34px;
+  background: #fff;
+}
+.ide-quick-drawer-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ide-quick-drawer-rail {
+  width: 34px;
+  min-width: 34px;
+  flex: 0 0 34px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 12px 0;
+  color: #475569;
+  font: inherit;
+  border: 0;
+  border-left: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+  span {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    max-height: 120px;
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0;
+  }
+  &:hover {
+    color: @primary-color;
+    background: fade(@primary-color, 5%);
+  }
+  &.is-open {
+    color: var(--primary-color, @primary-color);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary-color, #1890ff) 12%, #fff) 0%, color-mix(in srgb, var(--primary-color, #1890ff) 20%, #fff) 100%);
+    box-shadow: inset 2px 0 0 var(--primary-color, @primary-color);
+  }
+  &:focus-visible {
+    outline: 2px solid fade(@primary-color, 55%);
+    outline-offset: -2px;
+  }
+}
+.ide-quick-drawer-rail__arrow {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(15, 23, 42, .05);
 }
 .ide-quick-panel-head {
   width: 100%;
-  min-height: 40px;
+  min-height: 52px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 12px;
+  padding: 7px 10px 7px 12px;
   background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   color: inherit;
@@ -5792,7 +6106,6 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 .ide-quick-panel-head-main {
   min-width: 0;
-  min-height: 39px;
   flex: 1;
   display: flex;
   align-items: center;
@@ -5802,20 +6115,13 @@ body.dark .ide-signal-alert-modal-wrap {
   text-align: left;
   border: 0;
   background: transparent;
-  cursor: pointer;
-  &:hover .ide-quick-panel-head-title {
-    color: @primary-color;
-  }
-  &:focus-visible {
-    outline: 2px solid fade(@primary-color, 55%);
-    outline-offset: 2px;
-  }
 }
 .ide-quick-panel-head-copy {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
-  gap: 10px;
+  gap: 2px;
 }
 .ide-quick-panel-head-title {
   display: inline-flex;
@@ -5837,6 +6143,12 @@ body.dark .ide-signal-alert-modal-wrap {
 .ide-quick-panel-head-icon {
   font-size: 16px;
   color: @primary-color;
+}
+.ide-quick-panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
 }
 .ide-quick-ai-filter {
   min-height: 28px;
@@ -5863,8 +6175,8 @@ body.dark .ide-signal-alert-modal-wrap {
   }
 }
 .ide-quick-panel-toggle {
-  width: 28px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5887,9 +6199,8 @@ body.dark .ide-signal-alert-modal-wrap {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 0 0 8px;
+  overflow: hidden;
+  padding: 0;
   ::v-deep .quick-trade-panel-root {
     flex: 1;
     min-height: 0;
@@ -5902,10 +6213,6 @@ body.dark .ide-signal-alert-modal-wrap {
     min-height: 0;
     overflow-y: hidden;
     overflow-x: hidden;
-  }
-  ::v-deep .qt-embedded-split--cols {
-    padding-left: 12px;
-    padding-right: 12px;
   }
 }
 
@@ -5941,20 +6248,13 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 .ide-chart-fs-row {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
   align-items: stretch;
-}
-.ide-quick-bottom--chart-fs {
-  width: 100%;
-  max-width: none;
-  align-self: stretch;
-  overflow: hidden;
   position: relative;
-  z-index: 2;
 }
 .chart-panel {
   flex: 1;
@@ -5968,8 +6268,8 @@ body.dark .ide-signal-alert-modal-wrap {
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 8px 10px 10px;
+    gap: 6px;
+    padding: 6px 10px 8px;
     border-bottom: 1px solid #f0f0f0;
     background: #fafafa;
   }
@@ -5984,12 +6284,12 @@ body.dark .ide-signal-alert-modal-wrap {
     display: flex;
     flex-wrap: wrap;
     align-items: stretch;
-    gap: 10px;
+    gap: 12px;
     min-width: 0;
     .ide-toolbar-group {
       flex: 0 1 auto;
       min-width: 0;
-      min-height: 62px;
+      min-height: 46px;
       box-sizing: border-box;
     }
     // Same fix as on the backtest tab: don't let the TF segmented control
@@ -6061,6 +6361,32 @@ body.dark .ide-signal-alert-modal-wrap {
     width: 100% !important;
     flex: 1 1 100% !important;
     border-right: none !important;
+  }
+}
+
+@media (max-width: 1380px) {
+  .ide-quick-drawer {
+    width: clamp(350px, 34vw, 410px);
+    flex-basis: clamp(350px, 34vw, 410px);
+  }
+  .ide-quick-drawer--collapsed {
+    width: 34px;
+    flex-basis: 34px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .ide-quick-drawer {
+    position: absolute;
+    z-index: 8;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(400px, calc(100% - 48px));
+    box-shadow: -14px 0 32px rgba(15, 23, 42, .2);
+  }
+  .ide-quick-drawer--collapsed {
+    width: 34px;
   }
 }
 
@@ -6228,6 +6554,17 @@ body.dark .ide-signal-alert-modal-wrap {
 // ===== Dark Theme =====
 &.theme-dark {
   background: #141414;
+  .ide-chart-type-trigger {
+    color: rgba(255, 255, 255, 0.62);
+    border-color: #303030;
+    background: #1f1f1f;
+    &:hover,
+    &:focus {
+      color: var(--primary-color, #52c41a);
+      border-color: var(--primary-color, #52c41a);
+      background: #242424;
+    }
+  }
   .ide-code-rail {
     border-right-color: #303030;
     background: linear-gradient(180deg, #1f1f1f 0%, #181818 100%);
@@ -6325,11 +6662,26 @@ body.dark .ide-signal-alert-modal-wrap {
     color: rgba(255, 255, 255, 0.82);
   }
   .ide-toolbar-group {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: #363636;
+    background: transparent;
+    border-color: transparent;
     box-shadow: none;
   }
   .ide-toolbar-label { color: rgba(255, 255, 255, 0.45); }
+  .ide-indicator-multiselect-trigger.ant-btn {
+    color: rgba(255, 255, 255, 0.72);
+    background: #1f1f1f;
+    border-color: #434343;
+    box-shadow: none;
+    .anticon { color: rgba(255, 255, 255, 0.42); }
+    &:hover,
+    &:focus,
+    &[aria-expanded="true"] {
+      color: rgba(255, 255, 255, 0.88);
+      background: #242424;
+      border-color: var(--primary-color, #52c41a);
+      .anticon { color: var(--primary-color, #52c41a); }
+    }
+  }
   .tf-group ::v-deep .ant-radio-button-wrapper {
     background: #262626;
     border-color: #434343;
@@ -6340,7 +6692,7 @@ body.dark .ide-signal-alert-modal-wrap {
   .ai-gen-header { color: rgba(255,255,255,0.82); background: #1a1a1a; border-bottom-color: #303030; &:hover { background: #202020; } }
   .ai-gen-body { background: #171717; }
   .ai-memory-badge { color: #95de64; background: rgba(82,196,26,0.12); border-color: rgba(82,196,26,0.28); }
-  .ai-conversation { background: #1f1f1f; border-color: #363636; }
+  .ai-conversation { background: transparent; border-color: transparent; }
   .ai-conversation-empty strong { color: rgba(255,255,255,0.86); }
   .ai-quick-prompts button { color: rgba(255,255,255,0.65); background: #262626; border-color: #434343; }
   .ai-message__content { color: rgba(255,255,255,0.78); background: #2a2a2a; }
@@ -6353,9 +6705,6 @@ body.dark .ide-signal-alert-modal-wrap {
     background: #141414;
     border-bottom-color: #303030;
   }
-  .ide-quick-bottom--chart-fs {
-    border-top-color: #303030;
-  }
   .chart-panel {
     background: #141414;
     border-bottom-color: #303030;
@@ -6365,17 +6714,37 @@ body.dark .ide-signal-alert-modal-wrap {
     }
     .chart-panel-toolbar-title { color: rgba(255, 255, 255, 0.65); }
     .chart-panel-toolbar-controls .ide-toolbar-group {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: #363636;
+      background: transparent;
+      border-color: transparent;
     }
     .chart-panel-toolbar-controls .ide-toolbar-label {
       color: rgba(255, 255, 255, 0.45);
     }
   }
-  .ide-quick-bottom {
+  .ide-quick-drawer {
     background: #141414;
-    border-top-color: #303030;
-    box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.32);
+    border-left-color: #303030;
+    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.32);
+  }
+  .ide-quick-drawer--collapsed {
+    background: #1a1a1a;
+  }
+  .ide-quick-drawer-rail {
+    color: rgba(255, 255, 255, .68);
+    border-left-color: #303030;
+    background: linear-gradient(180deg, #1f1f1f 0%, #181818 100%);
+    &:hover {
+      color: var(--primary-color, #52c41a);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--primary-color, #52c41a) 18%, #1f1f1f) 0%, color-mix(in srgb, var(--primary-color, #52c41a) 8%, #181818) 100%);
+    }
+    &.is-open {
+      color: var(--primary-color, #52c41a);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--primary-color, #52c41a) 18%, #1f1f1f) 0%, color-mix(in srgb, var(--primary-color, #52c41a) 8%, #181818) 100%);
+      box-shadow: inset 2px 0 0 var(--primary-color, #52c41a);
+    }
+  }
+  .ide-quick-drawer-rail__arrow {
+    background: rgba(255, 255, 255, .06);
   }
   .ide-quick-panel-head {
     background: linear-gradient(180deg, #1f1f1f 0%, #1a1a1a 100%);
@@ -6414,7 +6783,7 @@ body.dark .ide-signal-alert-modal-wrap {
       border-top-color: #303030;
     }
   }
-  .panel-title { color: rgba(255,255,255,0.85); border-bottom-color: #303030; &:hover { background: rgba(255,255,255,0.04); } }
+  .panel-title { color: rgba(255,255,255,0.85); border-bottom-color: #303030; }
   .ai-gen-panel { border-top-color: #303030; }
   .ai-gen-header { color: rgba(255,255,255,0.85); &:hover { background: rgba(255,255,255,0.04); } }
   .code-ai-overlay { background: rgba(20,20,20,0.82); }
@@ -6667,6 +7036,163 @@ body.dark .ide-signal-alert-modal-wrap {
     .ant-pagination-prev, .ant-pagination-next { .ant-pagination-item-link { background: #1f1f1f; border-color: #434343; color: rgba(255,255,255,0.45); } }
   }
   ::v-deep .ant-empty-description { color: rgba(255,255,255,0.35); }
+}
+</style>
+
+<style lang="less" scoped>
+/* Shared typography hierarchy for the indicator workspace. */
+.indicator-ide {
+  --ide-font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ide-type-title: 13px;
+  --ide-type-body: 12px;
+  --ide-type-caption: 11px;
+  --ide-weight-regular: 400;
+  --ide-weight-medium: 500;
+  --ide-weight-semibold: 600;
+  --ide-text-primary: #1f2937;
+  --ide-text-secondary: #5f6b7a;
+  --ide-text-muted: #8a94a3;
+  font-family: var(--ide-font-ui);
+  font-size: var(--ide-type-body);
+  font-weight: var(--ide-weight-regular);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+
+  button,
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+
+  .panel-title,
+  .chart-panel-toolbar-title,
+  .ai-gen-header,
+  .ide-quick-panel-head-title {
+    color: var(--ide-text-primary);
+    font-size: var(--ide-type-title);
+    font-weight: var(--ide-weight-semibold);
+    line-height: 1.35;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .ide-toolbar-label,
+  .ide-guide-bar,
+  .ai-composer-shortcut,
+  .ai-helper-tip,
+  .ide-quick-panel-head-meta {
+    color: var(--ide-text-muted);
+    font-size: var(--ide-type-caption);
+    font-weight: var(--ide-weight-medium);
+    line-height: 1.35;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .chart-panel-action-btn,
+  .panel-title-actions ::v-deep .ide-save-button,
+  .code-quality-top-button,
+  .ide-guide-link,
+  .ai-composer-send,
+  .ai-quick-prompts button {
+    font-size: var(--ide-type-body) !important;
+    font-weight: var(--ide-weight-semibold);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .ide-toolbar-select,
+  .ide-indicator-multiselect-trigger,
+  .tf-group,
+  .chart-panel-toolbar-controls {
+    ::v-deep .ant-select-selection,
+    ::v-deep .ant-select-selection-selected-value,
+    ::v-deep .ant-select-selection__placeholder,
+    ::v-deep .ant-radio-button-wrapper {
+      font-family: var(--ide-font-ui);
+      font-size: var(--ide-type-body);
+      font-weight: var(--ide-weight-medium);
+      letter-spacing: 0;
+      text-transform: none;
+    }
+  }
+
+  .ai-conversation-empty,
+  .ai-workspace-blocked,
+  .ai-message__content,
+  .ai-composer ::v-deep textarea {
+    font-size: var(--ide-type-body);
+    font-weight: var(--ide-weight-regular);
+    line-height: 1.55;
+  }
+
+  .ai-conversation-empty strong,
+  .ai-message__content ::v-deep h3,
+  .ai-message__content ::v-deep h4,
+  .ai-message__content ::v-deep h5 {
+    font-size: var(--ide-type-body);
+    font-weight: var(--ide-weight-semibold);
+  }
+
+  .ai-message__role,
+  .ai-message__badge,
+  .ai-memory-badge,
+  .code-quality-top-status {
+    font-size: var(--ide-type-caption);
+    font-weight: var(--ide-weight-medium);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .code-editor-area ::v-deep .CodeMirror,
+  .code-version-preview pre,
+  .ai-message__content ::v-deep code,
+  .ai-message__content ::v-deep .qd-markdown-code {
+    font-family: "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+}
+
+.indicator-ide.theme-dark {
+  --ide-text-primary: rgba(255, 255, 255, 0.9);
+  --ide-text-secondary: rgba(255, 255, 255, 0.66);
+  --ide-text-muted: rgba(255, 255, 255, 0.48);
+
+  .panel-title,
+  .chart-panel-toolbar-title,
+  .ai-gen-header,
+  .ide-quick-panel-head-title {
+    color: var(--ide-text-primary);
+  }
+
+  .ide-toolbar-label,
+  .ide-guide-bar,
+  .ai-composer-shortcut,
+  .ai-helper-tip,
+  .ide-quick-panel-head-meta {
+    color: var(--ide-text-muted);
+  }
+
+  .ide-toolbar-select,
+  .ide-indicator-multiselect-trigger,
+  .tf-group,
+  .chart-panel-toolbar-controls {
+    ::v-deep .ant-select-selection-selected-value,
+    ::v-deep .ant-radio-button-wrapper:not(.ant-radio-button-wrapper-checked) {
+      color: var(--ide-text-secondary);
+    }
+    ::v-deep .ant-select-selection__placeholder {
+      color: var(--ide-text-muted);
+    }
+  }
+
+  .ai-conversation-empty,
+  .ai-workspace-blocked,
+  .ai-message__role {
+    color: var(--ide-text-muted);
+  }
 }
 </style>
 
@@ -7325,6 +7851,35 @@ body.dark .ide-param-modal-wrap {
   color: #8c8c8c;
   line-height: 1.4;
 }
+.ide-indicator-market-entry {
+  display: flex;
+  width: calc(100% - 16px);
+  height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 8px 8px;
+  padding: 0 10px;
+  border: 1px solid rgba(82, 196, 26, 0.26);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(82, 196, 26, 0.08);
+  color: #389e0d;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(82, 196, 26, 0.48);
+    background: rgba(82, 196, 26, 0.14);
+  }
+}
 .ide-indicator-overlay-empty {
   padding: 12px;
   font-size: 12px;
@@ -7375,6 +7930,17 @@ body.dark .ide-param-modal-wrap {
   .ide-indicator-overlay-hint,
   .ide-indicator-overlay-empty {
     color: rgba(255, 255, 255, 0.45);
+  }
+  .ide-indicator-market-entry {
+    border-color: rgba(82, 196, 26, 0.28);
+    background: rgba(82, 196, 26, 0.1);
+    color: #73d13d;
+
+    &:hover,
+    &:focus-visible {
+      border-color: rgba(82, 196, 26, 0.52);
+      background: rgba(82, 196, 26, 0.17);
+    }
   }
   .ide-indicator-row:hover {
     background: rgba(255, 255, 255, 0.06);
@@ -7480,6 +8046,45 @@ body.dark .ide-param-modal-wrap {
 .ant-select-dropdown.profile-exchange-select-dropdown,
 .ant-select-dropdown.profile-exchange-select-dropdown-dark {
   z-index: 10080 !important;
+}
+
+.ide-chart-type-dropdown {
+  min-width: 172px;
+  .ant-dropdown-menu {
+    padding: 6px;
+    border-radius: 8px;
+  }
+  .ant-dropdown-menu-item {
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .ant-dropdown-menu-item-selected {
+    color: var(--primary-color, #52c41a);
+    background: color-mix(in srgb, var(--primary-color, #52c41a) 12%, transparent);
+  }
+}
+.ide-chart-type-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.ide-chart-type-dropdown--dark {
+  .ant-dropdown-menu {
+    border: 1px solid #303030;
+    background: #1f1f1f;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+  }
+  .ant-dropdown-menu-item {
+    color: rgba(255, 255, 255, .66);
+    &:hover { background: rgba(255, 255, 255, .06); }
+  }
+  .ant-dropdown-menu-item-selected {
+    color: var(--primary-color, #52c41a);
+    background: color-mix(in srgb, var(--primary-color, #52c41a) 16%, transparent);
+  }
 }
 
 @supports selector(:has(*)) {

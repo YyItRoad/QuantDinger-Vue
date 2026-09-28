@@ -51,7 +51,7 @@ server {
         client_max_body_size 10m;
     }
 
-    # QuantDinger MCP streamable HTTP endpoint and its OAuth protected-resource
+# QuantDinger MCP streamable HTTP endpoint and its OAuth protected-resource
     # metadata. The MCP container is reachable only through the shared Docker
     # network; public TLS terminates before the frontend container.
     location ~ ^/(mcp|\.well-known/oauth-protected-resource(?:/mcp)?)$ {
@@ -72,8 +72,13 @@ server {
     }
 
     # SPA routing support (all routes fall back to index.html)
+    # Vue Router uses hash routes, so only the site root needs the app shell.
+    location = / {
+        try_files /index.html =404;
+    }
+
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ =404;
     }
 
     # Health check endpoint

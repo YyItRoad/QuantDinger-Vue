@@ -1,5 +1,5 @@
 <template>
-  <div class="broker-accounts" :class="{ 'theme-dark': isDarkTheme }">
+  <div class="broker-accounts qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
     <div class="ba-header">
       <div class="ba-header-text">
         <div class="ba-title">

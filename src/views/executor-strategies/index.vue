@@ -1,5 +1,5 @@
 <template>
-  <div class="executor-page" :class="{ 'theme-dark': isDarkTheme, 'is-embedded': embedded }">
+  <div class="executor-page qd-workspace-page" :class="{ 'theme-dark': isDarkTheme, 'is-embedded': embedded }">
     <header v-if="!embedded" class="executor-header">
       <div>
         <div class="executor-kicker">{{ t('executorStrategies.kicker') }}</div>

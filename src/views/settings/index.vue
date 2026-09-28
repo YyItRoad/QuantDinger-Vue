@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-page" :class="{ 'theme-dark': isDarkTheme }">
+  <div class="settings-page qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
     <a-alert
       v-if="showRestartTip"
       class="restart-alert"

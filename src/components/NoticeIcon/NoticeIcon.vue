@@ -512,10 +512,11 @@ export default {
   }
 
   &.unread {
-    background: #e6f7ff;
+    background: rgba(82, 196, 26, 0.06);
+    box-shadow: inset 2px 0 0 rgba(82, 196, 26, 0.72);
 
     &:hover {
-      background: #bae7ff;
+      background: rgba(82, 196, 26, 0.11);
     }
   }
 
@@ -1408,10 +1409,11 @@ body.realdark,
       }
 
       &.unread {
-        background: rgba(24, 144, 255, 0.15);
+        background: rgba(82, 196, 26, 0.07);
+        box-shadow: inset 2px 0 0 rgba(82, 196, 26, 0.58);
 
         &:hover {
-          background: rgba(24, 144, 255, 0.25);
+          background: rgba(82, 196, 26, 0.12);
         }
       }
 

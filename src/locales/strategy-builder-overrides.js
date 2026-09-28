@@ -33,7 +33,135 @@ const locale = (setupTitle, setupDescription, labels, hint, params) => ({
   params
 })
 
-export default {
+const protectionParams = {
+  'en-US': {
+    stop_loss_pct: { label: 'Stop loss', description: 'Close the position when the loss reaches this percentage.' },
+    take_profit_pct: { label: 'Take profit', description: 'Close the position when the profit reaches this percentage.' },
+    trailing_stop_pct: { label: 'Trailing stop distance', description: 'Distance from the best price used by the trailing stop.' },
+    trailing_activation_pct: { label: 'Trailing stop activation', description: 'Profit required before the trailing stop starts following price.' },
+    trailing_enabled: { label: 'Enable trailing stop', description: 'Use a trailing stop to protect gains after activation.' },
+    max_holding_bars: { label: 'Maximum holding bars', description: 'Close the position after this many bars. Set to 0 to disable.' },
+    time_limit_seconds: { label: 'Maximum holding time', description: 'Close the position after this many seconds. Set to 0 to disable.' }
+  },
+  'zh-CN': {
+    stop_loss_pct: { label: '止损比例', description: '亏损达到该比例时平仓。' },
+    take_profit_pct: { label: '止盈比例', description: '盈利达到该比例时平仓。' },
+    trailing_stop_pct: { label: '移动止损距离', description: '移动止损价格与持仓期间最优价格之间的回撤比例。' },
+    trailing_activation_pct: { label: '移动止损启动比例', description: '盈利达到该比例后开始跟踪价格。' },
+    trailing_enabled: { label: '启用移动止损', description: '启动后使用移动止损保护已有盈利。' },
+    max_holding_bars: { label: '最大持仓 K 线数', description: '持仓达到该 K 线数量后平仓，设置为 0 表示不限制。' },
+    time_limit_seconds: { label: '最大持仓时间', description: '持仓达到该秒数后平仓，设置为 0 表示不限制。' }
+  },
+  'zh-TW': {
+    stop_loss_pct: { label: '停損比例', description: '虧損達到此比例時平倉。' },
+    take_profit_pct: { label: '停利比例', description: '獲利達到此比例時平倉。' },
+    trailing_stop_pct: { label: '移動停損距離', description: '移動停損價格與持倉期間最佳價格之間的回撤比例。' },
+    trailing_activation_pct: { label: '移動停損啟動比例', description: '獲利達到此比例後開始追蹤價格。' },
+    trailing_enabled: { label: '啟用移動停損', description: '啟動後使用移動停損保護既有獲利。' },
+    max_holding_bars: { label: '最大持倉 K 線數', description: '持倉達到此 K 線數量後平倉，設為 0 表示不限制。' },
+    time_limit_seconds: { label: '最大持倉時間', description: '持倉達到此秒數後平倉，設為 0 表示不限制。' }
+  },
+  'de-DE': {
+    stop_loss_pct: { label: 'Stop-Loss', description: 'Schließt die Position, wenn der Verlust diesen Prozentsatz erreicht.' },
+    take_profit_pct: { label: 'Take-Profit', description: 'Schließt die Position, wenn der Gewinn diesen Prozentsatz erreicht.' },
+    trailing_stop_pct: { label: 'Trailing-Stop-Abstand', description: 'Abstand zum besten Kurs, den der Trailing-Stop verwendet.' },
+    trailing_activation_pct: { label: 'Trailing-Stop-Aktivierung', description: 'Erforderlicher Gewinn, bevor der Trailing-Stop dem Kurs folgt.' },
+    trailing_enabled: { label: 'Trailing-Stop aktivieren', description: 'Schützt Gewinne nach der Aktivierung mit einem Trailing-Stop.' },
+    max_holding_bars: { label: 'Maximale Haltedauer in Kerzen', description: 'Schließt die Position nach dieser Anzahl von Kerzen. 0 deaktiviert das Limit.' },
+    time_limit_seconds: { label: 'Maximale Haltedauer', description: 'Schließt die Position nach dieser Anzahl von Sekunden. 0 deaktiviert das Limit.' }
+  },
+  'fr-FR': {
+    stop_loss_pct: { label: 'Stop-loss', description: 'Ferme la position lorsque la perte atteint ce pourcentage.' },
+    take_profit_pct: { label: 'Take-profit', description: 'Ferme la position lorsque le gain atteint ce pourcentage.' },
+    trailing_stop_pct: { label: 'Distance du stop suiveur', description: 'Écart par rapport au meilleur prix utilisé par le stop suiveur.' },
+    trailing_activation_pct: { label: 'Activation du stop suiveur', description: 'Gain requis avant que le stop suiveur commence à suivre le prix.' },
+    trailing_enabled: { label: 'Activer le stop suiveur', description: 'Protège les gains avec un stop suiveur après son activation.' },
+    max_holding_bars: { label: 'Nombre maximal de bougies', description: 'Ferme la position après ce nombre de bougies. 0 désactive la limite.' },
+    time_limit_seconds: { label: 'Durée maximale de détention', description: 'Ferme la position après ce nombre de secondes. 0 désactive la limite.' }
+  },
+  'ja-JP': {
+    stop_loss_pct: { label: '損切り率', description: '損失がこの割合に達した時点でポジションを決済します。' },
+    take_profit_pct: { label: '利確率', description: '利益がこの割合に達した時点でポジションを決済します。' },
+    trailing_stop_pct: { label: 'トレーリングストップ幅', description: '保有中の最良価格からの逆行幅です。' },
+    trailing_activation_pct: { label: 'トレーリング開始率', description: 'この利益率に達すると価格の追跡を開始します。' },
+    trailing_enabled: { label: 'トレーリングストップを有効化', description: '開始後にトレーリングストップで利益を保護します。' },
+    max_holding_bars: { label: '最大保有バー数', description: 'このバー数に達すると決済します。0 で無効になります。' },
+    time_limit_seconds: { label: '最大保有時間', description: 'この秒数に達すると決済します。0 で無効になります。' }
+  },
+  'ko-KR': {
+    stop_loss_pct: { label: '손절 비율', description: '손실이 이 비율에 도달하면 포지션을 청산합니다.' },
+    take_profit_pct: { label: '익절 비율', description: '수익이 이 비율에 도달하면 포지션을 청산합니다.' },
+    trailing_stop_pct: { label: '트레일링 스톱 거리', description: '보유 중 최적 가격에서 허용하는 되돌림 비율입니다.' },
+    trailing_activation_pct: { label: '트레일링 스톱 시작 비율', description: '수익이 이 비율에 도달하면 가격 추적을 시작합니다.' },
+    trailing_enabled: { label: '트레일링 스톱 사용', description: '시작 후 트레일링 스톱으로 수익을 보호합니다.' },
+    max_holding_bars: { label: '최대 보유 봉 수', description: '이 봉 수에 도달하면 청산합니다. 0은 제한 없음입니다.' },
+    time_limit_seconds: { label: '최대 보유 시간', description: '이 초에 도달하면 청산합니다. 0은 제한 없음입니다.' }
+  },
+  'ru-RU': {
+    stop_loss_pct: { label: 'Стоп-лосс', description: 'Закрывает позицию, когда убыток достигает указанного процента.' },
+    take_profit_pct: { label: 'Тейк-профит', description: 'Закрывает позицию, когда прибыль достигает указанного процента.' },
+    trailing_stop_pct: { label: 'Дистанция трейлинг-стопа', description: 'Допустимый откат от лучшей цены за время удержания позиции.' },
+    trailing_activation_pct: { label: 'Активация трейлинг-стопа', description: 'Прибыль, необходимая для начала сопровождения цены.' },
+    trailing_enabled: { label: 'Включить трейлинг-стоп', description: 'Защищает прибыль трейлинг-стопом после активации.' },
+    max_holding_bars: { label: 'Максимум баров удержания', description: 'Закрывает позицию после указанного числа баров. 0 отключает ограничение.' },
+    time_limit_seconds: { label: 'Максимальное время удержания', description: 'Закрывает позицию после указанного числа секунд. 0 отключает ограничение.' }
+  },
+  'th-TH': {
+    stop_loss_pct: { label: 'สัดส่วนหยุดขาดทุน', description: 'ปิดสถานะเมื่อขาดทุนถึงสัดส่วนนี้' },
+    take_profit_pct: { label: 'สัดส่วนทำกำไร', description: 'ปิดสถานะเมื่อกำไรถึงสัดส่วนนี้' },
+    trailing_stop_pct: { label: 'ระยะ Trailing Stop', description: 'สัดส่วนการย่อตัวจากราคาที่ดีที่สุดระหว่างถือสถานะ' },
+    trailing_activation_pct: { label: 'จุดเริ่ม Trailing Stop', description: 'เริ่มติดตามราคาเมื่อกำไรถึงสัดส่วนนี้' },
+    trailing_enabled: { label: 'เปิดใช้ Trailing Stop', description: 'ใช้ Trailing Stop เพื่อปกป้องกำไรหลังเริ่มทำงาน' },
+    max_holding_bars: { label: 'จำนวนแท่งสูงสุดที่ถือ', description: 'ปิดสถานะเมื่อครบจำนวนแท่งนี้ ตั้งเป็น 0 เพื่อปิดข้อจำกัด' },
+    time_limit_seconds: { label: 'เวลาถือสูงสุด', description: 'ปิดสถานะเมื่อครบจำนวนวินาทีนี้ ตั้งเป็น 0 เพื่อปิดข้อจำกัด' }
+  },
+  'vi-VN': {
+    stop_loss_pct: { label: 'Tỷ lệ cắt lỗ', description: 'Đóng vị thế khi mức lỗ đạt tỷ lệ này.' },
+    take_profit_pct: { label: 'Tỷ lệ chốt lời', description: 'Đóng vị thế khi mức lời đạt tỷ lệ này.' },
+    trailing_stop_pct: { label: 'Khoảng cách dừng lỗ động', description: 'Tỷ lệ thoái lui từ mức giá tốt nhất trong thời gian giữ vị thế.' },
+    trailing_activation_pct: { label: 'Kích hoạt dừng lỗ động', description: 'Bắt đầu bám theo giá khi lợi nhuận đạt tỷ lệ này.' },
+    trailing_enabled: { label: 'Bật dừng lỗ động', description: 'Dùng dừng lỗ động để bảo vệ lợi nhuận sau khi kích hoạt.' },
+    max_holding_bars: { label: 'Số nến giữ tối đa', description: 'Đóng vị thế sau số nến này. Đặt 0 để tắt giới hạn.' },
+    time_limit_seconds: { label: 'Thời gian giữ tối đa', description: 'Đóng vị thế sau số giây này. Đặt 0 để tắt giới hạn.' }
+  },
+  'ar-SA': {
+    stop_loss_pct: { label: 'نسبة إيقاف الخسارة', description: 'إغلاق المركز عندما تصل الخسارة إلى هذه النسبة.' },
+    take_profit_pct: { label: 'نسبة جني الأرباح', description: 'إغلاق المركز عندما يصل الربح إلى هذه النسبة.' },
+    trailing_stop_pct: { label: 'مسافة الإيقاف المتحرك', description: 'نسبة التراجع عن أفضل سعر أثناء الاحتفاظ بالمركز.' },
+    trailing_activation_pct: { label: 'تفعيل الإيقاف المتحرك', description: 'بدء تتبع السعر عندما يصل الربح إلى هذه النسبة.' },
+    trailing_enabled: { label: 'تفعيل الإيقاف المتحرك', description: 'استخدام الإيقاف المتحرك لحماية الأرباح بعد التفعيل.' },
+    max_holding_bars: { label: 'الحد الأقصى لشموع الاحتفاظ', description: 'إغلاق المركز بعد هذا العدد من الشموع. القيمة 0 تلغي الحد.' },
+    time_limit_seconds: { label: 'الحد الأقصى لمدة الاحتفاظ', description: 'إغلاق المركز بعد هذا العدد من الثواني. القيمة 0 تلغي الحد.' }
+  }
+}
+
+const protectionParamAliases = {
+  stopLossPct: 'stop_loss_pct',
+  takeProfitPct: 'take_profit_pct',
+  trailingStopPct: 'trailing_stop_pct',
+  trailingActivationPct: 'trailing_activation_pct',
+  trailingEnabled: 'trailing_enabled',
+  maxHoldingBars: 'max_holding_bars',
+  timeLimitSeconds: 'time_limit_seconds'
+}
+
+function withProtectionParams (lang, messages) {
+  const localized = protectionParams[lang] || protectionParams['en-US']
+  const aliases = Object.keys(protectionParamAliases).reduce((result, alias) => {
+    result[alias] = localized[protectionParamAliases[alias]]
+    return result
+  }, {})
+  return {
+    ...messages,
+    params: {
+      ...localized,
+      ...aliases,
+      ...(messages.params || {})
+    }
+  }
+}
+
+const messages = {
   'en-US': { strategyBuilder: en },
   'zh-CN': { strategyBuilder: zhCN },
   'zh-TW': { strategyBuilder: locale('策略設定', '選擇此單一標的策略使用的市場環境，系統會同步更新策略程式碼。', ['市場', '交易所', '交易品種', '交易標的', '搜尋交易標的', 'K 線週期', '交易方向', '現貨', '永續合約', '只做多', '只做空', '多空雙向'], ['現貨策略只能做多，槓桿固定為 1 倍。', '策略參數', '這些參數會隨策略儲存，並在回測與建立實盤時繼續使用。', '交易標的、品種和週期來自已儲存的策略契約。'], { target_pct: { label: '資金使用比例', description: '例如 95% 表示進場後使用該策略資金的 95%，其餘 5% 預留給手續費和成交差異；合約槓桿另行計算。' }, allow_short: { label: '允許做空', description: '僅適用於永續合約；現貨策略始終只能做多。' } }) },
@@ -46,3 +174,11 @@ export default {
   'vi-VN': { strategyBuilder: locale('Thiết lập chiến lược', 'Chọn bối cảnh thị trường cho chiến lược một mã này.', ['Thị trường', 'Sàn', 'Sản phẩm', 'Mã giao dịch', 'Tìm mã giao dịch', 'Khung thời gian', 'Hướng', 'Giao ngay', 'Vĩnh cửu', 'Mua', 'Bán', 'Hai chiều'], ['Chiến lược giao ngay chỉ mua và đòn bẩy cố định 1x.', 'Tham số chiến lược', 'Các giá trị được lưu và dùng lại khi kiểm thử và tạo giao dịch thật.', 'Mã, sản phẩm và khung thời gian lấy từ hợp đồng chiến lược đã lưu.'], { target_pct: { label: 'Tỷ lệ vốn sử dụng', description: '95% nghĩa là chiến lược dùng 95% vốn và giữ lại 5% cho phí cùng sai lệch khớp lệnh. Đòn bẩy hợp đồng được tính riêng.' }, allow_short: { label: 'Cho phép bán khống', description: 'Chỉ áp dụng cho hợp đồng vĩnh cửu; giao ngay chỉ mua.' } }) },
   'ar-SA': { strategyBuilder: locale('إعداد الاستراتيجية', 'اختر سياق السوق لهذه الاستراتيجية ذات الأداة الواحدة.', ['السوق', 'المنصة', 'المنتج', 'الأداة', 'البحث عن أداة', 'الإطار الزمني', 'الاتجاه', 'فوري', 'دائم', 'شراء', 'بيع', 'الاتجاهان'], ['استراتيجيات السوق الفوري للشراء فقط والرافعة 1x.', 'معلمات الاستراتيجية', 'تُحفظ هذه القيم وتُستخدم في الاختبار وإنشاء التداول المباشر.', 'تأتي الأداة والمنتج والإطار الزمني من عقد الاستراتيجية المحفوظ.'], { target_pct: { label: 'نسبة رأس المال المستخدم', description: 'تعني 95% استخدام 95% من رأس مال الاستراتيجية مع إبقاء 5% للرسوم وفروق التنفيذ. تُحسب الرافعة للعقود بشكل منفصل.' }, allow_short: { label: 'السماح بالبيع', description: 'للعقود الدائمة فقط؛ السوق الفوري للشراء فقط.' } }) }
 }
+
+export default Object.keys(messages).reduce((result, lang) => {
+  result[lang] = {
+    ...messages[lang],
+    strategyBuilder: withProtectionParams(lang, messages[lang].strategyBuilder)
+  }
+  return result
+}, {})

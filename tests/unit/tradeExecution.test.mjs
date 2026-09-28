@@ -22,7 +22,7 @@ test('price deviation preserves direction and missing references', () => {
 
 test('execution labels are available in every supported locale', () => {
   for (const locale of Object.values(messages)) {
-    for (const key of ['price', 'reference', 'deviation', 'note', 'deviationHint', 'orderId', 'pnlHint', 'gridPnlHint', 'pairPending', 'feesPending', 'entryOrders', 'exitOrder', 'gridPendingSummary', 'exchangePnl', 'systemPnl', 'gridNetPnl', 'exchangePnlHint', 'excluding_fees', 'venue_defined', 'reportPending', 'reportUnavailable', 'spotPnlNotApplicable', 'orderTotalElsewhere', 'reportSource', 'reportedQuantity', 'systemSummary']) {
+    for (const key of ['price', 'reference', 'deviation', 'note', 'deviationHint', 'orderId', 'pnlHint', 'gridPnlHint', 'pairPending', 'feesPending', 'entryOrders', 'exitOrder', 'gridPendingSummary', 'exchangePnl', 'systemPnl', 'gridNetPnl', 'exchangePnlHint', 'excluding_fees', 'venue_defined', 'reportPending', 'reportPendingWithSystem', 'reportUnavailable', 'spotPnlNotApplicable', 'orderTotalElsewhere', 'reportSource', 'reportedQuantity', 'systemSummary']) {
       assert.ok(locale[`trading-assistant.execution.${key}`])
     }
     for (const key of ['positionCost', 'marketValue', 'averageEntryPrice']) {
@@ -39,6 +39,7 @@ test('records table stays visible alongside its execution note', async () => {
   const Vue = require('vue')
   const compiler = require('vue-template-compiler')
   const source = readFileSync(new URL('../../src/views/strategy-center/components/TradingRecords.vue', import.meta.url), 'utf8')
+  assert.match(source, /formatSignedMoney\(record\.profit_gross\)/)
   const compiled = compiler.compile(compiler.parseComponent(source).template.content)
   assert.deepEqual(compiled.errors, [])
   for (const [records, loading, expected] of [[[{ id: 1 }], false, true], [[], false, false], [[], true, true]]) {
@@ -85,7 +86,7 @@ test('unconfirmed grid pairs never fall back to stale stored profit', async () =
   assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'reported', amount: -5, currency: 'USDT', fee_basis: 'venue_defined' }), '-5.00 USDT')
   assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'reported', amount: 0, currency: 'USDT' }), '0.00 USDT')
   assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'pending', amount: 999 }), '待交易所核对')
-  assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'pending' }, { type: 'close_long', profit: -0.98 }), '交易所未返回订单级盈亏')
+  assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'pending' }, { type: 'close_long', profit: -0.98 }), '交易所订单盈亏暂未获取 · 已显示系统核算')
   assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'pending' }, { type: 'open_long', profit: 0 }), '待交易所核对')
   assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'pending' }, { pnl_source: 'grid_exchange_order_pairs', pnl_status: 'unmatched', profit: 1 }), '待交易所核对')
   assert.equal(methods.formatReportedPnl.call(reportedContext, { status: 'not_applicable_spot' }), '现货订单不提供此项')

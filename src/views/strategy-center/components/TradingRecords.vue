@@ -48,9 +48,9 @@
           <span>{{ formatExecutionPrice(text) }}</span>
         </a-tooltip>
       </template>
-      <template slot="price_deviation_pct" slot-scope="text">
-        <a-tooltip :title="$t('trading-assistant.execution.deviationHint')">
-          <span>{{ formatPriceDeviation(text) }}</span>
+      <template slot="price_deviation_pct" slot-scope="text, record">
+        <a-tooltip :title="executionDeviationHint(record)">
+          <span>{{ formatExecutionDeviation(text, record) }}</span>
         </a-tooltip>
       </template>
       <template slot="amount" slot-scope="text">
@@ -76,7 +76,7 @@
         <a-popover v-if="hasRealizedProfit(record) || record.pnl_source === 'grid_exchange_order_pairs'" placement="top" trigger="hover">
           <div slot="content" class="pnl-breakdown">
             <p>{{ $t(record.pnl_source === 'grid_exchange_order_pairs' ? 'trading-assistant.execution.gridPnlHint' : 'trading-assistant.execution.pnlHint') }}</p>
-            <div><span>{{ $t('trading-assistant.costs.grossRealized') }}</span><strong>{{ formatMoneyValue(record.profit_gross) }}</strong></div>
+            <div><span>{{ $t('trading-assistant.costs.grossRealized') }}</span><strong>{{ formatSignedMoney(record.profit_gross) }}</strong></div>
             <div><span>{{ $t('trading-assistant.costs.openingCommission') }}</span><strong>{{ formatExpense(record.open_commission_allocated) }}</strong></div>
             <div><span>{{ $t('trading-assistant.costs.closingCommission') }}</span><strong>{{ formatExpense(record.close_commission) }}</strong></div>
             <div v-for="(match, index) in record.matched_orders || []" :key="index" class="grid-order-match">
@@ -97,7 +97,10 @@
         </span>
       </template>
       <template slot="commission" slot-scope="text, record">
-        {{ formatCommission(text, record) }}
+        <a-tooltip v-if="record.fee_source === 'virtual_simulation'" :title="virtualFeeBasis(record)">
+          <span>{{ formatCommission(text, record) }}</span>
+        </a-tooltip>
+        <span v-else>{{ formatCommission(text, record) }}</span>
       </template>
       <template slot="time" slot-scope="text, record">
         {{ formatTime(record.created_at || text) }}
@@ -190,6 +193,9 @@ export default {
         }))
       }
       items.push(
+        ...(summary.slippage_cost !== null && summary.slippage_cost !== undefined
+          ? [{ key: 'slippage', label: this.$t('trading-assistant.costs.slippage'), value: this.formatExpense(summary.slippage_cost), tone: this.moneyTone(-summary.slippage_cost) }]
+          : []),
         { key: 'funding', label: this.$t('trading-assistant.costs.funding'), value: this.formatSignedMoney(funding), tone: this.moneyTone(funding) },
         { key: 'net', label: this.$t('trading-assistant.costs.netRealized'), value: this.formatSignedMoney(summary.net_realized_pnl), tone: this.moneyTone(summary.net_realized_pnl) }
       )
@@ -322,7 +328,9 @@ export default {
       const systemPnlAvailable = hasSystemPnlResult(record)
       const key = report.status === 'order_total_elsewhere'
         ? 'orderTotalElsewhere'
-        : (report.status === 'pending' && !systemPnlAvailable ? 'reportPending' : 'reportUnavailable')
+        : (report.status === 'pending'
+            ? (systemPnlAvailable ? 'reportPendingWithSystem' : 'reportPending')
+            : 'reportUnavailable')
       return this.$t('trading-assistant.execution.' + key)
     },
     formatTradeInstrument (record) {
@@ -557,9 +565,6 @@ export default {
       if (value === null || value === undefined) return '--'
       return formatTradeMoney(value, true)
     },
-    formatMoneyValue (value) {
-      return formatTradeMoney(value)
-    },
     formatSignedMoney (value) {
       return formatTradeMoney(value, true)
     },
@@ -616,6 +621,26 @@ export default {
     },
     formatCommission (value, record) {
       return formatTradeCommission(record || { commission: value }, key => this.$t(key))
+    },
+    formatExecutionDeviation (value, record) {
+      const normalized = record && record.fee_source === 'virtual_simulation'
+        ? Math.abs(Number(value))
+        : value
+      return formatPriceDeviation(normalized)
+    },
+    executionDeviationHint (record) {
+      if (record && record.fee_source === 'virtual_simulation') {
+        return this.$t('trading-assistant.execution.virtualSlippageBasis', {
+          rate: (Number(record.slippage_rate || 0) * 100).toFixed(4)
+        })
+      }
+      return this.$t('trading-assistant.execution.deviationHint')
+    },
+    virtualFeeBasis (record) {
+      return this.$t('trading-assistant.execution.virtualFeeBasis', {
+        rate: (Number(record.commission_rate || 0) * 100).toFixed(4),
+        leverage: Number(record.leverage || 1).toFixed(2)
+      })
     }
   }
 }

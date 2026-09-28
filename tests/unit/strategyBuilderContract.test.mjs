@@ -249,5 +249,32 @@ test('all supported locales include the strategy builder contract', () => {
     assert.ok(messages.sourceContractHint)
     assert.ok(messages.params.target_pct.label)
     assert.ok(messages.params.allow_short.description)
+    for (const name of [
+      'stop_loss_pct',
+      'take_profit_pct',
+      'trailing_stop_pct',
+      'trailing_activation_pct',
+      'trailing_enabled',
+      'max_holding_bars',
+      'time_limit_seconds'
+    ]) {
+      assert.ok(messages.params[name].label, `${locale} ${name} label`)
+      assert.ok(messages.params[name].description, `${locale} ${name} description`)
+    }
+    assert.equal(messages.params.stopLossPct, messages.params.stop_loss_pct)
+    assert.equal(messages.params.takeProfitPct, messages.params.take_profit_pct)
+    assert.equal(messages.params.trailingStopPct, messages.params.trailing_stop_pct)
   })
+})
+
+test('common protection parameter names resolve through the shared presentation layer', () => {
+  const messages = localeOverrides['zh-CN'].strategyBuilder
+  const translate = key => {
+    const match = /^strategyBuilder\.params\.([^.]+)\.(label|description)$/.exec(key)
+    return match ? messages.params[match[1]]?.[match[2]] || key : key
+  }
+
+  assert.equal(strategyParameterLabel({ name: 'take_profit_pct' }, translate), '止盈比例')
+  assert.equal(strategyParameterDescription({ name: 'trailing_stop_pct' }, translate, 'zh-CN'), '移动止损价格与持仓期间最优价格之间的回撤比例。')
+  assert.equal(strategyParameterLabel({ name: 'trailingActivationPct', label: 'Trailing activation' }, translate), '移动止损启动比例')
 })

@@ -5,7 +5,7 @@
       v-bind="containerProps"
       @close="handleClose"
       class="quick-trade-shell"
-      :class="[embedded ? 'quick-trade-embedded' : 'quick-trade-drawer', { 'theme-dark': isDark, 'qt-embedded-ide': embedded && embeddedIde, 'qt-embedded-dock': embedded && embeddedDock }]"
+      :class="[embedded ? 'quick-trade-embedded' : 'quick-trade-drawer', { 'theme-dark': isDark, 'qt-embedded-ide': embedded && embeddedIde, 'qt-embedded-dock': embedded && embeddedDock, 'qt-embedded-side-dock': embedded && embeddedDock && sideDock }]"
     >
       <!-- Header (hidden in embedded mode since parent tab already shows title) -->
       <div v-if="!embedded" class="qt-header">
@@ -60,57 +60,127 @@
       </div>
 
       <div v-if="embeddedDock" class="qt-dock-header">
-        <div class="qt-dock-account">
-          <a-select
-            v-model="selectedCredentialId"
-            :placeholder="accountPlaceholder"
-            :get-popup-container="qtSelectPopupContainer"
-            :dropdown-class-name="qtSelectDropdownClass"
-            :loading="credLoading"
-            @change="onCredentialChange"
-          >
-            <a-select-option v-for="c in credentials" :key="c.id" :value="c.id">
-              {{ formatCredentialOptionLabel(c) }}
-            </a-select-option>
-          </a-select>
-          <a-button class="qt-dock-icon-btn" :title="$t('quickTrade.addAccountInline')" @click="handleAddAccountClick"><a-icon type="plus" /></a-button>
-        </div>
-        <div v-if="isCryptoMarket" class="qt-dock-segmented">
-          <button type="button" :class="{ active: tradeMode === 'spot' }" @click="selectTradeMode('spot')">{{ $t('quickTrade.spot') }}</button>
-          <button type="button" :class="{ active: tradeMode === 'swap' }" @click="selectTradeMode('swap')">{{ $t('quickTrade.contractBadge') }}</button>
-        </div>
-        <div v-if="isSwapMode" class="qt-dock-trade-settings">
-          <div class="qt-dock-segmented qt-dock-margin-segmented">
-            <button type="button" :class="{ active: marginMode === 'cross' }" @click="marginMode = 'cross'">{{ $t('quickTrade.crossMargin') }}</button>
-            <button type="button" :class="{ active: marginMode === 'isolated' }" @click="marginMode = 'isolated'">{{ $t('quickTrade.isolatedMargin') }}</button>
+        <template v-if="sideDock">
+          <div class="qt-side-account-block">
+            <div class="qt-side-section-heading">
+              <span>{{ accountLabel }}</span>
+              <span class="qt-dock-status" :class="{ 'is-connected': selectedCredentialId }">
+                <i></i>{{ selectedCredentialId ? $t('quickTrade.connected') : accountPlaceholder }}
+              </span>
+            </div>
+            <div class="qt-side-account-control">
+              <a-select
+                v-model="selectedCredentialId"
+                class="qt-dock-account-select"
+                :placeholder="accountPlaceholder"
+                :get-popup-container="qtSelectPopupContainer"
+                :dropdown-class-name="qtSelectDropdownClass"
+                :loading="credLoading"
+                :not-found-content="isStockMarket ? $t('quickTrade.noBrokerAccount') : $t('quickTrade.noExchange')"
+                @change="onCredentialChange"
+              >
+                <a-select-option v-for="c in credentials" :key="c.id" :value="c.id">
+                  {{ formatCredentialOptionLabel(c) }}
+                </a-select-option>
+              </a-select>
+              <a-button class="qt-dock-icon-btn" :title="$t('quickTrade.addAccountInline')" @click="handleAddAccountClick"><a-icon type="plus" /></a-button>
+            </div>
           </div>
-          <a-popover trigger="click" placement="bottom" overlay-class-name="qt-leverage-popover" :get-popup-container="qtSelectPopupContainer">
-            <template slot="content">
-              <div class="qt-leverage-editor">
-                <a-slider v-model="leverage" :min="1" :max="125" :marks="leverageMarks" :tipFormatter="v => v + 'x'" />
-                <div class="qt-leverage-presets">
-                  <button v-for="value in leveragePresets" :key="value" type="button" :class="{ active: leverage === value }" @click="leverage = value">{{ value }}x</button>
-                </div>
-                <a-input-number v-model="leverage" :min="1" :max="125" :formatter="v => `${v}x`" :parser="v => String(v).replace('x', '')" />
+
+          <div v-if="isCryptoMarket" class="qt-side-trade-controls">
+            <div class="qt-dock-segmented qt-side-market-segmented">
+              <button type="button" :class="{ active: tradeMode === 'spot' }" @click="selectTradeMode('spot')">{{ $t('quickTrade.spot') }}</button>
+              <button type="button" :class="{ active: tradeMode === 'swap' }" @click="selectTradeMode('swap')">{{ $t('quickTrade.contractBadge') }}</button>
+            </div>
+            <div v-if="isSwapMode" class="qt-dock-trade-settings">
+              <div class="qt-dock-segmented qt-dock-margin-segmented">
+                <button type="button" :class="{ active: marginMode === 'cross' }" @click="marginMode = 'cross'">{{ $t('quickTrade.crossMargin') }}</button>
+                <button type="button" :class="{ active: marginMode === 'isolated' }" @click="marginMode = 'isolated'">{{ $t('quickTrade.isolatedMargin') }}</button>
               </div>
-            </template>
-            <button type="button" class="qt-dock-leverage-trigger">
-              <span>{{ $t('quickTrade.leverage') }}</span><strong>{{ leverage }}x</strong><a-icon type="down" />
-            </button>
-          </a-popover>
-        </div>
-        <div class="qt-dock-balance">
-          <span>{{ isStockMarket ? $t('quickTrade.buyingPower') : (isSwapMode ? $t('quickTrade.swapAvailable') : $t('quickTrade.spotAvailable')) }}</span>
-          <strong>{{ balanceLoading ? '...' : `$${formatPrice(activeBalanceAvailable)}` }}</strong>
-        </div>
-        <div class="qt-dock-balance qt-dock-balance--secondary">
-          <span>{{ $t('quickTrade.totalAssets') }}</span>
-          <strong>${{ formatPrice(activeBalanceTotal) }}</strong>
-        </div>
-        <span class="qt-dock-status" :class="{ 'is-connected': selectedCredentialId }">
-          <i></i>{{ selectedCredentialId ? $t('quickTrade.connected') : accountPlaceholder }}
-        </span>
-        <a-button class="qt-dock-icon-btn" :title="$t('common.refresh')" :loading="dockRefreshing" @click="refreshDockData"><a-icon type="reload" /></a-button>
+              <a-popover trigger="click" placement="bottom" overlay-class-name="qt-leverage-popover" :get-popup-container="qtSelectPopupContainer">
+                <template slot="content">
+                  <div class="qt-leverage-editor">
+                    <a-slider v-model="leverage" :min="1" :max="125" :marks="leverageMarks" :tipFormatter="v => v + 'x'" />
+                    <div class="qt-leverage-presets">
+                      <button v-for="value in leveragePresets" :key="value" type="button" :class="{ active: leverage === value }" @click="leverage = value">{{ value }}x</button>
+                    </div>
+                    <a-input-number v-model="leverage" :min="1" :max="125" :formatter="v => `${v}x`" :parser="v => String(v).replace('x', '')" />
+                  </div>
+                </template>
+                <button type="button" class="qt-dock-leverage-trigger">
+                  <span>{{ $t('quickTrade.leverage') }}</span><strong>{{ leverage }}x</strong><a-icon type="down" />
+                </button>
+              </a-popover>
+            </div>
+          </div>
+
+          <div class="qt-side-balance-row">
+            <div class="qt-dock-balance">
+              <span>{{ isStockMarket ? $t('quickTrade.buyingPower') : (isSwapMode ? $t('quickTrade.swapAvailable') : $t('quickTrade.spotAvailable')) }}</span>
+              <strong>{{ balanceLoading ? '...' : `$${formatPrice(activeBalanceAvailable)}` }}</strong>
+            </div>
+            <div class="qt-dock-balance qt-dock-balance--secondary">
+              <span>{{ $t('quickTrade.totalAssets') }}</span>
+              <strong>${{ formatPrice(activeBalanceTotal) }}</strong>
+            </div>
+            <a-button class="qt-dock-icon-btn" :title="$t('common.refresh')" :loading="dockRefreshing" @click="refreshDockData"><a-icon type="reload" /></a-button>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="qt-dock-account">
+            <a-select
+              v-model="selectedCredentialId"
+              :placeholder="accountPlaceholder"
+              :get-popup-container="qtSelectPopupContainer"
+              :dropdown-class-name="qtSelectDropdownClass"
+              :loading="credLoading"
+              :not-found-content="isStockMarket ? $t('quickTrade.noBrokerAccount') : $t('quickTrade.noExchange')"
+              @change="onCredentialChange"
+            >
+              <a-select-option v-for="c in credentials" :key="c.id" :value="c.id">
+                {{ formatCredentialOptionLabel(c) }}
+              </a-select-option>
+            </a-select>
+            <a-button class="qt-dock-icon-btn" :title="$t('quickTrade.addAccountInline')" @click="handleAddAccountClick"><a-icon type="plus" /></a-button>
+          </div>
+          <div v-if="isCryptoMarket" class="qt-dock-segmented">
+            <button type="button" :class="{ active: tradeMode === 'spot' }" @click="selectTradeMode('spot')">{{ $t('quickTrade.spot') }}</button>
+            <button type="button" :class="{ active: tradeMode === 'swap' }" @click="selectTradeMode('swap')">{{ $t('quickTrade.contractBadge') }}</button>
+          </div>
+          <div v-if="isSwapMode" class="qt-dock-trade-settings">
+            <div class="qt-dock-segmented qt-dock-margin-segmented">
+              <button type="button" :class="{ active: marginMode === 'cross' }" @click="marginMode = 'cross'">{{ $t('quickTrade.crossMargin') }}</button>
+              <button type="button" :class="{ active: marginMode === 'isolated' }" @click="marginMode = 'isolated'">{{ $t('quickTrade.isolatedMargin') }}</button>
+            </div>
+            <a-popover trigger="click" placement="bottom" overlay-class-name="qt-leverage-popover" :get-popup-container="qtSelectPopupContainer">
+              <template slot="content">
+                <div class="qt-leverage-editor">
+                  <a-slider v-model="leverage" :min="1" :max="125" :marks="leverageMarks" :tipFormatter="v => v + 'x'" />
+                  <div class="qt-leverage-presets">
+                    <button v-for="value in leveragePresets" :key="value" type="button" :class="{ active: leverage === value }" @click="leverage = value">{{ value }}x</button>
+                  </div>
+                  <a-input-number v-model="leverage" :min="1" :max="125" :formatter="v => `${v}x`" :parser="v => String(v).replace('x', '')" />
+                </div>
+              </template>
+              <button type="button" class="qt-dock-leverage-trigger">
+                <span>{{ $t('quickTrade.leverage') }}</span><strong>{{ leverage }}x</strong><a-icon type="down" />
+              </button>
+            </a-popover>
+          </div>
+          <div class="qt-dock-balance">
+            <span>{{ isStockMarket ? $t('quickTrade.buyingPower') : (isSwapMode ? $t('quickTrade.swapAvailable') : $t('quickTrade.spotAvailable')) }}</span>
+            <strong>{{ balanceLoading ? '...' : `$${formatPrice(activeBalanceAvailable)}` }}</strong>
+          </div>
+          <div class="qt-dock-balance qt-dock-balance--secondary">
+            <span>{{ $t('quickTrade.totalAssets') }}</span>
+            <strong>${{ formatPrice(activeBalanceTotal) }}</strong>
+          </div>
+          <span class="qt-dock-status" :class="{ 'is-connected': selectedCredentialId }">
+            <i></i>{{ selectedCredentialId ? $t('quickTrade.connected') : accountPlaceholder }}
+          </span>
+          <a-button class="qt-dock-icon-btn" :title="$t('common.refresh')" :loading="dockRefreshing" @click="refreshDockData"><a-icon type="reload" /></a-button>
+        </template>
       </div>
 
       <div :class="['qt-embedded-split', { 'qt-embedded-split--cols': embedded }]">
@@ -394,7 +464,7 @@
               :key="tab.key"
               type="button"
               :class="{ active: activeDockTab === tab.key }"
-              @click="activeDockTab = tab.key"
+              @click="selectDockTab(tab.key, $event)"
             >
               {{ tab.label }}<span v-if="tab.count">{{ tab.count }}</span>
             </button>
@@ -486,27 +556,108 @@
             />
           </div>
 
+          <div v-if="embeddedDock && activeDockTab === 'eventRadar'" class="qt-history-section qt-dock-history qt-event-radar-history">
+            <event-radar-panel
+              :symbol="currentSymbol"
+              :market-type="aiDecisionMarketType"
+              :is-dark="isDark"
+              :active="activeDockTab === 'eventRadar'"
+            />
+          </div>
+
           <!-- Trade Records -->
           <div v-if="embeddedDock && ['openOrders', 'tradeRecords'].includes(activeDockTab)" class="qt-history-section qt-dock-history">
             <div v-if="dockTradeRows.length" class="qt-trade-list">
               <div class="qt-trade-item qt-trade-item--dock" v-for="t in dockTradeRows" :key="t.id">
-                <div class="qt-trade-main">
-                  <a-tag :color="t.side === 'buy' ? '#52c41a' : '#f5222d'" size="small">
-                    {{ t.side === 'buy' ? $t('quickTrade.long') : $t('quickTrade.short') }}
-                  </a-tag>
-                  <span class="qt-trade-symbol">{{ t.symbol }}</span>
-                  <span v-if="t.price" class="qt-trade-price">${{ formatPrice(t.price) }}</span>
-                  <span class="qt-trade-amount">${{ formatPrice(t.display_amount) }}</span>
-                  <a-tag :color="t.status === 'filled' ? '#52c41a' : ['failed', 'ai_rejected'].includes(t.status) ? '#f5222d' : '#faad14'" size="small">{{ t.status }}</a-tag>
-                  <a-button
-                    v-if="activeDockTab === 'openOrders' && canCancelTrade(t)"
-                    type="link"
-                    size="small"
-                    class="qt-cancel-order-btn"
-                    :loading="cancellingTradeId === t.id"
-                    @click="handleCancelTrade(t)"
-                  >{{ $t('brokerAccounts.cancelOrder') }}</a-button>
-                  <span class="qt-trade-time">{{ formatTime(t.created_at) }}</span>
+                <div class="qt-trade-card-head">
+                  <div class="qt-trade-card-identity">
+                    <a-tag :color="t.side === 'buy' ? '#52c41a' : '#f5222d'" size="small">
+                      {{ tradeSideLabel(t) }}
+                    </a-tag>
+                    <span class="qt-trade-symbol">{{ t.symbol }}</span>
+                    <span class="qt-trade-order-type">{{ tradeOrderTypeLabel(t) }}</span>
+                  </div>
+                  <div class="qt-trade-card-state">
+                    <a-tag :color="tradeStatusColor(t.status)" size="small">{{ tradeStatusLabel(t.status) }}</a-tag>
+                    <span class="qt-trade-time">{{ formatTime(t.created_at) }}</span>
+                  </div>
+                </div>
+
+                <div class="qt-trade-summary-grid">
+                  <div class="qt-trade-metric">
+                    <span>{{ $t('quickTrade.averageFillPrice') }}</span>
+                    <strong>{{ tradeFillPrice(t) > 0 ? `$${formatPrice(tradeFillPrice(t))}` : '--' }}</strong>
+                  </div>
+                  <div class="qt-trade-metric">
+                    <span>{{ $t('quickTrade.filledAmount') }}</span>
+                    <strong>{{ t.filled_amount > 0 ? formatQuantity(t.filled_amount) : '--' }}</strong>
+                  </div>
+                  <div class="qt-trade-metric">
+                    <span>{{ $t('quickTrade.executedValue') }}</span>
+                    <strong>{{ t.display_amount > 0 ? `$${formatPrice(t.display_amount)}` : '--' }}</strong>
+                  </div>
+                  <div class="qt-trade-metric">
+                    <span>{{ $t('quickTrade.commission') }}</span>
+                    <strong>{{ formatTradeCommission(t) }}</strong>
+                  </div>
+                </div>
+
+                <div class="qt-trade-card-footer">
+                  <div class="qt-trade-context">
+                    <span>{{ tradeMarketLabel(t) }}</span>
+                    <span v-if="String(t.market_type || '').toLowerCase() === 'swap' && t.leverage">{{ t.leverage }}x</span>
+                    <span v-if="t.margin_mode">{{ tradeMarginModeLabel(t.margin_mode) }}</span>
+                    <span>{{ tradeSourceLabel(t.source) }}</span>
+                  </div>
+                  <div class="qt-trade-actions">
+                    <a-button
+                      v-if="activeDockTab === 'openOrders' && canCancelTrade(t)"
+                      type="link"
+                      size="small"
+                      class="qt-cancel-order-btn"
+                      :loading="cancellingTradeId === t.id"
+                      @click="handleCancelTrade(t)"
+                    >{{ $t('brokerAccounts.cancelOrder') }}</a-button>
+                    <button type="button" class="qt-trade-detail-toggle" @click="toggleTradeDetails(t.id)">
+                      {{ isTradeDetailsExpanded(t.id) ? $t('quickTrade.hideDetails') : $t('quickTrade.details') }}
+                      <a-icon :type="isTradeDetailsExpanded(t.id) ? 'up' : 'down'" />
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="isTradeDetailsExpanded(t.id)" class="qt-trade-details">
+                  <div>
+                    <span>{{ $t('quickTrade.inputAmount') }}</span>
+                    <strong>{{ formatPrice(t.amount) }} USDT</strong>
+                  </div>
+                  <div v-if="t.requested_base_qty">
+                    <span>{{ $t('quickTrade.requestedAmount') }}</span>
+                    <strong>{{ formatQuantity(t.requested_base_qty) }}</strong>
+                  </div>
+                  <div v-if="t.price">
+                    <span>{{ $t('quickTrade.requestedPrice') }}</span>
+                    <strong>${{ formatPrice(t.price) }}</strong>
+                  </div>
+                  <div v-if="t.tp_price">
+                    <span>{{ $t('quickTrade.tp') }}</span>
+                    <strong>${{ formatPrice(t.tp_price) }}</strong>
+                  </div>
+                  <div v-if="t.sl_price">
+                    <span>{{ $t('quickTrade.sl') }}</span>
+                    <strong>${{ formatPrice(t.sl_price) }}</strong>
+                  </div>
+                  <div v-if="t.exchange_order_id" class="qt-trade-detail-wide">
+                    <span>{{ $t('quickTrade.exchangeOrderId') }}</span>
+                    <strong :title="t.exchange_order_id">{{ t.exchange_order_id }}</strong>
+                  </div>
+                  <div v-if="t.client_order_id" class="qt-trade-detail-wide">
+                    <span>{{ $t('quickTrade.clientOrderId') }}</span>
+                    <strong :title="t.client_order_id">{{ t.client_order_id }}</strong>
+                  </div>
+                  <div v-if="t.error_msg" class="qt-trade-detail-wide qt-trade-detail-error">
+                    <span>{{ $t('quickTrade.failureReason') }}</span>
+                    <strong>{{ t.error_msg }}</strong>
+                  </div>
                 </div>
               </div>
             </div>
@@ -564,6 +715,7 @@ import { listExchangeCredentials } from '@/api/credentials'
 import { formatExchangeCredentialLabel, isQuickTradeExchangeCredential } from '@/utils/exchangeCredential'
 import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
 import AiDecisionRecords from '@/views/strategy-center/components/AiDecisionRecords.vue'
+import EventRadarPanel from '@/components/QuickTradePanel/EventRadarPanel.vue'
 import { placeQuickOrder, getQuickTradeBalance, getQuickTradePosition, getQuickTradeHistory, closeQuickTradePosition, cancelQuickTradeOrder } from '@/api/quick-trade'
 import { searchSymbols, getWatchlist } from '@/api/market'
 import { getUserInfo } from '@/api/login'
@@ -573,11 +725,11 @@ import { broker } from '@/api/broker'
 
 export default {
   name: 'QuickTradePanel',
-  components: { ExchangeAccountModal, AiDecisionRecords },
+  components: { ExchangeAccountModal, AiDecisionRecords, EventRadarPanel },
   props: {
     visible: { type: Boolean, default: false },
     symbol: { type: String, default: '' },
-    presetSide: { type: String, default: '' }, // 'buy' or 'sell' 閳?pre-filled from AI signal
+    presetSide: { type: String, default: '' }, // 'buy' or 'sell', optionally prefilled from an AI signal
     presetPrice: { type: Number, default: 0 },
     source: { type: String, default: 'manual' }, // ai_radar / ai_analysis / indicator / manual
     marketType: { type: String, default: 'swap' }, // swap / spot
@@ -586,6 +738,7 @@ export default {
     embedded: { type: Boolean, default: false },
     embeddedIde: { type: Boolean, default: false },
     embeddedDock: { type: Boolean, default: false },
+    sideDock: { type: Boolean, default: false },
     aiDecisionFilterEnabled: { type: Boolean, default: false },
     overlayGetContainer: { type: Function, default: null }
   },
@@ -626,6 +779,7 @@ export default {
       activeDockTab: 'positions',
       dockRefreshing: false,
       cancellingTradeId: null,
+      expandedTradeIds: {},
       dockTpslEnabled: false,
       closeScope: 'full', // full | system_tracked
       // symbol search
@@ -729,14 +883,16 @@ export default {
         .filter(item => !symbol || String(item.symbol || '').toUpperCase() === symbol)
         .filter(item => !item.market_type || String(item.market_type).toLowerCase() === marketType)
         .map(item => {
-          const price = parseFloat(item.avg_fill_price || item.filled_avg_price || item.price || 0) || 0
+          const requestedPrice = parseFloat(item.price || 0) || 0
+          const averageFillPrice = parseFloat(item.avg_fill_price || item.filled_avg_price || 0) || 0
           const filledAmount = parseFloat(item.filled_amount || item.filled_qty || item.filled || 0) || 0
-          const executedNotional = price > 0 && filledAmount > 0 ? price * filledAmount : 0
+          const executedNotional = averageFillPrice > 0 && filledAmount > 0 ? averageFillPrice * filledAmount : 0
           return {
             ...item,
-            price,
+            price: requestedPrice,
+            avg_fill_price: averageFillPrice,
             filled_amount: filledAmount,
-            display_amount: executedNotional || (parseFloat(item.amount) || 0)
+            display_amount: executedNotional
           }
         })
     },
@@ -756,7 +912,8 @@ export default {
         { key: 'positions', label: this.$t('quickTrade.currentPosition'), count: this.currentPositions.length },
         { key: 'openOrders', label: this.$t('quickTrade.openOrders'), count: this.openOrderRows.length },
         { key: 'tradeRecords', label: this.$t('quickTrade.tradeRecords'), count: this.scopedTradeRows.length },
-        { key: 'aiDecisions', label: this.$t('aiDecisionFilter.tab'), count: this.aiDecisionCount }
+        { key: 'aiDecisions', label: this.$t('aiDecisionFilter.tab'), count: this.aiDecisionCount },
+        { key: 'eventRadar', label: this.$t('eventRadar.tab'), count: 0 }
       ]
     },
     balanceErrorMessage () {
@@ -906,6 +1063,15 @@ export default {
     }
   },
   methods: {
+    selectDockTab (key, event) {
+      this.activeDockTab = key
+      const target = event && event.currentTarget
+      this.$nextTick(() => {
+        if (target && typeof target.scrollIntoView === 'function') {
+          target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+        }
+      })
+    },
     syncTradeModeFromProps () {
       const nextMode = this.isStockMarket ? 'spot' : (String(this.marketType || '').toLowerCase() === 'spot' ? 'spot' : 'swap')
       if (this.tradeMode !== nextMode) this.tradeMode = nextMode
@@ -1753,6 +1919,64 @@ export default {
     handleHistoryCollapse (activeKeys) {
       this.historyCollapsed = !activeKeys.includes('history')
     },
+    toggleTradeDetails (tradeId) {
+      const key = String(tradeId)
+      this.$set(this.expandedTradeIds, key, !this.expandedTradeIds[key])
+    },
+    isTradeDetailsExpanded (tradeId) {
+      return Boolean(this.expandedTradeIds[String(tradeId)])
+    },
+    tradeFillPrice (trade) {
+      return parseFloat((trade && (trade.avg_fill_price || trade.filled_avg_price)) || 0) || 0
+    },
+    tradeSideLabel (trade) {
+      const isBuy = String((trade && trade.side) || '').toLowerCase() === 'buy'
+      const isSpot = String((trade && trade.market_type) || '').toLowerCase() === 'spot'
+      if (isSpot) return this.$t(isBuy ? 'quickTrade.buySpot' : 'quickTrade.sellSpot')
+      return this.$t(isBuy ? 'quickTrade.long' : 'quickTrade.short')
+    },
+    tradeOrderTypeLabel (trade) {
+      return this.$t(String((trade && trade.order_type) || '').toLowerCase() === 'limit' ? 'quickTrade.limit' : 'quickTrade.market')
+    },
+    tradeMarketLabel (trade) {
+      return this.$t(String((trade && trade.market_type) || '').toLowerCase() === 'spot' ? 'quickTrade.spot' : 'quickTrade.contractBadge')
+    },
+    tradeMarginModeLabel (mode) {
+      return this.$t(String(mode || '').toLowerCase() === 'isolated' ? 'quickTrade.isolatedMargin' : 'quickTrade.crossMargin')
+    },
+    tradeSourceLabel (source) {
+      const normalized = String(source || 'manual').toLowerCase()
+      const supported = ['manual', 'indicator', 'ai_radar', 'ai_analysis']
+      const key = `quickTrade.source.${supported.includes(normalized) ? normalized : 'manual'}`
+      return this.$t(key)
+    },
+    tradeStatusLabel (status) {
+      const normalized = String(status || 'submitted').toLowerCase().replace(/-/g, '_')
+      const supported = ['filled', 'submitted', 'new', 'open', 'pending', 'accepted', 'partially_filled', 'cancel_pending', 'cancelled', 'failed', 'ai_rejected']
+      if (!supported.includes(normalized)) return status || this.$t('quickTrade.status.submitted')
+      return this.$t(`quickTrade.status.${normalized}`)
+    },
+    tradeStatusColor (status) {
+      const normalized = String(status || '').toLowerCase().replace(/-/g, '_')
+      if (normalized === 'filled') return '#52c41a'
+      if (['failed', 'ai_rejected'].includes(normalized)) return '#f5222d'
+      if (normalized === 'cancelled') return '#8c8c8c'
+      return '#faad14'
+    },
+    formatQuantity (val) {
+      const value = parseFloat(val || 0)
+      if (!Number.isFinite(value)) return '--'
+      return value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 8 })
+    },
+    formatTradeCommission (trade) {
+      if (!trade) return '--'
+      const quote = parseFloat(trade.commission_quote || 0) || 0
+      if (quote > 0) return `${this.formatPrice(quote)} USDT`
+      const commission = parseFloat(trade.commission || 0) || 0
+      const currency = String(trade.commission_ccy || '').trim()
+      if (commission > 0) return `${this.formatQuantity(commission)}${currency ? ` ${currency}` : ''}`
+      return '--'
+    },
     formatPrice (val) {
       const v = parseFloat(val || 0)
       if (Math.abs(v) >= 10000) return v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -1885,6 +2109,7 @@ export default {
   .qt-position-section { padding: 0 0 10px; }
   .qt-history-section { padding: 0 0 10px; }
   .qt-ai-decision-history { overflow: auto; }
+  .qt-event-radar-history { overflow: auto; }
 
   .qt-direction-toggle .qt-dir-btn { padding: 8px; font-size: 13px; border-radius: 6px; }
   .qt-quick-amounts { margin-top: 6px; margin-bottom: 2px; }
@@ -2432,7 +2657,7 @@ export default {
   gap: 8px;
 }
 .qt-dock-segmented {
-  height: 30px;
+  height: 32px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -2444,12 +2669,12 @@ export default {
   button {
     min-width: 46px;
     flex: 1;
-    height: 22px;
+    height: 24px;
     padding: 0 9px;
     color: #64748b;
     font-size: 11px;
     font-weight: 600;
-    line-height: 22px;
+    line-height: 24px;
     white-space: nowrap;
     border: 0;
     border-radius: 5px;
@@ -2466,7 +2691,7 @@ export default {
 }
 .qt-dock-margin-segmented button { min-width: 54px; }
 .qt-dock-leverage-trigger {
-  height: 30px;
+  height: 32px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -2574,13 +2799,27 @@ export default {
   &.is-connected i { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12); }
 }
 .qt-dock-tabs {
-  flex: 0 0 38px;
+  flex: 0 0 46px;
   display: flex;
   align-items: flex-end;
   gap: 4px;
-  padding: 0 10px;
+  padding: 0 10px 3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: auto;
+  scrollbar-color: var(--primary-color, #52c41a) #e2e8f0;
+  overscroll-behavior-x: contain;
   border-bottom: 1px solid #e2e8f0;
   background: #f8fafc;
+  &::-webkit-scrollbar { height: 7px; }
+  &::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 999px; }
+  &::-webkit-scrollbar-thumb {
+    min-width: 34px;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    background: var(--primary-color, #52c41a);
+  }
   button {
     position: relative;
     height: 38px;
@@ -2618,16 +2857,313 @@ export default {
   }
 }
 .qt-trade-item--dock {
-  padding: 8px 4px !important;
-  .qt-trade-main { width: 100%; }
-  .qt-trade-price { margin-left: auto; color: #64748b; font-size: 12px; }
-  .qt-trade-amount { margin-left: 0 !important; min-width: 72px; text-align: right; }
-  .qt-trade-time { min-width: 88px; color: #94a3b8; font-size: 11px; text-align: right; }
+  margin-bottom: 8px;
+  padding: 10px 11px !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 9px;
+  background: #fff;
+  &:last-child { margin-bottom: 0; }
+  .qt-trade-symbol { color: #0f172a; font-size: 13px; font-weight: 700; }
+  .qt-trade-time { color: #94a3b8; font-size: 10px; white-space: nowrap; }
   .qt-cancel-order-btn {
     height: 24px;
     padding: 0 4px;
     color: #f5222d;
     font-size: 11px;
+  }
+}
+.qt-trade-card-head,
+.qt-trade-card-identity,
+.qt-trade-card-state,
+.qt-trade-card-footer,
+.qt-trade-context,
+.qt-trade-actions {
+  display: flex;
+  align-items: center;
+}
+.qt-trade-card-head,
+.qt-trade-card-footer {
+  justify-content: space-between;
+  gap: 8px;
+}
+.qt-trade-card-identity,
+.qt-trade-card-state,
+.qt-trade-context,
+.qt-trade-actions { gap: 6px; }
+.qt-trade-card-identity { min-width: 0; }
+.qt-trade-order-type {
+  padding-left: 6px;
+  color: #64748b;
+  font-size: 10px;
+  border-left: 1px solid #e2e8f0;
+}
+.qt-trade-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(80px, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+.qt-trade-metric,
+.qt-trade-details > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.qt-trade-metric {
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: #f8fafc;
+  span { color: #94a3b8; font-size: 9px; }
+  strong {
+    overflow: hidden;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+.qt-trade-card-footer {
+  margin-top: 8px;
+}
+.qt-trade-context {
+  min-width: 0;
+  flex-wrap: wrap;
+  span {
+    padding: 2px 5px;
+    color: #64748b;
+    font-size: 9px;
+    border-radius: 4px;
+    background: #f1f5f9;
+  }
+}
+.qt-trade-detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  color: #64748b;
+  font-size: 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  &:hover { color: var(--primary-color, #52c41a); }
+}
+.qt-trade-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px dashed #e2e8f0;
+  span { color: #94a3b8; font-size: 9px; }
+  strong {
+    overflow: hidden;
+    color: #475569;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qt-trade-detail-wide { grid-column: 1 / -1; }
+  .qt-trade-detail-error strong {
+    color: #f5222d;
+    white-space: normal;
+  }
+}
+
+.quick-trade-embedded.qt-embedded-ide.qt-embedded-dock.qt-embedded-side-dock {
+  .qt-dock-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 9px 10px;
+    overflow: visible;
+  }
+  .qt-side-account-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .qt-side-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .qt-side-section-heading .qt-dock-status {
+    flex: 0 1 auto;
+    justify-content: flex-end;
+  }
+  .qt-side-account-control {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px;
+    align-items: center;
+    gap: 6px;
+  }
+  .qt-dock-account-select {
+    width: 100%;
+    min-width: 0;
+  }
+  .qt-side-account-control > .qt-dock-icon-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+  .qt-side-account-control ::v-deep .ant-select,
+  .qt-side-account-control ::v-deep .ant-select-selection,
+  .qt-side-account-control ::v-deep .ant-select-selection--single {
+    width: 100%;
+    height: 32px;
+  }
+  .qt-side-account-control ::v-deep .ant-select-selection__rendered {
+    min-width: 0;
+    margin-right: 30px;
+    line-height: 30px;
+  }
+  .qt-side-account-control ::v-deep .ant-select-selection-selected-value,
+  .qt-side-account-control ::v-deep .ant-select-selection__placeholder {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qt-side-trade-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .qt-side-trade-controls .qt-dock-segmented {
+    width: 100%;
+  }
+  .qt-side-trade-controls .qt-dock-segmented button {
+    flex: 1 1 0;
+  }
+  .qt-dock-trade-settings {
+    width: 100%;
+  }
+  .qt-dock-trade-settings .qt-dock-margin-segmented { flex: 1; }
+  .qt-side-balance-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+    align-items: stretch;
+    gap: 6px;
+    padding-top: 7px;
+    border-top: 1px solid #e2e8f0;
+  }
+  .qt-dock-balance {
+    min-width: 0;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    margin-left: 0 !important;
+  }
+  .qt-dock-balance--secondary { align-items: flex-start; }
+  .qt-dock-status {
+    max-width: none;
+    min-width: 0;
+  }
+  .qt-side-balance-row > .qt-dock-icon-btn {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    align-self: center;
+    padding: 0;
+  }
+  .qt-embedded-split--cols {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: hidden;
+  }
+  .qt-embedded-split--cols .qt-embedded-col-left,
+  .qt-embedded-split--cols .qt-embedded-col-right {
+    width: 100%;
+    min-height: auto;
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  .qt-embedded-split--cols .qt-embedded-col-left {
+    padding: 6px 10px !important;
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent;
+  }
+  .qt-embedded-split--cols .qt-embedded-col-right {
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 0 !important;
+    border-top: 1px solid #e2e8f0 !important;
+    border-radius: 0;
+    background: transparent;
+  }
+  .qt-risk-action-stack {
+    position: static;
+  }
+  .qt-dock-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    align-items: flex-end;
+    button {
+      flex: 0 0 auto;
+      padding: 0 9px;
+    }
+  }
+  .qt-position-section,
+  .qt-history-section {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+  .qt-position-section {
+    display: flex;
+    flex-direction: column;
+  }
+  .qt-position-empty {
+    flex: 1 1 auto;
+    min-height: 180px;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+  }
+  .qt-position-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 14px;
+  }
+  .qt-position-card .qt-position-close-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .qt-trade-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .qt-trade-item--dock {
+    margin: 0;
+    padding: 10px 2px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    border-radius: 0;
+    background: transparent;
   }
 }
 
@@ -3553,6 +4089,11 @@ export default {
     background: #1a1a1a;
     border-bottom-color: #303030;
   }
+  .qt-side-section-heading { color: rgba(255, 255, 255, 0.52); }
+  &.qt-embedded-side-dock .qt-dock-balance {
+    background: #202020;
+    border-color: #343434;
+  }
   .qt-dock-title { color: rgba(255, 255, 255, 0.92); }
   .qt-dock-symbol,
   .qt-dock-balance span,
@@ -3573,6 +4114,9 @@ export default {
   .qt-dock-tabs {
     background: #191919;
     border-bottom-color: #303030;
+    scrollbar-color: var(--primary-color, #52c41a) #303030;
+    &::-webkit-scrollbar-track { background: #303030; }
+    &::-webkit-scrollbar-thumb { border-color: #303030; }
     button { color: rgba(255, 255, 255, 0.48); }
     button.active { color: var(--primary-color, #52c41a); }
     button.active::after { background: var(--primary-color, #52c41a); }
@@ -3597,8 +4141,29 @@ export default {
     border-color: #3a3a3a !important;
     background: #242424 !important;
   }
-  .qt-trade-item--dock .qt-trade-price,
-  .qt-trade-item--dock .qt-trade-time { color: rgba(255, 255, 255, 0.42); }
+  .qt-trade-item--dock {
+    border-color: #363636 !important;
+    background: #242424;
+    .qt-trade-symbol { color: rgba(255, 255, 255, .9); }
+    .qt-trade-time,
+    .qt-trade-order-type { color: rgba(255, 255, 255, 0.42); }
+    .qt-trade-order-type { border-left-color: #434343; }
+  }
+  .qt-trade-metric {
+    background: #1b1b1b;
+    span { color: rgba(255, 255, 255, .38); }
+    strong { color: rgba(255, 255, 255, .78); }
+  }
+  .qt-trade-context span {
+    color: rgba(255, 255, 255, .5);
+    background: #303030;
+  }
+  .qt-trade-detail-toggle { color: rgba(255, 255, 255, .5); }
+  .qt-trade-details {
+    border-top-color: #3a3a3a;
+    span { color: rgba(255, 255, 255, .38); }
+    strong { color: rgba(255, 255, 255, .68); }
+  }
 
   .qt-position-empty {
     background: #262626;
@@ -3609,6 +4174,165 @@ export default {
   }
   .qt-empty-desc {
     color: #888;
+  }
+}
+</style>
+
+<style lang="less" scoped>
+/* Keep the embedded trading panel on the same type scale as the IDE. */
+.quick-trade-panel-root,
+.quick-trade-embedded,
+.quick-trade-drawer {
+  --qt-font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --qt-type-title: 13px;
+  --qt-type-body: 12px;
+  --qt-type-caption: 11px;
+  --qt-weight-regular: 400;
+  --qt-weight-medium: 500;
+  --qt-weight-semibold: 600;
+  --qt-text-primary: #1f2937;
+  --qt-text-secondary: #5f6b7a;
+  --qt-text-muted: #8a94a3;
+  font-family: var(--qt-font-ui);
+  font-size: var(--qt-type-body);
+  font-weight: var(--qt-weight-regular);
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+
+  button,
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+
+  .qt-dock-title,
+  .qt-section-title,
+  .qt-trade-symbol,
+  .qt-position-symbol {
+    color: var(--qt-text-primary);
+    font-size: var(--qt-type-title);
+    font-weight: var(--qt-weight-semibold);
+    line-height: 1.35;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .qt-side-section-heading,
+  .qt-dock-symbol,
+  .qt-dock-balance span,
+  .qt-label,
+  .qt-hint-text,
+  .qt-trade-time,
+  .qt-trade-order-type,
+  .qt-trade-metric span,
+  .qt-trade-details span,
+  .qt-empty-desc {
+    color: var(--qt-text-muted);
+    font-size: var(--qt-type-caption);
+    font-weight: var(--qt-weight-medium);
+    line-height: 1.35;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .qt-dock-segmented button,
+  .qt-dock-leverage-trigger,
+  .qt-dock-tabs button,
+  .qt-submit-btn,
+  .qt-position-close-btn,
+  .qt-trade-detail-toggle {
+    font-size: var(--qt-type-body);
+    font-weight: var(--qt-weight-semibold);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .qt-dock-balance strong,
+  .qt-trade-metric strong,
+  .qt-trade-details strong,
+  .qt-pos-row > span:last-child {
+    font-size: var(--qt-type-body);
+    font-weight: var(--qt-weight-semibold);
+    line-height: 1.35;
+  }
+
+  ::v-deep .ant-select-selection,
+  ::v-deep .ant-select-selection-selected-value,
+  ::v-deep .ant-select-selection__placeholder,
+  ::v-deep .ant-input,
+  ::v-deep .ant-input-number-input {
+    font-family: var(--qt-font-ui);
+    font-size: var(--qt-type-body);
+    font-weight: var(--qt-weight-medium);
+    letter-spacing: 0;
+  }
+}
+
+.quick-trade-panel-root .theme-dark,
+.quick-trade-embedded.theme-dark,
+.quick-trade-drawer.theme-dark {
+  --qt-text-primary: rgba(255, 255, 255, 0.9);
+  --qt-text-secondary: rgba(255, 255, 255, 0.66);
+  --qt-text-muted: rgba(255, 255, 255, 0.48);
+
+  .qt-dock-title,
+  .qt-section-title,
+  .qt-trade-symbol,
+  .qt-position-symbol {
+    color: var(--qt-text-primary);
+  }
+
+  .qt-side-section-heading,
+  .qt-dock-symbol,
+  .qt-dock-balance span,
+  .qt-label,
+  .qt-hint-text,
+  .qt-trade-time,
+  .qt-trade-order-type,
+  .qt-trade-metric span,
+  .qt-trade-details span,
+  .qt-empty-desc {
+    color: var(--qt-text-muted);
+  }
+
+  .qt-dock-segmented button:not(.active),
+  .qt-dock-leverage-trigger,
+  .qt-dock-tabs button:not(.active),
+  ::v-deep .ant-select-selection-selected-value,
+  ::v-deep .ant-input,
+  ::v-deep .ant-input-number-input {
+    color: var(--qt-text-secondary);
+  }
+
+  ::v-deep .ant-select-selection__placeholder {
+    color: var(--qt-text-muted);
+  }
+}
+
+.quick-trade-embedded.theme-dark.qt-embedded-ide.qt-embedded-dock.qt-embedded-side-dock {
+  .qt-dock-balance {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .qt-side-balance-row,
+  .qt-embedded-split--cols .qt-embedded-col-right {
+    border-color: #303030 !important;
+  }
+
+  .qt-trade-item--dock {
+    border-bottom-color: #303030 !important;
+    background: transparent;
+  }
+
+  .qt-dock-balance strong {
+    color: #73d13d;
+  }
+
+  .qt-dock-balance--secondary strong {
+    color: rgba(255, 255, 255, 0.86);
   }
 }
 </style>

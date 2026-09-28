@@ -15,6 +15,8 @@ import adminOrderMessages from './admin-order-overrides'
 import strategyTradeRecordMessages from './lang/strategy-trade-records'
 import positionManagerMessages from './lang/position-manager'
 import marketStateMessages from './lang/market-state'
+import quickTradeRecordMessages from './quick-trade-records'
+import chartTypeMessages from './chart-type-overrides'
 import aiDecisionFilterMessages from './ai-decision-filter-overrides'
 import generatedLocaleOverrides from './generated-locale-overrides'
 import uxOverrides from './ux-overrides'
@@ -24,6 +26,9 @@ import professionalReportOverrides from './professional-report-overrides'
 import backtestRangeOverrides from './backtest-range-overrides'
 import settingsResearchOverrides from './settings-research-overrides'
 import strategyBuilderOverrides from './strategy-builder-overrides'
+import eventRadarMessages from './lang/event-radar'
+import currentFeatureOverrides from './lang/current-feature-overrides'
+import strategyEvolutionMessages from './lang/strategy-evolution'
 
 Vue.use(VueI18n)
 
@@ -44,6 +49,8 @@ const messages = {
     ...(strategyTradeRecordMessages[defaultLang] || {}),
     ...(positionManagerMessages[defaultLang] || {}),
     ...marketStateMessages(defaultLang),
+    ...(quickTradeRecordMessages[defaultLang] || {}),
+    ...(chartTypeMessages[defaultLang] || {}),
     ...(aiDecisionFilterMessages[defaultLang] || {}),
     ...(uxOverrides[defaultLang] || {}),
     ...(copilotCallsiteOverrides[defaultLang] || {}),
@@ -52,7 +59,10 @@ const messages = {
     ...(professionalReportOverrides[defaultLang] || {}),
     ...(backtestRangeOverrides[defaultLang] || {}),
     ...(settingsResearchOverrides[defaultLang] || {}),
-    ...(strategyBuilderOverrides[defaultLang] || {})
+    ...(strategyBuilderOverrides[defaultLang] || {}),
+    ...(currentFeatureOverrides[defaultLang] || {}),
+    ...(eventRadarMessages[defaultLang] || {}),
+    ...(strategyEvolutionMessages[defaultLang] || {})
   }
 }
 
@@ -132,6 +142,8 @@ function mergeLocaleOverrides (lang) {
     ...(strategyTradeRecordMessages[lang] || {}),
     ...(positionManagerMessages[lang] || {}),
     ...marketStateMessages(lang),
+    ...(quickTradeRecordMessages[lang] || {}),
+    ...(chartTypeMessages[lang] || {}),
     ...(aiDecisionFilterMessages[lang] || {}),
     ...(uxOverrides[lang] || {}),
     ...(copilotCallsiteOverrides[lang] || {}),
@@ -140,7 +152,10 @@ function mergeLocaleOverrides (lang) {
     ...(professionalReportOverrides[lang] || {}),
     ...(backtestRangeOverrides[lang] || {}),
     ...(settingsResearchOverrides[lang] || {}),
-    ...(strategyBuilderOverrides[lang] || {})
+    ...(strategyBuilderOverrides[lang] || {}),
+    ...(currentFeatureOverrides[lang] || {}),
+    ...(eventRadarMessages[lang] || {}),
+    ...(strategyEvolutionMessages[lang] || {})
   }
   i18n.setLocaleMessage(lang, {
     ...(i18n.getLocaleMessage(lang) || {}),
@@ -174,6 +189,8 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(strategyTradeRecordMessages[lang] || {}),
       ...(positionManagerMessages[lang] || {}),
       ...marketStateMessages(lang),
+      ...(quickTradeRecordMessages[lang] || {}),
+      ...(chartTypeMessages[lang] || {}),
       ...(aiDecisionFilterMessages[lang] || {}),
       ...(uxOverrides[lang] || {}),
       ...(copilotCallsiteOverrides[lang] || {}),
@@ -182,7 +199,9 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(professionalReportOverrides[lang] || {}),
       ...(backtestRangeOverrides[lang] || {}),
       ...(settingsResearchOverrides[lang] || {}),
-      ...(strategyBuilderOverrides[lang] || {})
+      ...(strategyBuilderOverrides[lang] || {}),
+      ...(currentFeatureOverrides[lang] || {}),
+      ...(eventRadarMessages[lang] || {})
     })
     i18n.setLocaleMessage(lang, locale)
     loadedLanguages.push(lang)

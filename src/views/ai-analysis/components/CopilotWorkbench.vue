@@ -8434,28 +8434,29 @@ body.realdark .copilot-modal,
 
 /* Research-first prompt experience (Kavout-inspired, QuantDinger-native). */
 .copilot-workbench .welcome {
-  max-width: 980px;
+  max-width: 820px;
 }
 
 .copilot-workbench .welcome-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  max-width: 900px;
+  width: 100%;
+  max-width: 780px;
   margin: 24px auto 0;
 }
 
 .copilot-workbench .welcome-prompts button.research-prompt-pill {
-  display: inline-flex !important;
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: center !important;
-  gap: 8px;
-  width: auto !important;
-  height: auto !important;
-  min-height: 38px !important;
-  padding: 8px 14px !important;
+  gap: 10px;
+  width: 100% !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  padding: 10px 12px !important;
   border: 1px solid var(--qd-border) !important;
-  border-radius: 999px !important;
+  border-radius: 8px !important;
   background: color-mix(in srgb, var(--qd-panel) 92%, transparent) !important;
   box-shadow: none !important;
   color: var(--qd-text) !important;
@@ -8463,12 +8464,26 @@ body.realdark .copilot-modal,
   font-size: 13px;
   font-weight: 700;
   line-height: 1.35;
+  text-align: left;
   transition: border-color 0.18s, background 0.18s, color 0.18s, transform 0.18s;
 }
 
 .copilot-workbench .welcome-prompts button.research-prompt-pill .anticon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--qd-accent-soft);
   color: var(--qd-accent);
   font-size: 14px;
+  place-items: center;
+}
+
+.copilot-workbench .welcome-prompts button.research-prompt-pill span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .copilot-workbench .welcome-prompts button.research-prompt-pill:hover {
@@ -8631,14 +8646,11 @@ body.realdark .followup-suggestions,
 
 @media (max-width: 720px) {
   .copilot-workbench .welcome-prompts {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .copilot-workbench .welcome-prompts button.research-prompt-pill {
-    justify-content: flex-start;
     width: 100%;
-    border-radius: 10px;
     text-align: left;
   }
 }
@@ -8841,13 +8853,13 @@ body.realdark .followup-suggestions,
 }
 
 .copilot-workbench .welcome-prompts {
-  gap: 9px;
-  max-width: 900px;
+  gap: 10px;
+  max-width: 780px;
 }
 
 .copilot-workbench .welcome-prompts button.research-prompt-pill {
-  min-height: 38px !important;
-  padding: 8px 13px !important;
+  min-height: 64px !important;
+  padding: 10px 12px !important;
   border-color: color-mix(in srgb, var(--qd-accent) 24%, var(--qd-border)) !important;
   background: color-mix(in srgb, var(--qd-panel) 94%, transparent) !important;
 }

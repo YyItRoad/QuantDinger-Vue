@@ -13,14 +13,14 @@ const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'ut
 
 test('professional analysis has one canonical page and no hidden legacy renderer', () => {
   const page = read('src/views/ai-analysis/index.vue')
-  const assetPage = read('src/views/ai-asset-analysis/index.vue')
+  const routes = read('src/config/router.config.js')
   const workbench = read('src/views/ai-analysis/components/CopilotWorkbench.vue')
 
   assert.doesNotMatch(page, /v-if="false"/)
   assert.doesNotMatch(page, /getEconomicCalendar|fastAnalyze|FastAnalysisReport/)
   assert.match(page, /<CopilotWorkbench/)
-  assert.match(assetPage, /<AnalysisView/)
-  assert.doesNotMatch(assetPage, /OpportunityRadar|showOpportunityRadar|QuickTrade/)
+  assert.match(routes, /path: '\/ai-asset-analysis'[\s\S]*?import\('@\/views\/ai-analysis'\)/)
+  assert.doesNotMatch(routes, /import\('@\/views\/ai-asset-analysis'\)/)
   assert.match(workbench, /<ProfessionalAnalysisReport/)
   assert.match(workbench, /ProfessionalAnalysisReport from '\.\/ProfessionalAnalysisReport\.vue'/)
   assert.doesNotMatch(workbench, /<FastAnalysisReport/)

@@ -1,5 +1,5 @@
 <template>
-  <div class="strategy-ide-shell" :class="{ 'theme-dark': isDarkTheme }">
+  <div class="strategy-ide-shell qd-workspace-page" :class="{ 'theme-dark': isDarkTheme }">
     <div class="strategy-ide-layout">
       <a-alert
         v-if="adaptedBacktestRequired"
@@ -57,25 +57,42 @@
                     <a-radio-button value="portfolio_strategy" @click="handleAssetTypeChange('portfolio_strategy')">{{ text.portfolioStrategy }}</a-radio-button>
                   </a-radio-group>
                 </div>
-                <a-select
-                  class="script-select"
-                  show-search
-                  allow-clear
-                  option-filter-prop="children"
-                  :value="selectedScriptId"
-                  :loading="loadingScripts"
-                  :placeholder="text.selectScriptPlaceholder"
-                  @change="handleScriptSelect"
-                  @dropdownVisibleChange="onScriptDropdownVisibleChange"
+                <a-dropdown
+                  :trigger="['click']"
+                  placement="bottomLeft"
+                  :visible="strategySourceDropdownVisible"
+                  :overlay-class-name="isDarkTheme ? 'strategy-source-dropdown strategy-source-dropdown--dark' : 'strategy-source-dropdown'"
+                  @visibleChange="onScriptDropdownVisibleChange"
                 >
-                  <a-select-option
-                    v-for="item in scriptOptions"
-                    :key="item.id"
-                    :value="item.id"
-                  >
-                    {{ item.optionLabel }}
-                  </a-select-option>
-                </a-select>
+                  <a-button class="script-select strategy-source-dropdown-trigger" :loading="loadingScripts">
+                    <span class="strategy-source-trigger-text">{{ selectedScriptLabel }}</span>
+                    <a-icon type="down" />
+                  </a-button>
+                  <div slot="overlay" class="strategy-source-overlay" @mousedown.stop @click.stop>
+                    <div class="strategy-source-overlay-hint">{{ $t('strategyIde.marketPicker.selectorHint') }}</div>
+                    <button type="button" class="strategy-source-market-entry" @click="openStrategyMarketPicker">
+                      <span><a-icon type="shop" /> {{ text.marketPickerOpen }}</span>
+                      <a-icon type="right" />
+                    </button>
+                    <a-spin v-if="loadingScripts" size="small" class="strategy-source-overlay-loading" />
+                    <div v-else-if="!scriptOptions.length" class="strategy-source-overlay-empty">
+                      {{ $t('strategyIde.marketPicker.noLocalStrategies') }}
+                    </div>
+                    <div v-else class="strategy-source-overlay-list">
+                      <button
+                        v-for="item in scriptOptions"
+                        :key="item.id"
+                        type="button"
+                        class="strategy-source-row"
+                        :class="{ active: String(selectedScriptId || '') === String(item.id) }"
+                        @click="selectStrategySource(item.id)"
+                      >
+                        <a-icon type="check" />
+                        <span>{{ item.optionLabel }}</span>
+                      </button>
+                    </div>
+                  </div>
+                </a-dropdown>
 
                 <a-tooltip :title="currentNewScriptLabel">
                   <a-button class="ide-icon-btn" @click="createNewDraft({ openTemplate: true })">
@@ -245,12 +262,20 @@
                     <div
                       v-for="messageItem in aiMessages"
                       :key="messageItem.localId || messageItem.id"
-                      :class="['strategy-ai-message', `strategy-ai-message--${messageItem.role || 'assistant'}`]"
+                      :class="[
+                        'strategy-ai-message',
+                        `strategy-ai-message--${messageItem.role || 'assistant'}`,
+                        { 'strategy-ai-message--error': messageItem.message_type === 'error' }
+                      ]"
                     >
                       <div class="strategy-ai-message__role">
                         {{ messageItem.role === 'user' ? aiWorkspaceText.you : 'AI' }}
-                        <span v-if="messageItem.role !== 'user'" class="strategy-ai-message__badge">
-                          {{ messageItem.message_type === 'candidate' ? aiWorkspaceText.candidateBadge : aiWorkspaceText.discussionBadge }}
+                        <span
+                          v-if="messageItem.role !== 'user'"
+                          class="strategy-ai-message__badge"
+                          :class="{ 'strategy-ai-message__badge--error': messageItem.message_type === 'error' }"
+                        >
+                          {{ messageItem.message_type === 'candidate' ? aiWorkspaceText.candidateBadge : (messageItem.message_type === 'error' ? aiWorkspaceText.errorBadge : aiWorkspaceText.discussionBadge) }}
                         </span>
                       </div>
                       <div class="strategy-ai-message__content" v-html="renderStrategyAiMessage(messageItem)" />
@@ -536,6 +561,16 @@
       @close="showUniverseLibrary = false"
     />
 
+    <indicator-market-picker
+      :visible="strategyMarketVisible"
+      :dark="isDarkTheme"
+      :get-container="strategyModalGetContainer"
+      asset-mode="strategy"
+      :initial-strategy-type="currentAssetType === 'portfolio_strategy' ? 'portfolio' : 'cta'"
+      @close="strategyMarketVisible = false"
+      @acquired="handleMarketStrategyAcquired"
+    />
+
     <a-drawer
       :visible="showRobotBuilder"
       :title="text.robotTemplates"
@@ -612,8 +647,10 @@ import StrategyEditor from './components/StrategyEditor.vue'
 import FactorLibraryModal from './FactorLibraryModal.vue'
 import UniverseLibraryModal from './UniverseLibraryModal.vue'
 import ExecutorStrategies from '@/views/executor-strategies'
+import IndicatorMarketPicker from '@/views/indicator-ide/components/IndicatorMarketPicker.vue'
 import { resolveIndicatorStrategyContext } from '@/utils/indicatorStrategyContext'
 import { renderSafeMarkdown } from '@/utils/safeMarkdown'
+import { applyExactCodeEdits, candidateCodeEditOperations } from '@/utils/codeEdits'
 import { getWatchlist, searchSymbols } from '@/api/market'
 import { CRYPTO_EXCHANGE_IDS, normalizeExchangeId, normalizeMarketType } from '@/utils/marketContext'
 import {
@@ -659,13 +696,15 @@ export default {
     StrategyEditor,
     FactorLibraryModal,
     UniverseLibraryModal,
-    ExecutorStrategies
+    ExecutorStrategies,
+    IndicatorMarketPicker
   },
   data () {
     return {
       scriptSources: [],
       loadingScripts: false,
       selectedScriptId: undefined,
+      strategySourceDropdownVisible: false,
       currentSourceId: null,
       currentSource: null,
       currentAssetType: 'script',
@@ -700,6 +739,7 @@ export default {
       showFactorLibrary: false,
       showUniverseLibrary: false,
       showRobotBuilder: false,
+      strategyMarketVisible: false,
       aiPanelExpanded: true,
       aiWorkspaceLoading: false,
       aiWorkspaceLoadToken: 0,
@@ -782,6 +822,10 @@ export default {
     scriptOptions () {
       return this.allScriptOptions.filter(item => item.asset_type === this.currentAssetType)
     },
+    selectedScriptLabel () {
+      const selected = this.scriptOptions.find(item => String(item.id) === String(this.selectedScriptId || ''))
+      return selected ? selected.optionLabel : this.text.selectScriptPlaceholder
+    },
     selectedUniverseId () {
       return Number(this.runConfig && (this.runConfig.universe_id || this.runConfig.universeId)) || undefined
     },
@@ -825,7 +869,7 @@ export default {
       const keys = [
         'title', 'resize', 'ctaContract', 'portfolioContract', 'memoryActive', 'temporaryMemory', 'clear',
         'loading', 'emptyTitle', 'ctaEmptyDesc', 'portfolioEmptyDesc', 'you', 'candidateBadge',
-        'discussionBadge', 'candidateValid', 'candidateNeedsReview', 'preview', 'apply', 'discard',
+        'discussionBadge', 'errorBadge', 'candidateValid', 'candidateNeedsReview', 'preview', 'apply', 'discard',
         'thinking', 'placeholder', 'shortcut', 'send', 'checksTab',
         'checkPassed', 'checkPassedDesc', 'checkPending', 'checkPendingDesc', 'frequencies', 'instruments',
         'runCheck', 'previewTitle', 'previewHint', 'clearConfirm', 'candidateReady', 'candidateApplied',
@@ -860,6 +904,7 @@ export default {
         'ctaStrategy',
         'portfolioStrategy',
         'newScript',
+        'marketPickerOpen',
         'refreshScripts',
         'saveScript',
         'saveAsNew',
@@ -1011,6 +1056,28 @@ export default {
     }
   },
   methods: {
+    strategyModalGetContainer () {
+      return document.body
+    },
+    openStrategyMarketPicker () {
+      this.strategySourceDropdownVisible = false
+      this.strategyMarketVisible = true
+    },
+    async handleMarketStrategyAcquired ({ item, result }) {
+      const payload = result || {}
+      const sourceId = payload.script_source_id || payload.source_script_source_id ||
+        (item && item.source_script_source_id)
+      await this.loadSources()
+      const local = sourceId
+        ? this.allScriptOptions.find(source => String(source.id) === String(sourceId))
+        : this.allScriptOptions.find(source => Number(source.source_marketplace_indicator_id) === Number(item && item.id))
+      if (!local) {
+        this.$message.warning(this.text.loadScriptFailed)
+        return
+      }
+      this.strategyMarketVisible = false
+      await this.openSource(local.id, { updateRoute: true })
+    },
     syncRunConfigFromCode (code = this.scriptCode) {
       if (this.currentAssetType !== 'script' || this.scriptCodeHidden) return
       const inferred = extractStrategyRuntimeContractFromCode(code).config
@@ -1173,9 +1240,11 @@ export default {
       const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {}
       const messageKey = item.message_key || metadata.message_key || ''
       const rawContent = String(item.content || '').trim()
-      const localizedContent = messageKey === 'candidate_generated_validated' || rawContent === legacyCandidateText
-        ? this.aiWorkspaceText.candidateReady
-        : rawContent
+      const localizedContent = item.change_status === 'applied'
+        ? this.aiWorkspaceText.candidateApplied
+        : (messageKey === 'candidate_generated_validated' || rawContent === legacyCandidateText
+            ? this.aiWorkspaceText.candidateReady
+            : rawContent)
       return renderSafeMarkdown(localizedContent)
     },
     localizeStrategyAiError (error) {
@@ -1353,13 +1422,14 @@ export default {
             validation: data.validation || { success: false },
             summary: data.summary || {}
           }
-          this.$message.success(this.aiWorkspaceText.candidateReady)
+          const autoApplied = await this.autoApplyStrategyAiCandidate()
+          if (!autoApplied) this.$message.success(this.aiWorkspaceText.candidateReady)
         }
         this.aiPanelExpanded = true
         this.$nextTick(this.scrollStrategyAiConversation)
       } catch (e) {
         const message = this.localizeStrategyAiError(e)
-        this.aiMessages.push({ role: 'assistant', content: message, message_type: 'discussion', localId: `strategy-error-${Date.now()}` })
+        this.aiMessages.push({ role: 'assistant', content: message, message_type: 'error', localId: `strategy-error-${Date.now()}` })
         this.$message.error(message)
         this.$nextTick(this.scrollStrategyAiConversation)
       } finally {
@@ -1380,33 +1450,72 @@ export default {
     },
     applyStrategyAiCandidate () {
       if (!this.aiCandidate || !this.aiCandidate.code || !this.aiCandidateValidationPassed) return
-      const current = this.getCurrentScriptCode()
-      const changed = this.aiCandidate.baseCodeMatchesCurrent === false ||
-        (!!this.aiCandidate.baseCode && current !== this.aiCandidate.baseCode) ||
-        (!!this.aiRequestBaseCode && current !== this.aiRequestBaseCode)
-      if (changed) {
+      if (this.strategyAiCandidateHasSourceConflict()) {
         this.$confirm({
           title: this.aiWorkspaceText.editorChangedTitle,
           content: this.aiWorkspaceText.editorChangedDesc,
           okText: this.aiWorkspaceText.apply,
           cancelText: this.text.cancel,
-          onOk: () => this.applyStrategyAiCandidateCode()
+          onOk: () => this.applyStrategyAiCandidateCode(true)
         })
         return
       }
       this.applyStrategyAiCandidateCode()
     },
-    async applyStrategyAiCandidateCode () {
+    strategyAiCandidateHasSourceConflict (candidate = this.aiCandidate) {
+      if (!candidate) return false
+      const current = this.getCurrentScriptCode()
+      return candidate.baseCodeMatchesCurrent === false ||
+        (!!candidate.baseCode && current !== candidate.baseCode) ||
+        (!!this.aiRequestBaseCode && current !== this.aiRequestBaseCode)
+    },
+    async autoApplyStrategyAiCandidate () {
+      if (!this.aiCandidate || !this.aiCandidate.code || !this.aiCandidateValidationPassed) return false
+      if (this.strategyAiCandidateHasSourceConflict()) return false
+      await this.applyStrategyAiCandidateCode()
+      return true
+    },
+    markLatestStrategyAiCandidateApplied () {
+      for (let index = this.aiMessages.length - 1; index >= 0; index -= 1) {
+        const item = this.aiMessages[index]
+        if (!item || item.role === 'user' || item.message_type !== 'candidate') continue
+        this.$set(item, 'change_status', 'applied')
+        this.$set(item, 'content', this.aiWorkspaceText.candidateApplied)
+        break
+      }
+    },
+    async applyStrategyAiCandidateCode (forceFullReplacement = false) {
       const candidate = this.aiCandidate
       if (!candidate || !candidate.code) return
-      this.scriptCode = candidate.code
-      await this.$nextTick()
       const editor = this.$refs.scriptEditor
-      if (editor && typeof editor.setCode === 'function') editor.setCode(candidate.code)
+      const operations = candidateCodeEditOperations(candidate)
+      let nextCode = candidate.code
+      let useCodeEdits = !forceFullReplacement && operations.length > 0 && editor && typeof editor.applyCodeEdits === 'function'
+      if (useCodeEdits) {
+        try {
+          const preview = applyExactCodeEdits(this.getCurrentScriptCode(), operations)
+          useCodeEdits = preview.code === candidate.code
+        } catch (_) {
+          useCodeEdits = false
+        }
+      }
+      if (useCodeEdits) {
+        nextCode = editor.applyCodeEdits(operations)
+      } else {
+        if (editor && typeof editor.setCodeWithHighlight === 'function') {
+          nextCode = editor.setCodeWithHighlight(candidate.code)
+        } else {
+          this.scriptCode = candidate.code
+          await this.$nextTick()
+          if (editor && typeof editor.setCode === 'function') editor.setCode(candidate.code)
+        }
+      }
+      this.scriptCode = nextCode
       this.scriptVerified = true
       this.strategyValidation = { valid: true, manifest: (candidate.validation && candidate.validation.manifest) || {} }
       this.aiPreviewVisible = false
-      if (candidate.id) setStrategyAiCandidateStatus(candidate.id, 'applied').catch(() => {})
+      if (candidate.id) await setStrategyAiCandidateStatus(candidate.id, 'applied').catch(() => {})
+      this.markLatestStrategyAiCandidateApplied()
       this.aiCandidate = null
       this.$message.success(this.aiWorkspaceText.candidateApplied)
     },
@@ -1491,6 +1600,7 @@ export default {
       }
     },
     onScriptDropdownVisibleChange (visible) {
+      this.strategySourceDropdownVisible = visible
       if (visible && !this.loadingScripts) this.loadSources()
     },
     extractSources (res) {
@@ -1587,6 +1697,10 @@ export default {
         return
       }
       await this.openSource(id, { updateRoute: true })
+    },
+    selectStrategySource (id) {
+      this.strategySourceDropdownVisible = false
+      this.handleScriptSelect(id)
     },
     async openSource (id, options = {}) {
       const sourceId = String(id || '').trim()
@@ -2779,6 +2893,12 @@ export default {
   border-right: 1px solid #e5e7eb;
 }
 
+.strategy-workspace-switcher /deep/ .ant-radio-group {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
 .strategy-workspace-copy {
   display: flex;
   width: 150px;
@@ -2801,11 +2921,20 @@ export default {
   white-space: nowrap;
 }
 
-.strategy-workspace-switcher .ant-radio-button-wrapper {
+.strategy-workspace-switcher /deep/ .ant-radio-button-wrapper {
   height: 36px;
   padding: 0 13px;
   line-height: 34px;
   font-weight: 700;
+  border-radius: 0;
+}
+
+.strategy-workspace-switcher /deep/ .ant-radio-button-wrapper:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.strategy-workspace-switcher /deep/ .ant-radio-button-wrapper:last-child {
+  border-radius: 0 6px 6px 0;
 }
 
 .script-select-label {
@@ -2994,6 +3123,7 @@ export default {
 .strategy-ai-message__role { margin: 0 4px 3px; color: #96a0b2; font-size: 9px; }
 .strategy-ai-message--user .strategy-ai-message__role { text-align: right; }
 .strategy-ai-message__badge { margin-left: 5px; color: #1677ff; background: #e6f4ff; }
+.strategy-ai-message__badge--error { color: #cf1322; background: #fff1f0; }
 .strategy-ai-message__content {
   padding: 8px 10px;
   border-radius: 9px 9px 9px 3px;
@@ -3003,6 +3133,11 @@ export default {
   line-height: 1.55;
   white-space: normal;
   word-break: break-word;
+}
+.strategy-ai-message--error .strategy-ai-message__content {
+  border: 1px solid #ffccc7;
+  color: #a8071a;
+  background: #fff2f0;
 }
 .strategy-ai-message__content ::v-deep p { margin: 0 0 7px; }
 .strategy-ai-message__content ::v-deep p:last-child { margin-bottom: 0; }
@@ -3134,13 +3269,13 @@ export default {
     border-right-color: rgba(255, 255, 255, 0.1);
   }
 
-  .strategy-workspace-switcher .ant-radio-button-wrapper {
+  .strategy-workspace-switcher /deep/ .ant-radio-button-wrapper {
     border-color: rgba(255, 255, 255, 0.12);
     color: rgba(255, 255, 255, 0.68);
     background: #202020;
   }
 
-  .strategy-workspace-switcher .ant-radio-button-wrapper-checked {
+  .strategy-workspace-switcher /deep/ .ant-radio-button-wrapper-checked {
     border-color: var(--primary-color, #52c41a);
     color: #fff;
     background: var(--primary-color, #52c41a);
@@ -3186,6 +3321,17 @@ export default {
     border-color: rgba(82, 196, 26, 0.28);
     color: #d9f7be;
     background: rgba(82, 196, 26, 0.12);
+  }
+
+  .strategy-ai-message__badge--error {
+    color: #ff7875;
+    background: rgba(255, 77, 79, 0.14);
+  }
+
+  .strategy-ai-message--error .strategy-ai-message__content {
+    border-color: rgba(255, 77, 79, 0.42);
+    color: #ffb3b0;
+    background: rgba(255, 77, 79, 0.1);
   }
 
   .strategy-ai-quick-prompts button {
@@ -3287,6 +3433,176 @@ export default {
 </style>
 
 <style lang="less">
+.strategy-source-dropdown {
+  z-index: 10050 !important;
+
+  .ant-dropdown-menu {
+    overflow: hidden;
+    padding: 0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.strategy-source-dropdown-trigger {
+  display: inline-flex;
+  height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-radius: 6px;
+
+  .strategy-source-trigger-text {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    margin-right: 6px;
+    font-size: 12px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.strategy-source-overlay {
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px 0;
+  background: #fff;
+}
+
+.strategy-source-overlay-hint,
+.strategy-source-overlay-empty {
+  padding: 0 12px 8px;
+  color: #8c8c8c;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.strategy-source-overlay-empty {
+  padding-top: 8px;
+}
+
+.strategy-source-market-entry {
+  display: flex;
+  width: calc(100% - 16px);
+  height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 8px 8px;
+  padding: 0 10px;
+  border: 1px solid rgba(82, 196, 26, 0.26);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(82, 196, 26, 0.08);
+  color: #389e0d;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(82, 196, 26, 0.48);
+    background: rgba(82, 196, 26, 0.14);
+  }
+}
+
+.strategy-source-overlay-loading {
+  display: block;
+  padding: 12px;
+}
+
+.strategy-source-overlay-list {
+  padding: 0 4px;
+}
+
+.strategy-source-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  outline: none;
+  background: transparent;
+  color: #262626;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+
+  .anticon {
+    flex: 0 0 12px;
+    color: transparent;
+  }
+
+  span {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover {
+    background: #f5f5f5;
+  }
+
+  &.active {
+    color: #389e0d;
+    font-weight: 600;
+
+    .anticon {
+      color: #52c41a;
+    }
+  }
+}
+
+.strategy-source-dropdown--dark {
+  .ant-dropdown-menu,
+  .strategy-source-overlay {
+    border-color: #363636;
+    background: #1f1f1f;
+  }
+
+  .strategy-source-overlay-hint,
+  .strategy-source-overlay-empty {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .strategy-source-market-entry {
+    border-color: rgba(82, 196, 26, 0.28);
+    background: rgba(82, 196, 26, 0.1);
+    color: #73d13d;
+
+    &:hover,
+    &:focus-visible {
+      border-color: rgba(82, 196, 26, 0.52);
+      background: rgba(82, 196, 26, 0.17);
+    }
+  }
+
+  .strategy-source-row {
+    color: rgba(255, 255, 255, 0.85);
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    &.active {
+      color: #73d13d;
+    }
+  }
+}
+
 .strategy-ai-preview-modal--dark {
   .ant-modal-content,
   .ant-modal-header,

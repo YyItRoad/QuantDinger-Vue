@@ -1,5 +1,5 @@
 <template>
-  <div class="universe-page" :class="{ 'theme-dark': isDarkTheme }">
+  <div class="universe-page qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
     <header class="page-header">
       <div>
         <span class="kicker">{{ t('universeManager.kicker') }}</span>

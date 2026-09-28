@@ -18,7 +18,7 @@ export const asyncRouterMap = [
       {
         path: '/ai-asset-analysis',
         name: 'AIAssetAnalysis',
-        component: () => import('@/views/ai-asset-analysis'),
+        component: () => import('@/views/ai-analysis'),
         meta: { title: 'menu.dashboard.aiAssetAnalysis', keepAlive: true, icon: 'appstore', permission: ['dashboard'] }
       },
       // Unified strategy workspace entry.
@@ -192,6 +192,7 @@ export const constantRouterMap = [
       {
         path: 'login',
         name: 'login',
+        meta: { title: 'user.login.tab' },
         component: () => import(/* webpackChunkName: "user" */ '@/views/user/Login')
       }
     ]

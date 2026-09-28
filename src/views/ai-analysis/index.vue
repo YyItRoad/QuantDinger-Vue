@@ -1,6 +1,6 @@
 <template>
   <div
-    class="professional-analysis-page"
+    class="professional-analysis-page qd-workspace-page"
     :class="{ 'theme-dark': isDarkTheme, embedded }"
     :style="{ '--primary-color': primaryColor }"
   >

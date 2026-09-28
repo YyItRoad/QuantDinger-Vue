@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-skill-center">
+  <div class="ai-skill-center qd-workspace-page qd-page-frame">
     <div class="skill-hero">
       <div>
         <div class="eyebrow">{{ text.heroEyebrow }}</div>

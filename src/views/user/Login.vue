@@ -365,7 +365,7 @@
         <!-- Legal Agreement -->
         <div class="legal-wrap">
           <div class="legal-agree">
-            <a-checkbox v-model="legalAgreed">
+            <a-checkbox v-model="legalAgreed" @change="handleLegalAgreementChange">
               <span>{{ $t('user.login.legal.agreePrefix') }}</span>
               <a class="policy-link" @click.stop.prevent="legalModalVisible = true">
                 {{ $t('user.login.legal.title') }}
@@ -375,7 +375,9 @@
                 {{ $t('user.login.privacy.title') }}
               </a>
             </a-checkbox>
-            <div v-if="legalError" class="legal-error">{{ $t('user.login.legal.required') }}</div>
+            <div v-if="legalError" class="legal-error" role="alert" aria-live="assertive">
+              {{ $t('user.login.legal.required') }}
+            </div>
           </div>
         </div>
       </div>
@@ -712,9 +714,10 @@
             :siteKey="securityConfig.turnstile_site_key"
             :enabled="securityConfig.turnstile_enabled"
             appearance="always"
-            execution="render"
+            execution="execute"
             @error="handleSharedTurnstileError"
             @expired="resetSharedTurnstile"
+            @retry="retrySharedTurnstileChallenge"
           />
         </div>
       </div>
@@ -741,7 +744,7 @@ export default {
       activeTab: 'login',
       legalModalVisible: false,
       privacyModalVisible: false,
-      legalAgreed: true,
+      legalAgreed: false,
       legalError: false,
 
       // Security config
@@ -904,6 +907,14 @@ export default {
       return this.turnstileClearancePromise
     },
 
+    retrySharedTurnstileChallenge () {
+      this.turnstileClearancePromise = null
+      if (this.$refs.authTurnstile) {
+        this.$refs.authTurnstile.reset()
+      }
+      this.getTurnstileClearance().catch(() => {})
+    },
+
     resetSharedTurnstile () {
       this.turnstileClearance = ''
       this.turnstileClearanceExpiresAt = 0
@@ -920,7 +931,14 @@ export default {
     },
 
     handleSharedTurnstileError () {
-      this.resetSharedTurnstile()
+      this.turnstileClearance = ''
+      this.turnstileClearanceExpiresAt = 0
+    },
+
+    handleLegalAgreementChange (event) {
+      if (event && event.target && event.target.checked) {
+        this.legalError = false
+      }
     },
 
     isTurnstileErrorMessage (message) {
