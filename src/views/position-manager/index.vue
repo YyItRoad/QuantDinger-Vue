@@ -176,7 +176,6 @@ import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
 import { createManagedAccountStrategy, getManagedAccountPositions, getManagedPositionSnapshot, getPositionManagementTradeHistory } from '@/api/strategy'
 import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
-import sessionCache from '@/utils/sessionCache'
 import {
   accountPositionSnapshotCacheKey,
   buildManagedStrategyInitialConfig,
@@ -191,6 +190,36 @@ import {
 import ManagedStrategyEditor from './components/ManagedStrategyEditor.vue'
 
 const POSITION_SNAPSHOT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const POSITION_SNAPSHOT_CACHE_NAMESPACE = 'qd:cache:'
+
+function readPositionSnapshotCache (key) {
+  try {
+    const raw = sessionStorage.getItem(POSITION_SNAPSHOT_CACHE_NAMESPACE + String(key))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    if (typeof parsed.e !== 'number' || Date.now() > parsed.e) {
+      try { sessionStorage.removeItem(POSITION_SNAPSHOT_CACHE_NAMESPACE + String(key)) } catch (_) {}
+      return null
+    }
+    return parsed.v
+  } catch (_) {
+    return null
+  }
+}
+
+function writePositionSnapshotCache (key, value, ttlMs) {
+  try {
+    const payload = JSON.stringify({
+      v: value,
+      e: Date.now() + Math.max(0, Number(ttlMs) || 0)
+    })
+    sessionStorage.setItem(POSITION_SNAPSHOT_CACHE_NAMESPACE + String(key), payload)
+  } catch (_) {
+    // ignore — quota / privacy mode
+  }
+}
+
 const HISTORY_PAGE_SIZE = 20
 const HISTORY_FIELD_LABELS_ZH = {
   id: '历史记录 ID',
@@ -532,7 +561,7 @@ export default {
       try {
         const params = { credential_id: this.selectedCredentialId }
         const cacheKey = this.snapshotCacheKey()
-        let snapshot = !forceExchange && cacheKey ? sessionCache.read(cacheKey) : null
+        let snapshot = !forceExchange && cacheKey ? readPositionSnapshotCache(cacheKey) : null
         const requests = [getManagedAccountPositions(params)]
         if (!snapshot) requests.push(getManagedPositionSnapshot(params))
         const [managedResponse, snapshotResponse] = await Promise.all(requests)
@@ -545,7 +574,7 @@ export default {
           }
           snapshot = cacheableAccountPositionSnapshot(responseData(snapshotResponse))
           requireCompleteAccountSnapshot(snapshot)
-          if (cacheKey) sessionCache.write(cacheKey, snapshot, POSITION_SNAPSHOT_CACHE_TTL_MS)
+          if (cacheKey) writePositionSnapshotCache(cacheKey, snapshot, POSITION_SNAPSHOT_CACHE_TTL_MS)
         }
         this.applyPositionData(snapshot, responseData(managedResponse).items || [])
         if (forceExchange || snapshotResponse) {
