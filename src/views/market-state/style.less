@@ -83,6 +83,11 @@ body.realdark {
   .analysis-secondary { color: var(--analysis-secondary); font-size: 12px; margin-top: 5px; }
   .ant-btn-link { padding: 0; }
   .ant-btn-link + .ant-btn-link { margin-left: 16px; }
+  // 让"分析结论"列（tbody 第 4 列）按字符断行，避免长串中文撑爆列宽
+  .ant-table-tbody > tr > td:nth-child(4) {
+    word-break: break-word;
+    white-space: normal;
+  }
 }
 .analysis-detail {
   .ant-drawer-content,
@@ -111,5 +116,12 @@ body.realdark {
 }
 @media (max-width: 600px) {
   .analysis-page { padding: 16px 12px; }
-  .analysis-filters .ant-select { width: 50%; }
+  .analysis-header { flex-wrap: wrap; gap: 12px; h1 { font-size: 20px; } }
+  .analysis-filters {
+    flex-wrap: wrap;
+    .ant-select { width: 100%; }
+  }
+  .analysis-filters .ant-select + .ant-select { margin-top: 0; }
+  .analysis-page .ant-table-wrapper { overflow-x: auto; }
+  .analysis-page .ant-table-cell { white-space: nowrap; }
 }

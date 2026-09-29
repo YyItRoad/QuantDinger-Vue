@@ -24,7 +24,7 @@
         :loading="loading"
         row-key="id"
         :pagination="pagination"
-        :scroll="{ x: tab === 'records' ? 930 : 540 }"
+        :scroll="{ x: tab === 'records' ? 1090 : 540 }"
         @change="pageChanged">
         <template slot="instrument" slot-scope="text, row">
           <strong>{{ row.symbol }}</strong><div class="analysis-secondary">{{ context(row) }}</div>
