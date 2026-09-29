@@ -75,10 +75,12 @@ function normalizePositionRows (rows, fallbackMarketType) {
 /** 用交易所当前仓位预填现有创建实盘表单。 */
 export function buildManagedStrategyInitialConfig (position, credentialId) {
   const leverage = Number(decimalString(position && position.leverage) || 1)
-  const side = String(position && position.side) === 'short' ? '空头' : '多头'
+  const positionSide = String(position && position.side).trim().toLowerCase()
+  const side = positionSide === 'short' ? '空头' : '多头'
+  const namePrefix = positionSide === 'short' ? '[持空]' : '[持多]'
   const symbol = canonicalPositionSymbol(position && position.symbol)
   return {
-    name: `[持仓] ${symbol}`,
+    name: `${namePrefix} ${symbol}`,
     position_summary: `${symbol} · ${side} · 数量 ${formatDecimalDisplay(position && position.size)} · 开仓价 ${formatDecimalDisplay(position && position.entryPrice)} · 最新价 ${formatDecimalDisplay(position && position.markPrice)} · 杠杆 ${formatDecimalDisplay(position && position.leverage)}x`,
     execution_mode: 'live',
     credential_id: Number(credentialId),

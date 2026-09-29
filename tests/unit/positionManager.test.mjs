@@ -59,7 +59,7 @@ test('持仓管理复用现有创建实盘表单并锁定当前凭证与杠杆',
   })[0]
 
   assert.deepEqual(buildManagedStrategyInitialConfig(position, 7), {
-    name: '[持仓] KAITO/USDC',
+    name: '[持多] KAITO/USDC',
     position_summary: 'KAITO/USDC · 多头 · 数量 422.5 · 开仓价 0.355 · 最新价 0.3397 · 杠杆 5x',
     execution_mode: 'live',
     credential_id: 7,
@@ -71,6 +71,15 @@ test('持仓管理复用现有创建实盘表单并锁定当前凭证与杠杆',
     lock_credential: true,
     lock_leverage: true
   })
+
+  assert.equal(buildManagedStrategyInitialConfig({
+    symbol: 'BNB/USDT:USDT',
+    side: 'short',
+    size: '1',
+    entryPrice: '600',
+    markPrice: '590',
+    leverage: '3'
+  }, 7).name, '[持空] BNB/USDT')
 })
 
 test('持仓管理创建请求只补充当前仓位引用并保留标准策略表单参数', () => {
@@ -83,7 +92,7 @@ test('持仓管理创建请求只补充当前仓位引用并保留标准策略�
   }
   const payload = {
     sourceId: 9,
-    name: '[持仓] KAITO/USDC',
+    name: '[持多] KAITO/USDC',
     initialCapital: 1000,
     params: { atr_period: 14 }
   }
