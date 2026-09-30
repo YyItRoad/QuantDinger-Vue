@@ -61,6 +61,8 @@ test('持仓管理复用现有创建实盘表单并锁定当前凭证与杠杆',
   assert.deepEqual(buildManagedStrategyInitialConfig(position, 7), {
     name: '[持多] KAITO/USDC',
     position_summary: 'KAITO/USDC · 多头 · 数量 422.5 · 开仓价 0.355 · 最新价 0.3397 · 杠杆 5x',
+    position_side: 'long',
+    position_mark_price: 0.3397,
     execution_mode: 'live',
     credential_id: 7,
     leverage_enabled: true,
@@ -94,7 +96,7 @@ test('持仓管理创建请求只补充当前仓位引用并保留标准策略�
     sourceId: 9,
     name: '[持多] KAITO/USDC',
     initialCapital: 1000,
-    params: { atr_period: 14 }
+    params: { atr_period: 14, fixed_stop_price: 0.3 }
   }
 
   assert.deepEqual(buildManagedStrategyRequest(position, 7, payload), {
@@ -107,6 +109,14 @@ test('持仓管理创建请求只补充当前仓位引用并保留标准策略�
     },
     strategy: payload
   })
+})
+
+test('接管仓位初始配置保留方向和最新价供固定止损校验', () => {
+  const config = buildManagedStrategyInitialConfig({
+    symbol: 'BTC/USDT', side: 'short', size: '1', entryPrice: '100', markPrice: '105', leverage: '3'
+  }, 7)
+  assert.equal(config.position_side, 'short')
+  assert.equal(config.position_mark_price, 105)
 })
 
 test('交易所仓位只与现有策略仓位记录做只读匹配', () => {

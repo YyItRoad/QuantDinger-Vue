@@ -43,6 +43,14 @@
               </a-select-option>
             </a-select>
           </a-form-item>
+          <a-form-item v-if="initialConfig.position_side" :label="$t('positionManager.fixedStopPrice')">
+            <a-input-number
+              :value="model.fixedStopPrice"
+              :min="0"
+              style="width: 100%"
+              @change="value => { model.fixedStopPrice = value }" />
+            <div class="field-hint">{{ $t('positionManager.fixedStopHint') }}</div>
+          </a-form-item>
           <div v-if="model.scriptSourceId" class="source-summary">
             <div class="source-summary__icon"><a-icon type="code" /></div>
             <div>
@@ -336,6 +344,9 @@ export default {
     lockCredential () { return Boolean(this.initialConfig.lock_credential) },
     lockLeverage () { return Boolean(this.initialConfig.lock_leverage) },
     allowTimeframeOverride () { return Boolean(this.initialConfig.allow_timeframe_override) },
+    hasFixedStopPrice () {
+      return this.model.fixedStopPrice !== null && this.model.fixedStopPrice !== undefined && this.model.fixedStopPrice !== ''
+    },
     timeframeOptions () {
       const configured = this.initialConfig.timeframe_options
       return Array.isArray(configured) && configured.length ? configured : ['15m', '1h', '4h', '1d']
@@ -432,7 +443,7 @@ export default {
         ...this.parseObject(this.sourceDetail.template_params)
       }
     },
-    parameterDefinitions () {
+    sourceParameterDefinitions () {
       const schema = this.parseObject(this.sourceDetail.param_schema)
       if (Array.isArray(schema.params) && schema.params.length) return schema.params.filter(item => item && item.name)
       const inferred = extractScriptParamsFromCode(this.sourceDetail.code || '')
@@ -442,6 +453,11 @@ export default {
         type: Number.isInteger(this.sourceParameterValues[name]) ? 'integer' : (typeof this.sourceParameterValues[name] === 'number' ? 'number' : 'text'),
         default: this.sourceParameterValues[name]
       }))
+    },
+    parameterDefinitions () {
+      return this.initialConfig.position_side
+        ? this.sourceParameterDefinitions.filter(param => param.name !== 'fixed_stop_price')
+        : this.sourceParameterDefinitions
     },
     compatibleCredentials () {
       return this.credentials.filter(credential => {
@@ -488,6 +504,7 @@ export default {
         },
         disclaimer: false,
         notifyChannels: [...DEFAULT_CHANNELS],
+        fixedStopPrice: null,
         templateParams: {}
       }
     },
@@ -678,6 +695,7 @@ export default {
         : 'strategyCenter.editor.ctaStrategy')
     },
     parameterLabel (param) {
+      if (param.name === 'fixed_stop_price' && this.initialConfig.position_side) return this.$t('positionManager.fixedStopPrice')
       const key = `trading-assistant.templateParam.${param.name}.label`
       return this.$te && this.$te(key) ? this.$t(key) : String(param.name || '').replace(/_/g, ' ')
     },
@@ -692,6 +710,27 @@ export default {
     setParameter (name, value) {
       this.$set(this.model.templateParams, name, value)
     },
+    validateFixedStop () {
+      if (!this.initialConfig.position_side || !this.hasFixedStopPrice) return true
+      const stop = Number(this.model.fixedStopPrice)
+      const mark = Number(this.initialConfig.position_mark_price)
+      if (!Number.isFinite(stop) || stop <= 0) {
+        this.$message.warning(this.$t('positionManager.fixedStopInvalid'))
+        return false
+      }
+      if (Number.isFinite(mark) && mark > 0 && (
+        (this.initialConfig.position_side === 'long' && stop >= mark) ||
+        (this.initialConfig.position_side === 'short' && stop <= mark)
+      )) {
+        this.$message.warning(this.$t('positionManager.fixedStopDirection'))
+        return false
+      }
+      if (!this.sourceParameterDefinitions.some(param => param.name === 'fixed_stop_price')) {
+        this.$message.warning(this.$t('positionManager.fixedStopSourceOutdated'))
+        return false
+      }
+      return true
+    },
     async next () {
       if (this.step === 0 && !this.model.scriptSourceId) {
         this.$message.warning(this.$t('trading-assistant.form.scriptSourceRequired'))
@@ -704,6 +743,7 @@ export default {
         this.$message.warning(this.$t('strategyV2.sourceContractRequired'))
         return
       }
+      if (this.step === 0 && !this.validateFixedStop()) return
       if (this.step === 1) {
         if (!this.model.name) {
           this.$message.warning(this.$t('trading-assistant.validation.strategyNameRequired'))
@@ -739,6 +779,7 @@ export default {
       }
     },
     validateFinal () {
+      if (!this.validateFixedStop()) return false
       if (!this.model.notifyChannels.length) {
         this.$message.warning(this.$t('trading-assistant.validation.notifyChannelRequired'))
         return false
@@ -772,7 +813,12 @@ export default {
           directionMode: this.requiresDirectionMode ? this.effectiveDirectionMode : undefined,
           positionSide: this.requiresDirectionMode ? directionModePositionSide(this.effectiveDirectionMode) : undefined,
           accountRisk: this.requiresDirectionMode ? { ...this.model.accountRisk } : undefined,
-          params: { ...this.model.templateParams },
+          params: {
+            ...this.model.templateParams,
+            ...(this.initialConfig.position_side && this.hasFixedStopPrice
+              ? { fixed_stop_price: Number(this.model.fixedStopPrice) }
+              : {})
+          },
           timeframe: this.allowTimeframeOverride ? this.model.timeframe : undefined,
           notificationChannels: [...this.model.notifyChannels],
           notificationTargets: notificationTargets(this.notificationSettings)

@@ -82,6 +82,8 @@ export function buildManagedStrategyInitialConfig (position, credentialId) {
   return {
     name: `${namePrefix} ${symbol}`,
     position_summary: `${symbol} · ${side} · 数量 ${formatDecimalDisplay(position && position.size)} · 开仓价 ${formatDecimalDisplay(position && position.entryPrice)} · 最新价 ${formatDecimalDisplay(position && position.markPrice)} · 杠杆 ${formatDecimalDisplay(position && position.leverage)}x`,
+    position_side: positionSide,
+    position_mark_price: Number(decimalString(position && position.markPrice) || 0),
     execution_mode: 'live',
     credential_id: Number(credentialId),
     leverage_enabled: leverage > 1,

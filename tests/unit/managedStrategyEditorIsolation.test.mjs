@@ -33,3 +33,10 @@ test('持仓管理弹窗必须通过专用创建处理器提交', () => {
   assert.match(positionPage, /:create-handler="submitManagedStrategy"/)
   assert.match(positionPage, /createManagedAccountStrategy\(buildManagedStrategyRequest\(/)
 })
+
+test('接管持仓时固定止损输入独立显示并传入策略参数', () => {
+  assert.match(managedEditor, /v-if="initialConfig\.position_side" :label="\$t\('positionManager\.fixedStopPrice'\)"/)
+  assert.match(managedEditor, /this\.initialConfig\.position_side && this\.hasFixedStopPrice/)
+  assert.match(managedEditor, /fixed_stop_price: Number\(this\.model\.fixedStopPrice\)/)
+  assert.match(managedEditor, /sourceParameterDefinitions\.some\(param => param\.name === 'fixed_stop_price'\)/)
+})
