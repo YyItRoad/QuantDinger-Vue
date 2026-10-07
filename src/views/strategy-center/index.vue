@@ -160,7 +160,7 @@ export default {
       this.controlLoadingId = strategy.id
       const closePositions = Boolean(options && options.closePositions)
       try {
-        const res = await stopStrategy(strategy.id, closePositions)
+        const res = await stopStrategy(strategy.id, closePositions, options.exitReason || '')
         const feedback = strategyStopFeedback(res, key => this.$t(key), closePositions)
         this.$message[feedback.level](feedback.message)
       } catch (error) {

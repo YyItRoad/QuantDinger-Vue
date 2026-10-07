@@ -116,7 +116,17 @@
                   {{ $t('strategyCenter.console.pauseOnly') }}
                 </a-button>
               </a-popconfirm>
+              <a-button
+                v-if="isManagedStrategy"
+                icon="stop"
+                type="danger"
+                ghost
+                :loading="controlLoadingId === selectedStrategy.id"
+                @click="openReasonClose">
+                {{ $t('strategyCenter.console.stopAndClose') }}
+              </a-button>
               <a-popconfirm
+                v-else
                 :title="$t('strategyCenter.console.stopAndCloseConfirm')"
                 :ok-text="$t('strategyCenter.console.stopAndClose')"
                 :cancel-text="$t('common.cancel')"
@@ -147,6 +157,7 @@
           </div>
         </header>
 
+        <p v-if="isManagedStrategy" style="white-space: pre-wrap; overflow-wrap: anywhere">开仓原因：{{ entryReason || '未记录' }}</p>
         <div class="runtime-status-bar" :aria-label="$t('strategyCenter.console.runtimeStatus')">
           <span>
             {{ $t('liveMonitor.health') }}
@@ -299,6 +310,21 @@
 
       <main v-else class="strategy-detail detail-empty"><a-spin :spinning="loading" /></main>
     </template>
+    <a-modal
+      v-model="reasonCloseVisible"
+      title="停止并平仓"
+      :mask-closable="false"
+      ok-text="确认停止并平仓"
+      ok-type="danger"
+      @ok="confirmReasonClose">
+      <p style="white-space: pre-wrap; overflow-wrap: anywhere">开仓原因：{{ entryReason || '未记录' }}</p>
+      <a-form layout="vertical">
+        <a-form-item label="平仓原因（选填）">
+          <a-textarea v-model="exitReason" :max-length="500" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="一句话说明这次为什么平仓，可留空直接平仓" />
+        </a-form-item>
+      </a-form>
+      <p>将停止策略并提交平仓请求，实际成交以执行结果为准。</p>
+    </a-modal>
   </section>
 </template>
 
@@ -337,6 +363,9 @@ export default {
   },
   data () {
     return {
+      reasonCloseVisible: false,
+      closingStrategyId: 0,
+      exitReason: '',
       selectedId: null,
       selectedDetail: null,
       detailTab: 'overview',
@@ -350,6 +379,8 @@ export default {
     }
   },
   computed: {
+    isManagedStrategy () { return !!(strategyTradingConfig(this.selectedStrategy || {}).position_management || {}).enabled },
+    entryReason () { return (strategyTradingConfig(this.selectedStrategy || {}).position_management || {}).entry_reason || '' },
     selectedStrategy () {
       const base = this.strategies.find(item => item.id === this.selectedId)
       // The list endpoint owns volatile runtime fields such as status and heartbeat.
@@ -477,6 +508,16 @@ export default {
     if (this.chart) this.chart.dispose()
   },
   methods: {
+    openReasonClose () {
+      this.closingStrategyId = Number(this.selectedStrategy.id)
+      this.exitReason = ''
+      this.reasonCloseVisible = true
+    },
+    confirmReasonClose () {
+      if (this.controlLoadingId || !this.selectedStrategy || Number(this.selectedStrategy.id) !== this.closingStrategyId) return
+      this.$emit('stop', this.selectedStrategy, { closePositions: true, exitReason: this.exitReason })
+      this.reasonCloseVisible = false
+    },
     selectStrategy (strategy) {
       if (!strategy || !strategy.id) return
       this.selectedId = strategy.id
