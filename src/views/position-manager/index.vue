@@ -148,6 +148,14 @@
       width="860px"
     >
       <div v-if="selectedHistoryItem" class="pm-history-detail">
+        <section class="pm-detail-section">
+          <h3>交易原因</h3>
+          <a-form layout="vertical">
+            <a-form-item label="开仓原因"><a-textarea v-model="historyReasons.entry_reason" :max-length="500" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="未记录，可补填" /></a-form-item>
+            <a-form-item label="平仓原因"><a-textarea v-model="historyReasons.exit_reason" :max-length="500" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="未记录，可补填" /></a-form-item>
+            <a-button :loading="reasonSaving" @click="saveHistoryReasons">保存原因</a-button>
+          </a-form>
+        </section>
         <section v-for="section in historyDetailSections" :key="section.title" class="pm-detail-section">
           <h3>{{ section.title }}</h3>
           <a-descriptions bordered size="small" :column="2">
@@ -174,7 +182,7 @@
 <script>
 import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
-import { createManagedAccountStrategy, getManagedAccountPositions, getManagedPositionSnapshot, getPositionManagementTradeHistory } from '@/api/strategy'
+import { createManagedAccountStrategy, getManagedAccountPositions, getManagedPositionSnapshot, getPositionManagementTradeHistory, updatePositionManagementReasons } from '@/api/strategy'
 import { formatExchangeCredentialLabel } from '@/utils/exchangeCredential'
 import {
   accountPositionSnapshotCacheKey,
@@ -314,6 +322,8 @@ export default {
       historyPage: 1,
       historyTotal: 0,
       historyDetailVisible: false,
+      reasonSaving: false,
+      historyReasons: { entry_reason: '', exit_reason: '' },
       selectedHistoryItem: null,
       managedEditorOpen: false,
       managedEditorPosition: null
@@ -444,7 +454,21 @@ export default {
       }
       return String(value)
     },
+    async saveHistoryReasons () {
+      if (!this.selectedHistoryItem || this.reasonSaving) return
+      this.reasonSaving = true
+      const id = this.selectedHistoryItem.id
+      const values = { ...this.historyReasons }
+      try {
+        const res = await updatePositionManagementReasons(id, values)
+        if (!res || res.code !== 1) throw new Error((res && res.msg) || '保存原因失败')
+        this.historyItems = this.historyItems.map(item => item.id === id ? { ...item, ...values } : item)
+        if (this.selectedHistoryItem && this.selectedHistoryItem.id === id) this.selectedHistoryItem = { ...this.selectedHistoryItem, ...values }
+        this.$message.success('原因已保存')
+      } catch (error) { this.$message.error(error.backendMessage || error.message || '保存原因失败') } finally { this.reasonSaving = false }
+    },
     openHistoryDetail (record) {
+      this.historyReasons = { entry_reason: record.entry_reason || '', exit_reason: record.exit_reason || '' }
       this.selectedHistoryItem = record
       this.historyDetailVisible = true
     },
