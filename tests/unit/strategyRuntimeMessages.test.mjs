@@ -12,9 +12,58 @@ test('Gate stock account environment errors are readable in logs', () => {
 })
 
 test('technical runtime lines remain intact', () => {
-  const message = 'Strategy runtime ready: instruments=1, timeframe=1m, mode=live'
+  const message = 'unrecognized technical runtime detail'
   assert.equal(translateStrategyRuntimeMessage(message, () => assert.fail('Unexpected translation')), message)
   assert.equal(translateStrategyRuntimeMessage('strategyRuntime.leaseLost', key => `translated:${key}`), 'translated:strategyRuntime.leaseLost')
+})
+
+test('common live order logs are localized with actionable summaries', () => {
+  const translate = (key, params = {}) => `${key}:${JSON.stringify(params)}`
+  const invalidSymbol = 'Leverage or margin-mode setup failed for XAUT/USDT: Binance margin mode setup failed: Binance HTTP 400: {"code":-1121,"msg":"Invalid symbol."}'
+  const queued = 'Order queued: open_long XAUT/USDT quantity=0.2294 pending_id=154712 client_order_id=test'
+
+  assert.match(translateStrategyRuntimeMessage(invalidSymbol, translate), /invalid_symbol.*XAUT\/USDT/)
+  assert.match(translateStrategyRuntimeMessage(queued, translate), /orderQueued.*open_long.*154712/)
+  assert.match(
+    translateStrategyRuntimeMessage('strategyV2.dualDirectionHedgeModeRequired:binance_one_way_mode', translate),
+    /dualDirectionHedgeModeRequired.*positionModeDetail\.binanceOneWay/
+  )
+})
+
+test('common exchange API failures use stable actionable categories', () => {
+  const translate = (key, params = {}) => `${key}:${JSON.stringify(params)}`
+  const examples = [
+    [
+      'Auto-stopped (position_sync_binance): Binance HTTP 401: {"code":-2015,"msg":"Invalid API-key, IP, or permissions for action"}',
+      'credentialsStopped'
+    ],
+    [
+      'Exchange order failed (gate BTC/USDT close_short): Gate HTTP 400: {"label":"MARKET_PRICE_TOO_DEVIATED","message":"price deviates too much"}',
+      'price_band'
+    ],
+    [
+      'Exchange order failed (gate BTC/USDT open_short): Insufficient free balance or margin. Details: Gate HTTP 400: {"label":"INSUFFICIENT_AVAILABLE","message":"margin 950 while available 800"}',
+      'insufficient_funds'
+    ],
+    [
+      'Exchange order failed (bybit BTC/USDT open_long): Bybit {"retCode":10006,"retMsg":"Too many visits"}',
+      'rate_limit'
+    ]
+  ]
+
+  for (const [raw, category] of examples) {
+    assert.match(translateStrategyRuntimeMessage(raw, translate), new RegExp(`exchangeError\\.${category}`))
+  }
+
+  const structured = {
+    category: 'order_size',
+    exchange: 'okx',
+    context: 'okx BTC/USDT open_long'
+  }
+  assert.match(
+    translateStrategyRuntimeMessage('future backend wording', translate, structured),
+    /exchangeError\.order_size/
+  )
 })
 
 test('spot sell failures are localized in runtime logs', () => {

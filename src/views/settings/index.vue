@@ -254,6 +254,7 @@
                       <th>{{ tOr('settings.billingPlans.days', 'Days') }}</th>
                       <th>{{ tOr('settings.billingPlans.onceCredits', 'One-time credits') }}</th>
                       <th>{{ tOr('settings.billingPlans.monthlyCredits', 'Monthly credits') }}</th>
+                      <th>{{ $t('settings.billingPlans.strategyLimit') }}</th>
                       <th>{{ tOr('settings.billingPlans.stripePrice', 'Stripe Price ID') }}</th>
                       <th>{{ tOr('settings.billingPlans.flags', 'Flags') }}</th>
                       <th></th>
@@ -264,19 +265,30 @@
                       <td><a-input :ref="`billingPlanCode-${plan._key}`" v-model="plan.code" size="small" :disabled="!!plan.persisted" placeholder="plan_code" /></td>
                       <td class="plan-copy-cell">
                         <a-input v-model="plan.name" size="small" :placeholder="tOr('settings.billingPlans.name', 'Name')" />
-                        <a-input v-model="plan.description" size="small" :placeholder="tOr('settings.billingPlans.description', 'Description')" />
+                        <a-textarea v-model="plan.description" :auto-size="{ minRows: 1, maxRows: 4 }" :placeholder="tOr('settings.billingPlans.description', 'Description')" />
                       </td>
                       <td><a-input-number v-model="plan.price_usd" size="small" :min="0" :precision="2" /></td>
                       <td><a-input-number v-model="plan.duration_days" size="small" :min="0" :disabled="plan.is_lifetime" /></td>
                       <td><a-input-number v-model="plan.credits_once" size="small" :min="0" /></td>
                       <td><a-input-number v-model="plan.credits_monthly" size="small" :min="0" /></td>
+                      <td><a-input-number v-model="plan.strategy_limit" size="small" :min="1" /></td>
                       <td><a-input v-model="plan.stripe_price_id" size="small" placeholder="price_..." /></td>
                       <td class="plan-flags">
                         <a-checkbox v-model="plan.is_active">{{ tOr('settings.billingPlans.active', 'Active') }}</a-checkbox>
                         <a-checkbox v-model="plan.is_lifetime">{{ tOr('settings.billingPlans.lifetime', 'Lifetime') }}</a-checkbox>
                         <a-checkbox v-model="plan.is_popular">{{ tOr('settings.billingPlans.popular', 'Popular') }}</a-checkbox>
+                        <a-checkbox v-model="plan.referral_eligible">{{ $t('settings.billingPlans.referralEligible') }}</a-checkbox>
                       </td>
-                      <td><a-button type="link" class="plan-remove" @click="removeBillingPlan(index)"><a-icon type="delete" /></a-button></td>
+                      <td>
+                        <a-tooltip :title="$t('settings.billingPlans.delete')">
+                          <a-button
+                            type="link"
+                            class="plan-remove"
+                            :loading="billingPlanDeletingCode === plan.code"
+                            @click="removeBillingPlan(index)"
+                          ><a-icon type="delete" /></a-button>
+                        </a-tooltip>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -286,6 +298,55 @@
                   <a-icon type="save" /> {{ tOr('settings.billingPlans.save', 'Save plans') }}
                 </a-button>
               </div>
+            </a-card>
+
+            <a-card
+              v-if="activeGroupKey === 'billing'"
+              class="billing-plan-manager"
+              :title="$t('settings.referralActivity.title')"
+              :bordered="false"
+            >
+              <a-alert type="info" show-icon :message="$t('settings.referralActivity.hint')" />
+              <a-form :form="form" layout="vertical" class="referral-settings-form">
+                <a-row :gutter="24">
+                  <a-col :xs="24" :md="12">
+                    <a-form-item :label="$t('settings.field.REFERRAL_PROGRAM_ENABLED')">
+                      <a-switch v-decorator="['REFERRAL_PROGRAM_ENABLED', { valuePropName: 'checked', initialValue: getBoolValue('billing', 'REFERRAL_PROGRAM_ENABLED', false) }]" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="24" :md="12">
+                    <a-form-item>
+                      <template #label>
+                        <span>{{ $t('settings.field.REFERRAL_REWARD_RATES') }}</span>
+                        <a-tag class="referral-level-cap">{{ $t('settings.referralActivity.maxThreeLevels') }}</a-tag>
+                      </template>
+                      <a-input
+                        v-decorator="['REFERRAL_REWARD_RATES', {
+                          initialValue: getFieldValue('billing', 'REFERRAL_REWARD_RATES') || '10,5,3',
+                          rules: [{ validator: validateReferralRewardRates }]
+                        }]"
+                        :placeholder="$t('settings.referralActivity.ratesPlaceholder')"
+                        :maxLength="24"
+                        @input="limitReferralRewardRates"
+                      />
+                      <div class="field-default referral-rate-help">
+                        <a-icon type="info-circle" />
+                        {{ $t('settings.referralActivity.ratesHelpCompact') }}
+                      </div>
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="24" :md="12">
+                    <a-form-item :label="$t('settings.field.REFERRAL_REWARD_HOLD_DAYS')">
+                      <a-input-number v-decorator="['REFERRAL_REWARD_HOLD_DAYS', { initialValue: getNumberValue('billing', 'REFERRAL_REWARD_HOLD_DAYS', 7) }]" :min="0" :max="365" style="width: 100%" />
+                    </a-form-item>
+                  </a-col>
+                  <a-col :xs="24" :md="12">
+                    <a-form-item :label="$t('settings.field.REFERRAL_MIN_WITHDRAWAL_USD')">
+                      <a-input-number v-decorator="['REFERRAL_MIN_WITHDRAWAL_USD', { initialValue: getNumberValue('billing', 'REFERRAL_MIN_WITHDRAWAL_USD', 10) }]" :min="0.01" :precision="2" style="width: 100%" />
+                    </a-form-item>
+                  </a-col>
+                </a-row>
+              </a-form>
             </a-card>
 
             <div v-if="activeGroupKey === 'market_catalog'" class="market-catalog-panel">
@@ -819,7 +880,7 @@
 import { getSettingsSchema, getSettingsValues, saveSettings, getOpenRouterBalance, getMarketCatalogOverview, syncMarketCatalog } from '@/api/settings'
 import { getMarketModules } from '@/api/marketModules'
 import { getSystemUniverseOverview, syncSystemUniverses } from '@/api/universe'
-import { getAdminMembershipPlans, saveAdminMembershipPlans } from '@/api/billing'
+import { deleteAdminMembershipPlan, getAdminMembershipPlans, saveAdminMembershipPlans } from '@/api/billing'
 import { baseMixin } from '@/store/app-mixin'
 import FundamentalSyncPanel from './FundamentalSyncPanel.vue'
 
@@ -855,6 +916,7 @@ export default {
       selectedLlmProvider: '',
       billingPlans: [],
       billingPlansSaving: false,
+      billingPlanDeletingCode: '',
       advancedExpanded: {},
       settingsInputNonce: Math.random().toString(36).slice(2, 10)
     }
@@ -899,7 +961,7 @@ export default {
         {
           key: 'operations',
           title: this.tOr('settings.nav.operations', 'Operations'),
-          keys: ['email', 'sms', 'network', 'security']
+          keys: ['email', 'sms', 'network', 'security', 'strategy_runtime']
         },
         {
           key: 'organization',
@@ -934,9 +996,18 @@ export default {
       return this.sortedSchema[this.activeGroupKey] || null
     },
     currentDisplayEntries () {
-      const items = this.currentGroup && Array.isArray(this.currentGroup.items)
+      let items = this.currentGroup && Array.isArray(this.currentGroup.items)
         ? this.currentGroup.items
         : []
+      if (this.activeGroupKey === 'billing') {
+        const referralKeys = new Set([
+          'REFERRAL_PROGRAM_ENABLED',
+          'REFERRAL_REWARD_RATES',
+          'REFERRAL_REWARD_HOLD_DAYS',
+          'REFERRAL_MIN_WITHDRAWAL_USD'
+        ])
+        items = items.filter(item => !referralKeys.has(item.key))
+      }
       if (this.activeGroupKey === 'data_source') {
         return this.buildCategorizedEntries(items, this.dataSourceSectionDefinitions(), 'data_source')
       }
@@ -1156,6 +1227,8 @@ export default {
         duration_days: Number(plan.duration_days || 0),
         credits_once: Number(plan.credits_once || 0),
         credits_monthly: Number(plan.credits_monthly || 0),
+        strategy_limit: Math.max(1, Number(plan.strategy_limit || 10)),
+        referral_eligible: !!plan.referral_eligible,
         is_lifetime: !!plan.is_lifetime,
         is_active: plan.is_active !== false,
         is_popular: !!plan.is_popular,
@@ -1197,12 +1270,78 @@ export default {
     },
     removeBillingPlan (index) {
       const plan = this.billingPlans[index]
-      if (plan && plan.persisted) {
-        plan.is_active = false
-        this.$message.info(this.tOr('settings.billingPlans.deactivated', 'Existing plans are retained for order history and have been disabled.'))
+      if (!plan) return
+      if (!plan.persisted) {
+        this.billingPlans.splice(index, 1)
         return
       }
-      this.billingPlans.splice(index, 1)
+      this.$confirm({
+        title: this.$t('settings.billingPlans.deleteConfirmTitle'),
+        content: this.$t('settings.billingPlans.deleteConfirmContent', { name: plan.name || plan.code }),
+        okText: this.$t('settings.billingPlans.delete'),
+        cancelText: this.$t('common.cancel'),
+        okType: 'danger',
+        onOk: async () => {
+          this.billingPlanDeletingCode = plan.code
+          try {
+            const res = await deleteAdminMembershipPlan(plan.code)
+            if (res && res.code === 1) {
+              this.billingPlans.splice(index, 1)
+              this.$message.success(this.$t('settings.billingPlans.deleted'))
+            } else {
+              this.$message.error(this.getPlanDeleteErrorMessage(res && res.msg))
+            }
+          } catch (error) {
+            const message = error && error.response && error.response.data && error.response.data.msg
+            this.$message.error(this.getPlanDeleteErrorMessage(message))
+          } finally {
+            this.billingPlanDeletingCode = ''
+          }
+        }
+      })
+    },
+    getPlanDeleteErrorMessage (code) {
+      if (code === 'cannot_delete_last_active_plan') {
+        return this.$t('settings.billingPlans.cannotDeleteLastActive')
+      }
+      if (code === 'plan_not_found') {
+        return this.$t('settings.billingPlans.planNotFound')
+      }
+      return this.$t('settings.billingPlans.deleteFailed')
+    },
+    limitReferralRewardRates (event) {
+      const value = event && event.target ? event.target.value : event
+      const tokens = String(value || '').split(/[,，;；\s]+/)
+      if (tokens.filter(Boolean).length <= 3) return
+      this.$nextTick(() => {
+        this.form.setFieldsValue({
+          REFERRAL_REWARD_RATES: tokens.filter(Boolean).slice(0, 3).join(',')
+        })
+      })
+    },
+    validateReferralRewardRates (rule, value, callback) {
+      const tokens = String(value || '')
+        .split(/[,，;；\s]+/)
+        .map(item => item.trim())
+        .filter(Boolean)
+      if (!tokens.length) {
+        callback(new Error(this.$t('settings.referralActivity.ratesRequired')))
+        return
+      }
+      if (tokens.length > 3) {
+        callback(new Error(this.$t('settings.referralActivity.ratesTooMany')))
+        return
+      }
+      const values = tokens.map(item => Number(item.replace('%', '')))
+      if (values.some(item => !Number.isFinite(item) || item < 0 || item > 100)) {
+        callback(new Error(this.$t('settings.referralActivity.ratesOutOfRange')))
+        return
+      }
+      if (values.reduce((total, item) => total + item, 0) > 100) {
+        callback(new Error(this.$t('settings.referralActivity.ratesTotalExceeded')))
+        return
+      }
+      callback()
     },
     async saveBillingPlanCatalog () {
       this.billingPlansSaving = true
@@ -1434,7 +1573,7 @@ export default {
           badge: 'US · HK · Crypto',
           badgeColor: 'blue',
           keys: [
-            'CCXT_DEFAULT_EXCHANGE',
+            'CRYPTO_PUBLIC_DEFAULT_EXCHANGE',
             'FINNHUB_API_KEY',
             'FINNHUB_FREE_ONLY',
             'TWELVE_DATA_API_KEY',
@@ -1690,6 +1829,7 @@ export default {
         app: 'appstore',
         ai: 'robot',
         trading: 'stock',
+        strategy_runtime: 'cluster',
         market_modules: 'appstore',
         data_source: 'database',
         search: 'search',
@@ -1710,7 +1850,9 @@ export default {
     getItemLabel (groupKey, item) {
       const key = `settings.field.${item.key}`
       const translated = this.$t(key)
-      return translated !== key ? translated : item.label
+      if (translated !== key) return translated
+      if (item.label && !item.label.startsWith('settings.')) return item.label
+      return item.key
     },
 
     getItemDescription (groupKey, item) {
@@ -1718,6 +1860,10 @@ export default {
       const translated = this.$t(key)
       if (translated !== key) {
         return translated
+      }
+      if (item.description && item.description.startsWith('settings.')) {
+        const generic = this.$t(item.description)
+        return generic !== item.description ? generic : ''
       }
       return item.description || ''
     },
@@ -1867,7 +2013,7 @@ export default {
     },
 
     copyRestartCommand () {
-      const cmd = 'cd backend_api_python && py run.py'
+      const cmd = 'docker compose restart backend trading-worker kafka-audit-worker strategy-dispatcher-worker strategy-evaluator-worker'
       navigator.clipboard.writeText(cmd).then(() => {
         this.$message.success(this.$t('settings.copySuccess'))
       }).catch(() => {
@@ -1915,7 +2061,10 @@ export default {
 
           const res = await saveSettings(data)
           if (res.code === 1) {
-            this.$message.success(res.msg || this.$t('settings.saveSuccess'))
+            const responseMessage = res.msg && res.msg.startsWith('settings.')
+              ? this.$t(res.msg)
+              : res.msg
+            this.$message.success(responseMessage || this.$t('settings.saveSuccess'))
             if (res.data && res.data.requires_restart) {
               this.showRestartTip = true
             }
@@ -3004,6 +3153,27 @@ export default {
   .billing-plan-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
 }
 
+.referral-settings-form { margin-top: 16px; }
+.referral-level-cap {
+  margin-left: 8px;
+  border-color: color-mix(in srgb, var(--primary-color, #1890ff) 30%, transparent);
+  background: color-mix(in srgb, var(--primary-color, #1890ff) 9%, transparent);
+  color: var(--primary-color, #1890ff);
+  font-size: 11px;
+  font-weight: 500;
+}
+.referral-rate-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--qd-text-muted, #6b7280) !important;
+  font-size: 12px;
+  line-height: 1.5;
+
+  .anticon { margin-top: 3px; }
+}
+
 .theme-dark .billing-plan-manager {
   background: #171a1f;
   color: #e6edf3;
@@ -3043,9 +3213,13 @@ export default {
   ::v-deep .ant-alert-info .ant-alert-message {
     color: #c9d1d9;
   }
+  .referral-rate-help {
+    color: #9da7b3 !important;
+  }
   .billing-plan-table {
     th { color: #9da7b3; }
     td { border-color: rgba(255, 255, 255, 0.1); }
   }
 }
+
 </style>

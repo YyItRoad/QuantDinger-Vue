@@ -10,9 +10,13 @@ export function strategyStopFeedback (response, translate, closePositions = fals
   } else if (accepted) {
     const queued = Number(data.close_orders_queued || 0)
     const completed = Number(data.close_orders_completed || 0)
-    key = closing && completed > 0 && completed === queued
-      ? 'strategyV2.stoppedAndVirtualCloseCompleted'
-      : (closing ? 'strategyV2.stoppedAndCloseQueued' : 'strategyV2.paused')
+    if (closing && data.close_positions_found === 0) {
+      key = 'strategyV2.stoppedNoPositions'
+    } else {
+      key = closing && completed > 0 && completed === queued
+        ? 'strategyV2.stoppedAndVirtualCloseCompleted'
+        : (closing ? 'strategyV2.stoppedAndCloseQueued' : 'strategyV2.paused')
+    }
     level = 'success'
   } else if (data.status === 'stopped' && closing) {
     key = 'strategyV2.stopClosePartialFailure'

@@ -188,10 +188,18 @@ export function strategyCodeOwnsExecutionConfig (code) {
   return Boolean(match && Number(match[1]) >= 7)
 }
 
+export function strategyCodeDeclaredFamily (code) {
+  const match = String(code || '').match(/\bstrategy_family\s*=\s*["']([^"']+)["']/i)
+  return String((match && match[1]) || '').trim().toLowerCase().replace(/-/g, '_')
+}
+
 export function sanitizeRuntimeConfigForSource (config = {}, code = '') {
   const next = { ...(config && typeof config === 'object' ? config : {}) }
-  if (!strategyCodeOwnsExecutionConfig(code)) return next
+  const declaredFamily = strategyCodeDeclaredFamily(code)
+  const declaredNonRobot = declaredFamily && !['robot', 'grid', 'dca', 'martingale', 'layered_martingale'].includes(declaredFamily)
+  if (!strategyCodeOwnsExecutionConfig(code) && !declaredNonRobot) return next
   SOURCE_OWNED_EXECUTION_KEYS.forEach(key => delete next[key])
+  if (declaredNonRobot) next.strategy_family = declaredFamily
   return next
 }
 

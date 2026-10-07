@@ -7,6 +7,11 @@ const billingApi = {
   CryptoOrder: (id) => `/api/billing/crypto/order/${id}`,
   StripeCreate: '/api/billing/stripe/create',
   AdminPlans: '/api/billing/admin/plans',
+  AdminPlan: (code) => `/api/billing/admin/plans/${encodeURIComponent(code)}`,
+  ReferralRewards: '/api/billing/referral-rewards',
+  ReferralWithdrawals: '/api/billing/referral-rewards/withdrawals',
+  AdminReferralWithdrawals: '/api/billing/admin/referral-withdrawals',
+  AdminReferralWithdrawalReview: (id) => `/api/billing/admin/referral-withdrawals/${id}/review`,
   UsdtChains: '/api/billing/usdt/chains',
   UsdtCreate: '/api/billing/usdt/create',
   UsdtOrder: (id) => `/api/billing/usdt/order/${id}`
@@ -34,6 +39,26 @@ export function getAdminMembershipPlans () {
 
 export function saveAdminMembershipPlans (plans) {
   return request({ url: billingApi.AdminPlans, method: 'put', data: { plans } })
+}
+
+export function deleteAdminMembershipPlan (code) {
+  return request({ url: billingApi.AdminPlan(code), method: 'delete' })
+}
+
+export function getReferralRewards (params = {}) {
+  return request({ url: billingApi.ReferralRewards, method: 'get', params })
+}
+
+export function createReferralWithdrawal (data) {
+  return request({ url: billingApi.ReferralWithdrawals, method: 'post', data })
+}
+
+export function getAdminReferralWithdrawals (params = {}) {
+  return request({ url: billingApi.AdminReferralWithdrawals, method: 'get', params })
+}
+
+export function reviewAdminReferralWithdrawal (id, data) {
+  return request({ url: billingApi.AdminReferralWithdrawalReview(id), method: 'post', data })
 }
 
 export function getMembershipPlans () {

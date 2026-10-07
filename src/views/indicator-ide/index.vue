@@ -3923,7 +3923,7 @@ export default {
       let defaultExchange = 'binance'
       try {
         const res = await getPublicSettingsConfig()
-        const value = res && res.code === 1 && res.data && res.data.ccxt_default_exchange
+        const value = res && res.code === 1 && res.data && res.data.crypto_public_default_exchange
         defaultExchange = this.normalizeCryptoExchange(value)
       } catch (_) { /* keep fallback */ }
       this.cryptoExchangeId = defaultExchange

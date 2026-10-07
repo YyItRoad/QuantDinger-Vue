@@ -49,7 +49,8 @@ test('indicator workspace keeps account mode balances and records in the trading
 test('spot trading cannot submit a sell without a current holding', () => {
   const source = read('src/components/QuickTradePanel/QuickTradePanel.vue')
 
-  assert.match(source, /:disabled="!canSubmit \|\| \(!isSwapMode && currentPositions\.length === 0\)"/)
+  assert.match(source, /:disabled="!canSubmitSell"/)
+  assert.match(source, /requested > 0 && requested <= this\.spotSellAvailable/)
 })
 
 test('exchange position values are not overwritten by the chart price source', () => {

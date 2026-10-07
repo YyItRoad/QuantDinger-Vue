@@ -8,6 +8,7 @@ import {
   extractStrategyRuntimeContractFromCode,
   formatStrategyInstrument,
   sanitizeRuntimeConfigForSource,
+  strategyCodeDeclaredFamily,
   strategyCodeOwnsExecutionConfig,
   strategyCodeUsesExplicitExchange
 } from '../../src/views/strategy-ide/components/scriptTemplateCatalog.js'
@@ -203,6 +204,28 @@ CELL_UPPER = [1.1]
     notification_channels: ['browser']
   })
   assert.deepEqual(sanitizeRuntimeConfigForSource(previous, 'GRID_TEMPLATE_VERSION = 6'), previous)
+})
+
+test('declared trend source removes stale grid executor metadata', () => {
+  const code = `
+def initialize(context):
+    context.set_metadata(direction_mode="one_way", strategy_family="trend")
+`
+  const previous = {
+    initial_capital: 1000,
+    strategy_family: 'robot',
+    executor_type: 'grid',
+    executor_config: { grid_count: 20 },
+    executor_preview: { grid_count: 20 },
+    bot_type: 'grid',
+    bot_params: { gridCount: 20, lowerPrice: 0.98, upperPrice: 1.02 }
+  }
+
+  assert.equal(strategyCodeDeclaredFamily(code), 'trend')
+  assert.deepEqual(sanitizeRuntimeConfigForSource(previous, code), {
+    initial_capital: 1000,
+    strategy_family: 'trend'
+  })
 })
 
 test('strategy setup spans primary controls and refreshes the watchlist when opened', () => {

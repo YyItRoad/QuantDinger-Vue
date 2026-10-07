@@ -68,7 +68,14 @@
             </span>
           </a-tooltip>
         </div>
-        <span v-else class="log-message">{{ formatLogMessage(log.message) }}</span>
+        <span v-else class="log-message">
+          {{ formatLogMessage(log) }}
+          <a-tooltip v-if="log.exchange_error && log.exchange_error.technical_detail" :title="log.exchange_error.technical_detail">
+            <span class="market-data-technical">
+              <a-icon type="code" /> {{ $t('trading-assistant.logs.marketData.technicalDetail') }}
+            </span>
+          </a-tooltip>
+        </span>
       </div>
     </div>
   </div>
@@ -127,8 +134,13 @@ export default {
     this.stopAutoRefresh()
   },
   methods: {
-    formatLogMessage (message) {
-      return translateStrategyRuntimeMessage(message, key => this.$t(key))
+    formatLogMessage (log) {
+      const message = typeof log === 'string' ? log : log?.message
+      return translateStrategyRuntimeMessage(
+        message,
+        (key, params) => this.$t(key, params),
+        typeof log === 'object' ? log?.exchange_error : null
+      )
     },
 
     async loadLogs () {

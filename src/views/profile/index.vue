@@ -81,23 +81,23 @@
       </a-card>
 
       <a-card :bordered="false" class="referral-card">
-        <div class="referral-header">
+        <div class="referral-card-heading">
           <h3 class="referral-title">
             <a-icon type="team" />
             {{ $t('profile.referral.title') || '邀请好友' }}
           </h3>
-        </div>
-        <div class="referral-body">
-          <div class="referral-stats">
-            <div class="stat-item">
-              <span class="stat-value">{{ referralData.total || 0 }}</span>
-              <span class="stat-label">{{ $t('profile.referral.totalInvited') || '已邀请' }}</span>
+          <div class="referral-mini-stats">
+            <div class="referral-mini-stat">
+              <strong>{{ referralData.total || 0 }}</strong>
+              <span>{{ $t('profile.referral.totalInvited') || '已邀请' }}</span>
             </div>
-            <div class="stat-item" v-if="referralData.referral_bonus > 0">
-              <span class="stat-value">+{{ referralData.referral_bonus }}</span>
-              <span class="stat-label">{{ $t('profile.referral.bonusPerInvite') || '每邀请获得' }}</span>
+            <div v-if="referralData.referral_bonus > 0" class="referral-mini-stat">
+              <strong>+{{ referralData.referral_bonus }}</strong>
+              <span>{{ $t('profile.referral.bonusPerInvite') || '每邀请获得' }}</span>
             </div>
           </div>
+        </div>
+        <div class="referral-body">
           <div class="referral-link-section">
             <div class="link-label">{{ $t('profile.referral.yourLink') || '您的邀请链接' }}</div>
             <div class="link-box">
@@ -108,12 +108,68 @@
               </a-input>
             </div>
           </div>
-          <div class="referral-hint" v-if="referralData.register_bonus > 0">
-            <a-icon type="gift" />
-            <span>{{ $t('profile.referral.newUserBonus') || '新用户注册获得' }} {{ referralData.register_bonus }} {{ $t('profile.credits.unit') || '积分' }}</span>
+          <div class="referral-benefits">
+            <div class="referral-benefit" v-if="referralData.register_bonus > 0">
+              <a-icon type="gift" />
+              <span>{{ $t('profile.referral.newUserBonus') || '新用户注册获得' }} {{ referralData.register_bonus }} {{ $t('profile.credits.unit') || '积分' }}</span>
+            </div>
+            <div class="referral-benefit referral-benefit-membership" v-if="rewardData.enabled && maxReferralRewardRate > 0">
+              <a-icon type="crown" />
+              <span>{{ $t('profile.referralRewards.membershipRewardHint', { rate: formatRewardRate(maxReferralRewardRate) }) }}</span>
+            </div>
+          </div>
+          <div v-if="rewardData.enabled" class="referral-balance-strip">
+            <div class="referral-balance-item referral-balance-primary">
+              <span>{{ $t('profile.referralRewards.available') }}</span>
+              <strong>{{ formatRewardAmount(rewardData.account.available_balance) }} <small>USD</small></strong>
+            </div>
+            <div class="referral-balance-item">
+              <span>{{ $t('profile.referralRewards.pending') }}</span>
+              <strong>{{ formatRewardAmount(rewardData.account.pending_reward_balance) }} USD</strong>
+            </div>
+            <a-tooltip :title="!rewardData.channels.length ? $t('profile.referralRewards.noEnabledCurrency') : ''">
+              <span>
+                <a-button class="reward-withdraw-btn" type="primary" size="small" :disabled="!rewardData.channels.length" @click="openRewardWithdrawal">
+                  {{ $t('profile.referralRewards.withdraw') }}
+                </a-button>
+              </span>
+            </a-tooltip>
           </div>
         </div>
       </a-card>
+
+      <a-modal
+        v-if="rewardData.enabled"
+        v-model="rewardWithdrawalVisible"
+        :title="$t('profile.referralRewards.withdrawTitle')"
+        :confirmLoading="rewardWithdrawalSubmitting"
+        @ok="submitRewardWithdrawal"
+      >
+        <a-alert type="warning" show-icon :message="$t('profile.referralRewards.withdrawNotice')" />
+        <a-form layout="vertical" class="reward-withdrawal-form">
+          <a-form-item :label="$t('profile.referralRewards.currency')">
+            <a-select v-model="rewardWithdrawal.currency" @change="handleRewardWithdrawalCurrencyChange">
+              <a-select-option v-for="currency in withdrawalCurrencies" :key="currency" :value="currency">
+                {{ currency }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item :label="$t('profile.referralRewards.network')">
+            <a-select v-model="rewardWithdrawal.chain">
+              <a-select-option v-for="channel in withdrawalChains" :key="`${channel.currency}:${channel.code}`" :value="channel.code">
+                {{ channel.label }}
+              </a-select-option>
+            </a-select>
+          </a-form-item>
+          <a-form-item :label="$t('profile.referralRewards.address')">
+            <a-input v-model.trim="rewardWithdrawal.address" />
+          </a-form-item>
+          <a-form-item :label="$t('profile.referralRewards.amount')">
+            <a-input-number v-model="rewardWithdrawal.amount" :min="rewardData.minimum_withdrawal" :max="rewardData.account.available_balance" :precision="2" style="width: 100%" />
+            <div class="field-hint">{{ $t('profile.referralRewards.minimum') }}: {{ formatRewardAmount(rewardData.minimum_withdrawal) }} USD</div>
+          </a-form-item>
+        </a-form>
+      </a-modal>
     </div>
 
     <div class="profile-settings-shell">
@@ -589,32 +645,64 @@
 
           <a-tab-pane key="referrals">
             <span slot="tab"><a-icon type="team" />{{ $t('profile.referral.listTab') || '邀请列表' }}</span>
-            <a-table
-              :columns="referralColumns"
-              :dataSource="referralData.list || []"
-              :loading="referralLoading"
-              :pagination="referralPagination"
-              :rowKey="record => record.id"
-              :locale="{ emptyText: $t('profile.referral.noReferrals') || '暂无邀请记录' }"
-              size="small"
-              @change="handleReferralChange"
-            >
-              <!-- Avatar & Name Column -->
-              <template slot="user" slot-scope="text, record">
-                <div class="referral-user-cell">
-                  <a-avatar :size="32" :src="record.avatar || '/avatar2.jpg'" />
-                  <div class="user-info">
-                    <span class="nickname">{{ record.nickname || record.username }}</span>
-                    <span class="username">@{{ record.username }}</span>
-                  </div>
-                </div>
-              </template>
-
-              <!-- Time Column -->
-              <template slot="created_at" slot-scope="text">
-                {{ formatTime(text) }}
-              </template>
-            </a-table>
+            <a-tabs v-model="referralRecordTab" class="referral-record-tabs">
+              <a-tab-pane key="promotions" :tab="$t('profile.referralRewards.promotionRecords')">
+                <a-table
+                  :columns="referralColumns"
+                  :dataSource="referralData.list || []"
+                  :loading="referralLoading"
+                  :pagination="referralPagination"
+                  :rowKey="record => record.id"
+                  :locale="{ emptyText: $t('profile.referral.noReferrals') || '暂无邀请记录' }"
+                  size="small"
+                  @change="handleReferralChange"
+                >
+                  <template slot="user" slot-scope="text, record">
+                    <div class="referral-user-cell">
+                      <a-avatar :size="32" :src="record.avatar || '/avatar2.jpg'" />
+                      <div class="user-info">
+                        <span class="nickname">{{ record.nickname || record.username }}</span>
+                        <span class="username">@{{ record.username }}</span>
+                      </div>
+                    </div>
+                  </template>
+                  <template slot="created_at" slot-scope="text">
+                    {{ formatTime(text) }}
+                  </template>
+                </a-table>
+              </a-tab-pane>
+              <a-tab-pane v-if="rewardData.enabled" key="rewards" :tab="$t('profile.referralRewards.rewardRecords')">
+                <a-table
+                  :columns="rewardLedgerColumns"
+                  :dataSource="rewardData.ledger"
+                  :rowKey="record => record.id"
+                  :pagination="false"
+                  :locale="{ emptyText: $t('profile.referralRewards.noRewardRecords') }"
+                  size="small"
+                >
+                  <template slot="rewardAction" slot-scope="text">
+                    {{ getRewardActionLabel(text) }}
+                  </template>
+                  <template slot="rewardStatus" slot-scope="text">
+                    <a-tag :color="getRewardStatusColor(text)">{{ getRewardStatusLabel(text) }}</a-tag>
+                  </template>
+                </a-table>
+              </a-tab-pane>
+              <a-tab-pane v-if="rewardData.enabled" key="withdrawals" :tab="$t('profile.referralRewards.withdrawalRecords')">
+                <a-table
+                  :columns="rewardWithdrawalColumns"
+                  :dataSource="rewardData.withdrawals"
+                  :rowKey="record => record.id"
+                  :pagination="false"
+                  :locale="{ emptyText: $t('profile.referralRewards.noWithdrawalRecords') }"
+                  size="small"
+                >
+                  <template slot="withdrawalStatus" slot-scope="text">
+                    <a-tag :color="getRewardStatusColor(text)">{{ getRewardStatusLabel(text) }}</a-tag>
+                  </template>
+                </a-table>
+              </a-tab-pane>
+            </a-tabs>
           </a-tab-pane>
 
           <!-- Login Logs Tab (last) -->
@@ -760,6 +848,7 @@
 
 <script>
 import { getProfile, updateProfile, getLoginLogs, getMyCreditsLog, getMyReferrals, getNotificationSettings, updateNotificationSettings, testNotificationSettings, getMfaStatus, startMfaSetup, confirmMfaSetup, disableMfa } from '@/api/user'
+import { createReferralWithdrawal, getReferralRewards } from '@/api/billing'
 import { getSettingsValues } from '@/api/settings'
 import { baseMixin } from '@/store/app-mixin'
 import ProfileAgentTokens from '@/views/profile/components/ProfileAgentTokens.vue'
@@ -842,11 +931,24 @@ export default {
         register_bonus: 0
       },
       referralLoading: false,
+      referralRecordTab: 'promotions',
       referralPagination: {
         current: 1,
         pageSize: 10,
         total: 0
       },
+      rewardData: {
+        enabled: false,
+        account: { available_balance: 0, pending_reward_balance: 0, pending_withdrawal_balance: 0 },
+        ledger: [],
+        withdrawals: [],
+        channels: [],
+        rates: [],
+        minimum_withdrawal: 0
+      },
+      rewardWithdrawalVisible: false,
+      rewardWithdrawalSubmitting: false,
+      rewardWithdrawal: { currency: '', chain: '', address: '', amount: null },
       billing: {
         credits: 0,
         is_vip: false,
@@ -987,6 +1089,33 @@ export default {
         }
       ]
     },
+    rewardLedgerColumns () {
+      return [
+        { title: this.$t('profile.referralRewards.time'), dataIndex: 'created_at', width: 180, customRender: text => this.formatTime(text) },
+        { title: this.$t('profile.referralRewards.type'), dataIndex: 'action', width: 180, scopedSlots: { customRender: 'rewardAction' } },
+        { title: this.$t('profile.referralRewards.amount'), dataIndex: 'amount', width: 120, customRender: text => `${this.formatRewardAmount(text)} USD` },
+        { title: this.$t('profile.referralRewards.status'), dataIndex: 'status', width: 120, scopedSlots: { customRender: 'rewardStatus' } }
+      ]
+    },
+    rewardWithdrawalColumns () {
+      return [
+        { title: this.$t('profile.referralRewards.time'), dataIndex: 'created_at', width: 180, customRender: text => this.formatTime(text) },
+        { title: this.$t('profile.referralRewards.channel'), dataIndex: 'chain', width: 150, customRender: (text, row) => `${row.currency} · ${text}` },
+        { title: this.$t('profile.referralRewards.amount'), dataIndex: 'amount', width: 120, customRender: text => `${this.formatRewardAmount(text)} USD` },
+        { title: this.$t('profile.referralRewards.status'), dataIndex: 'status', width: 120, scopedSlots: { customRender: 'withdrawalStatus' } },
+        { title: this.$t('profile.referralRewards.txHash'), dataIndex: 'tx_hash', ellipsis: true }
+      ]
+    },
+    maxReferralRewardRate () {
+      const rates = Array.isArray(this.rewardData.rates) ? this.rewardData.rates : []
+      return rates.reduce((max, value) => Math.max(max, Number(value) || 0), 0)
+    },
+    withdrawalCurrencies () {
+      return [...new Set(this.rewardData.channels.map(channel => channel.currency).filter(Boolean))]
+    },
+    withdrawalChains () {
+      return this.rewardData.channels.filter(channel => channel.currency === this.rewardWithdrawal.currency)
+    },
     referralLink () {
       const baseUrl = window.location.origin + window.location.pathname
       const ref = this.referralData.referral_code || this.profile.id
@@ -1110,6 +1239,7 @@ export default {
     this.applyTabFromQuery(this.$route.query.tab)
     this.loadProfile()
     this.loadReferrals()
+    this.loadReferralRewards()
   },
   beforeDestroy () {
     window.removeEventListener('resize', this.syncProfileViewport)
@@ -1497,6 +1627,101 @@ export default {
         this.$message.error('Failed to load referral data')
       } finally {
         this.referralLoading = false
+      }
+    },
+
+    async loadReferralRewards () {
+      try {
+        const res = await getReferralRewards({ page: 1, page_size: 50 })
+        if (res && res.code === 1) {
+          this.rewardData = {
+            ...this.rewardData,
+            ...(res.data || {}),
+            account: { ...this.rewardData.account, ...((res.data && res.data.account) || {}) },
+            ledger: (res.data && res.data.ledger) || [],
+            withdrawals: (res.data && res.data.withdrawals) || [],
+            channels: (res.data && res.data.channels) || []
+          }
+        }
+      } catch (e) {
+        this.rewardData.enabled = false
+      }
+    },
+
+    formatRewardAmount (value) {
+      return Number(value || 0).toFixed(2)
+    },
+
+    formatRewardRate (value) {
+      const rate = Number(value || 0)
+      return Number.isInteger(rate) ? String(rate) : rate.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+    },
+
+    getRewardStatusColor (status) {
+      return {
+        pending: 'orange',
+        released: 'blue',
+        posted: 'green',
+        processing: 'blue',
+        paid: 'green',
+        rejected: 'red'
+      }[status] || 'default'
+    },
+
+    getRewardStatusLabel (status) {
+      const key = `profile.referralRewards.statusLabels.${status}`
+      const translated = this.$t(key)
+      return translated === key ? status : translated
+    },
+
+    getRewardActionLabel (action) {
+      const key = `profile.referralRewards.actionLabels.${action}`
+      const translated = this.$t(key)
+      return translated === key ? action : translated
+    },
+
+    openRewardWithdrawal () {
+      const first = this.rewardData.channels[0]
+      this.rewardWithdrawal = {
+        currency: first ? first.currency : '',
+        chain: first ? first.code : '',
+        address: '',
+        amount: this.rewardData.minimum_withdrawal || null
+      }
+      this.rewardWithdrawalVisible = true
+    },
+
+    handleRewardWithdrawalCurrencyChange (currency) {
+      const first = this.rewardData.channels.find(channel => channel.currency === currency)
+      this.rewardWithdrawal.chain = first ? first.code : ''
+    },
+
+    async submitRewardWithdrawal () {
+      const { currency, chain } = this.rewardWithdrawal
+      if (!currency || !chain || !this.rewardWithdrawal.address || !this.rewardWithdrawal.amount) {
+        this.$message.warning(this.$t('profile.referralRewards.completeFields'))
+        return
+      }
+      this.rewardWithdrawalSubmitting = true
+      try {
+        const res = await createReferralWithdrawal({
+          currency,
+          chain,
+          address: this.rewardWithdrawal.address,
+          amount: this.rewardWithdrawal.amount
+        })
+        if (res && res.code === 1) {
+          this.$message.success(this.$t('profile.referralRewards.submitted'))
+          this.rewardWithdrawalVisible = false
+          await this.loadReferralRewards()
+        } else {
+          this.$message.error((res && res.msg) || this.$t('profile.referralRewards.submitFailed'))
+        }
+      } catch (e) {
+        const message = e && e.response && e.response.data && e.response.data.msg
+        this.$message.error(message || this.$t('profile.referralRewards.submitFailed'))
+      } finally {
+        this.rewardWithdrawalSubmitting = false
       }
     },
 
@@ -3077,31 +3302,52 @@ export default {
   }
 
   .profile-overview-grid .referral-card {
-    .referral-body {
-      display: grid;
-      grid-template-columns: minmax(130px, 0.6fr) minmax(200px, 1.4fr);
-      align-items: center;
-      gap: 12px 16px;
-      padding: 14px 0 0;
+    .referral-card-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
     }
 
-    .referral-stats {
-      justify-content: flex-start;
-      gap: 28px;
+    .referral-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding-top: 2px;
 
-      .stat-item {
-        text-align: left;
+      .anticon { color: var(--primary-color, #1890ff); }
+    }
 
-        .stat-value {
-          color: var(--qd-text);
-          font-size: 26px;
-          line-height: 1.2;
-        }
+    .referral-mini-stats {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
 
-        .stat-label {
-          color: var(--qd-text-muted);
-        }
+    .referral-mini-stat {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      white-space: nowrap;
+
+      strong {
+        color: var(--qd-text);
+        font-size: 18px;
+        line-height: 1;
       }
+
+      span {
+        color: var(--qd-text-muted);
+        font-size: 11px;
+      }
+    }
+
+    .referral-body {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 9px;
+      padding: 12px 0 0;
     }
 
     .referral-link-section {
@@ -3122,14 +3368,25 @@ export default {
       }
     }
 
-    .referral-hint {
-      grid-column: 1 / -1;
-      justify-content: flex-start;
-      margin: 0;
-      padding-top: 10px;
-      border-top: 1px solid var(--qd-border);
+    .referral-benefits {
+      display: grid;
+      gap: 4px;
+      min-height: 22px;
+    }
+
+    .referral-benefit {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       color: var(--qd-text-muted);
-      text-align: left;
+      font-size: 11px;
+      line-height: 1.4;
+
+      .anticon { color: #d89614; }
+    }
+
+    .referral-benefit-membership .anticon {
+      color: var(--primary-color, #1890ff);
     }
   }
 
@@ -4008,4 +4265,67 @@ export default {
     }
   }
 }
+
+.referral-balance-strip {
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) minmax(112px, auto) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 1px;
+  padding-top: 9px;
+  border-top: 1px solid var(--qd-border);
+
+  .referral-balance-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    white-space: nowrap;
+
+    > span {
+      color: var(--qd-text-muted);
+      font-size: 11px;
+    }
+
+    strong {
+      color: var(--qd-text);
+      font-size: 13px;
+      line-height: 1.3;
+    }
+  }
+
+  .referral-balance-primary strong {
+    font-size: 16px;
+
+    small {
+      color: var(--qd-text-muted);
+      font-size: 10px;
+      font-weight: 600;
+    }
+  }
+
+  .reward-withdraw-btn {
+    height: 30px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .referral-balance-strip {
+    grid-template-columns: minmax(0, 1fr) auto;
+
+    .referral-balance-item:nth-child(2) {
+      display: none;
+    }
+  }
+}
+
+.referral-record-tabs {
+  ::v-deep .ant-tabs-bar { margin-bottom: 16px; }
+  ::v-deep .ant-tabs-tab { padding-top: 0; }
+}
+
+.reward-withdrawal-form { margin-top: 18px; }
 </style>

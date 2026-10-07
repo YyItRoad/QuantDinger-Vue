@@ -125,7 +125,15 @@ export const summarizeStrategyPerformance = ({ strategy, curve = [], trades = []
       trade && trade.profit != null && trade.profit !== '' &&
       Number.isFinite(Number(trade.profit))
   })
-  const wins = settledTrades.filter(trade => Number(trade.profit) > 0).length
+  const loadedWins = settledTrades.filter(trade => Number(trade.profit) > 0).length
+  const storedCompletedTrades = Number(strategy && strategy.completed_trades)
+  const storedWins = Number(strategy && strategy.wins)
+  const completedTrades = settledTrades.length || (Number.isFinite(storedCompletedTrades) ? storedCompletedTrades : 0)
+  const wins = settledTrades.length ? loadedWins : (Number.isFinite(storedWins) ? storedWins : 0)
+  const storedWinRate = Number(strategy && strategy.win_rate)
+  const winRate = completedTrades
+    ? wins / completedTrades
+    : (Number.isFinite(storedWinRate) ? storedWinRate : 0)
 
   return {
     capital,
@@ -133,9 +141,9 @@ export const summarizeStrategyPerformance = ({ strategy, curve = [], trades = []
     netPnl,
     totalReturn,
     maxDrawdown,
-    winRate: settledTrades.length ? wins / settledTrades.length : 0,
+    winRate,
     wins,
-    completedTrades: settledTrades.length
+    completedTrades
   }
 }
 

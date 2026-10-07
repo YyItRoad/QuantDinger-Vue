@@ -24,11 +24,12 @@ test('strategy class filter is sent to the admin API', () => {
   assert.match(apiSource, /strategy_class/)
 })
 
-test('signal-only deployments do not present simulated capital as live PnL', () => {
+test('signal-only deployments expose a separate virtual ledger without mixing live totals', () => {
   assert.match(source, /strategySummary\.live_capital/)
   assert.match(source, /strategySummary\.live_pnl/)
-  assert.match(source, /record\.execution_mode === 'live'/)
-  assert.match(source, /systemOverview\.signalOnlyNoPnl/)
+  assert.match(source, /strategySummary\.signal_pnl/)
+  assert.match(source, /record\.ledger_mode === 'virtual'/)
+  assert.match(source, /systemOverview\.virtualLedger/)
   assert.doesNotMatch(source, /formatNumber\(strategySummary\.total_capital\)/)
 })
 
@@ -49,6 +50,8 @@ test('new system overview copy exists in every main locale', () => {
     const locale = fs.readFileSync(path.join(root, 'src', 'locales', 'lang', name), 'utf8')
     assert.match(locale, /"systemOverview\.contractTitle"/)
     assert.match(locale, /"systemOverview\.colUniverse"/)
-    assert.match(locale, /"systemOverview\.signalOnlyNoPnl"/)
+    assert.match(locale, /"systemOverview\.virtualAccount"/)
+    assert.match(locale, /"systemOverview\.virtualLedger"/)
+    assert.match(locale, /"systemOverview\.virtualPnl"/)
   }
 })

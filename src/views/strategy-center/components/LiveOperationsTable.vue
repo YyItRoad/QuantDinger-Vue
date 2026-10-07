@@ -330,7 +330,7 @@
 
 <script>
 import * as echarts from 'echarts'
-import { getStrategyDetail, getStrategyEquityCurve, getStrategyTrades } from '@/api/strategy'
+import { getStrategyEquityCurve } from '@/api/strategy'
 import PositionRecords from './PositionRecords.vue'
 import TradingRecords from './TradingRecords.vue'
 import StrategyReviewReport from './StrategyReviewReport.vue'
@@ -367,12 +367,10 @@ export default {
       closingStrategyId: 0,
       exitReason: '',
       selectedId: null,
-      selectedDetail: null,
       detailTab: 'overview',
       statusTab: 'all',
       keyword: '',
       curve: [],
-      trades: [],
       detailLoading: false,
       chart: null,
       detailRequestId: 0
@@ -382,15 +380,15 @@ export default {
     isManagedStrategy () { return !!(strategyTradingConfig(this.selectedStrategy || {}).position_management || {}).enabled },
     entryReason () { return (strategyTradingConfig(this.selectedStrategy || {}).position_management || {}).entry_reason || '' },
     selectedStrategy () {
-      const base = this.strategies.find(item => item.id === this.selectedId)
-      // The list endpoint owns volatile runtime fields such as status and heartbeat.
-      // Detail data is useful for richer configuration, but it may lag behind a
-      // start or stop request and must not overwrite the refreshed list state.
-      return base ? { ...(this.selectedDetail || {}), ...base } : null
+      return this.strategies.find(item => item.id === this.selectedId) || null
     },
     isGridStrategy () {
       const strategy = this.selectedStrategy || {}
       const config = strategyTradingConfig(strategy)
+      const manifest = config.strategy_manifest && typeof config.strategy_manifest === 'object' ? config.strategy_manifest : {}
+      const metadata = manifest.metadata && typeof manifest.metadata === 'object' ? manifest.metadata : {}
+      const declaredFamily = String(metadata.strategy_family || '').toLowerCase().replace(/-/g, '_')
+      if (declaredFamily && !['robot', 'grid'].includes(declaredFamily)) return false
       const type = String(strategy.resolved_bot_type || strategy.bot_type || config.bot_type || config.executor_type || '').toLowerCase().replace(/-/g, '_')
       const template = String(strategy.template_key || config.template_key || '').toLowerCase()
       const params = config.bot_params && typeof config.bot_params === 'object' ? config.bot_params : {}
@@ -434,8 +432,7 @@ export default {
       return {
         ...summarizeStrategyPerformance({
           strategy: this.selectedStrategy,
-          curve: this.curve,
-          trades: this.trades
+          curve: this.curve
         }),
         grossExposure: Number(this.health(this.selectedStrategy).gross_exposure || 0)
       }
@@ -522,26 +519,16 @@ export default {
       if (!strategy || !strategy.id) return
       this.selectedId = strategy.id
       this.detailTab = 'overview'
-      this.selectedDetail = null
       this.loadDetails(strategy.id)
     },
     async loadDetails (id) {
       const requestId = ++this.detailRequestId
       this.detailLoading = true
       this.curve = []
-      this.trades = []
       try {
-        const [detailRes, curveRes, tradesRes] = await Promise.all([
-          getStrategyDetail(id).catch(() => null),
-          getStrategyEquityCurve(id).catch(() => null),
-          getStrategyTrades(id).catch(() => null)
-        ])
+        const curveRes = await getStrategyEquityCurve(id).catch(() => null)
         if (requestId !== this.detailRequestId) return
-        if (detailRes && detailRes.code === 1) this.selectedDetail = detailRes.data || null
         this.curve = curveRes && curveRes.code === 1 && Array.isArray(curveRes.data) ? curveRes.data : []
-        if (tradesRes && tradesRes.code === 1 && tradesRes.data) {
-          this.trades = tradesRes.data.trades || tradesRes.data.items || []
-        }
       } finally {
         if (requestId === this.detailRequestId) {
           this.detailLoading = false

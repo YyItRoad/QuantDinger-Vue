@@ -19,9 +19,14 @@ test('queued closing does not claim positions have closed', () => {
 })
 
 test('only an actually paused strategy reports a partial close failure', () => {
-  const result = strategyStopFeedback({ code: 0, data: {
-    status: 'stopped', close_requested: true, close_errors: ['strategyV2.closeRunIdentityMissing']
-  } }, t)
+  const result = strategyStopFeedback({
+    code: 0,
+    data: {
+      status: 'stopped',
+      close_requested: true,
+      close_errors: ['strategyV2.closeRunIdentityMissing']
+    }
+  }, t)
   assert.equal(result.level, 'warning')
   assert.ok(result.message.includes(zh['strategyV2.stopClosePartialFailure']))
   assert.ok(result.message.includes(zh['strategyV2.closeRunIdentityMissing']))
@@ -52,4 +57,18 @@ test('completed virtual close reports settlement instead of only queueing', () =
   }, t, true)
   assert.equal(result.level, 'success')
   assert.equal(result.message, zh['strategyV2.stoppedAndVirtualCloseCompleted'])
+})
+
+test('empty-position stop and close reports immediate completion', () => {
+  const result = strategyStopFeedback({
+    code: 1,
+    data: {
+      status: 'stopped',
+      close_requested: true,
+      close_positions_found: 0,
+      close_orders_queued: 0
+    }
+  }, t, true)
+  assert.equal(result.level, 'success')
+  assert.equal(result.message, zh['strategyV2.stoppedNoPositions'])
 })

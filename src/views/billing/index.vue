@@ -53,9 +53,10 @@
           <a-tag v-if="plan.is_popular" color="gold" class="popular-badge">{{ tr('billing.popular', 'Popular') }}</a-tag>
           <div class="plan-title">{{ planDisplayName(plan) }}</div>
           <div class="plan-price">${{ plan.price_usd }} <span class="plan-unit">{{ plan.is_lifetime ? $t('billing.once') : `/ ${plan.duration_days} ${tr('billing.days', 'days')}` }}</span></div>
+          <div class="plan-benefit" v-if="plan.description">{{ plan.description }}</div>
           <div class="plan-benefit" v-if="plan.credits_once">+{{ plan.credits_once }} {{ $t('billing.credits') }}</div>
-          <div class="plan-benefit" v-else-if="plan.credits_monthly">{{ $t('billing.lifetimeMonthly') }} +{{ plan.credits_monthly }} {{ $t('billing.credits') }}</div>
-          <div class="plan-benefit" v-else>{{ plan.description }}</div>
+          <div class="plan-benefit" v-if="plan.credits_monthly">{{ $t('billing.lifetimeMonthly') }} +{{ plan.credits_monthly }} {{ $t('billing.credits') }}</div>
+          <div class="plan-benefit">{{ $t('billing.strategyLimit', { count: plan.strategy_limit }) }}</div>
           <a-button type="primary" block :loading="purchasing === plan.code" @click="buy(plan.code)">{{ $t('billing.buyNow') }}</a-button>
         </a-card>
       </a-col>

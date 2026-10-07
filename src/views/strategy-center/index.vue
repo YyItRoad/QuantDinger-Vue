@@ -47,7 +47,8 @@
 
 <script>
 import { mapState } from 'vuex'
-import { deleteStrategy, getStrategyList, startStrategy, stopStrategy } from '@/api/strategy'
+import { deleteStrategy, getStrategyCommandStatus, getStrategyList, startStrategy, stopStrategy } from '@/api/strategy'
+import { waitForStrategyCommand } from '@/utils/strategyCommandPolling'
 import { strategyStopFeedback } from '@/utils/strategyStopFeedback'
 import LiveOperationsTable from './components/LiveOperationsTable.vue'
 import LiveStrategyEditor from './components/LiveStrategyEditor.vue'
@@ -68,7 +69,8 @@ export default {
       editorStrategyId: null,
       editorInstanceKey: 0,
       editorRouteSignature: '',
-      strategyLoadPromise: null
+      strategyLoadPromise: null,
+      stopCommandTrackers: new Set()
     }
   },
   computed: {
@@ -163,12 +165,38 @@ export default {
         const res = await stopStrategy(strategy.id, closePositions, options.exitReason || '')
         const feedback = strategyStopFeedback(res, key => this.$t(key), closePositions)
         this.$message[feedback.level](feedback.message)
+        const commandId = Number(res && res.data && res.data.command_id)
+        if (res && res.data && res.data.status === 'stopping' && commandId > 0) {
+          this.trackStopCommand(strategy.id, commandId, closePositions)
+        }
       } catch (error) {
         const feedback = strategyStopFeedback(error.response && error.response.data, key => this.$t(key), closePositions)
         this.$message[feedback.level](feedback.message)
       } finally {
         await this.loadStrategies()
         this.controlLoadingId = null
+      }
+    },
+    async trackStopCommand (strategyId, commandId, closePositions) {
+      const trackerKey = `${strategyId}:${commandId}`
+      if (this.stopCommandTrackers.has(trackerKey)) return
+      this.stopCommandTrackers.add(trackerKey)
+      try {
+        let result = null
+        try {
+          result = await waitForStrategyCommand(
+            () => getStrategyCommandStatus(strategyId, commandId)
+          )
+        } catch (error) {
+          result = error && error.response && error.response.data
+        }
+        if (result) {
+          const feedback = strategyStopFeedback(result, key => this.$t(key), closePositions)
+          this.$message[feedback.level](feedback.message)
+        }
+        await this.loadStrategies({ force: true })
+      } finally {
+        this.stopCommandTrackers.delete(trackerKey)
       }
     },
     openCreateLive () {

@@ -63,8 +63,7 @@ export default {
         apiKey,
         name: this.form.name,
         secretKey: this.form.secretKey.trim(),
-        paper: apiKey.toUpperCase().startsWith('PK'),
-        baseUrl: null
+        paper: apiKey.toUpperCase().startsWith('PK')
       })
     }
   }

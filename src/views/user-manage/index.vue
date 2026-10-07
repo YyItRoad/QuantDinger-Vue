@@ -374,7 +374,10 @@
                 {{ formatPnl(strategySummary.live_pnl) }}
                 <span class="roi-badge">{{ strategySummary.live_roi || 0 }}%</span>
               </div>
-              <div class="summary-sub">{{ $t('systemOverview.livePnlDesc') }}</div>
+              <div class="summary-sub">
+                {{ $t('systemOverview.livePnlDesc') }}
+                · {{ $t('systemOverview.virtualPnl') }} {{ formatPnl(strategySummary.signal_pnl) }}
+              </div>
               <div class="summary-label">{{ $t('systemOverview.livePnl') }}</div>
             </div>
           </div>
@@ -542,14 +545,23 @@
 
             <!-- Capital Column -->
             <template slot="capitalInfo" slot-scope="text, record">
-              <span v-if="record.execution_mode === 'live'">{{ formatNumber(text) }}</span>
-              <span v-else class="text-muted">{{ $t('systemOverview.notApplicable') }}</span>
+              <div class="ledger-value-cell">
+                <span>{{ formatNumber(text) }}</span>
+                <small v-if="record.ledger_mode === 'virtual'" class="virtual-ledger-label">
+                  {{ $t('systemOverview.virtualAccount') }}
+                </small>
+              </div>
             </template>
 
             <!-- Execution mode -->
-            <template slot="executionModeInfo" slot-scope="text">
+            <template slot="executionModeInfo" slot-scope="text, record">
               <a-tag v-if="text === 'live'" color="green" size="small">{{ $t('systemOverview.live') || 'Live' }}</a-tag>
-              <a-tag v-else-if="text === 'signal'" color="blue" size="small">{{ $t('systemOverview.signal') || 'Signal' }}</a-tag>
+              <div v-else-if="text === 'signal'" class="execution-mode-stack">
+                <a-tag color="blue" size="small">{{ $t('systemOverview.signal') || 'Signal' }}</a-tag>
+                <small v-if="record.ledger_mode === 'virtual'" class="virtual-ledger-label">
+                  {{ $t('systemOverview.virtualLedger') }}
+                </small>
+              </div>
               <a-tag v-else size="small">{{ text || '—' }}</a-tag>
             </template>
 
@@ -561,21 +573,23 @@
 
             <!-- PnL Column -->
             <template slot="pnlInfo" slot-scope="text, record">
-              <div v-if="record.execution_mode === 'live'" :class="record.total_pnl >= 0 ? 'text-profit' : 'text-loss'">
+              <div :class="record.total_pnl >= 0 ? 'text-profit' : 'text-loss'">
                 <span class="pnl-value">{{ formatPnl(record.total_pnl) }}</span>
                 <span class="roi-text">({{ record.roi >= 0 ? '+' : '' }}{{ record.roi }}%)</span>
               </div>
-              <div v-if="record.execution_mode === 'live'" class="pnl-detail text-muted">
+              <div class="pnl-detail text-muted">
                 <span>{{ $t('systemOverview.realized') || 'Real' }}: {{ formatPnl(record.total_realized_pnl) }}</span>
                 <span style="margin-left: 8px">{{ $t('systemOverview.unrealized') || 'Unreal' }}: {{ formatPnl(record.total_unrealized_pnl) }}</span>
               </div>
-              <span v-else class="text-muted">{{ $t('systemOverview.signalOnlyNoPnl') }}</span>
             </template>
 
             <template slot="runtimeInfo" slot-scope="text, record">
               <div class="runtime-cell">
                 <span><a-icon type="pie-chart" /> {{ $t('systemOverview.positionsShort') }} {{ record.position_count || 0 }}</span>
                 <span><a-icon type="swap" /> {{ $t('systemOverview.tradesShort') }} {{ record.trade_count || 0 }}</span>
+                <small v-if="record.ledger_mode === 'virtual'" class="virtual-ledger-label">
+                  {{ $t('systemOverview.virtualLedger') }}
+                </small>
               </div>
             </template>
 
@@ -916,7 +930,150 @@
         </a-modal>
       </a-tab-pane>
 
-      <!-- Tab 4: AI Analysis Records -->
+      <a-tab-pane key="rewardWithdrawals" :tab="$t('adminReferralWithdrawals.tabTitle')">
+        <div class="summary-cards" v-if="rewardWithdrawalSummary">
+          <div class="summary-card">
+            <div class="summary-icon" style="background: linear-gradient(135deg, #667eea, #764ba2)">
+              <a-icon type="file-text" />
+            </div>
+            <div class="summary-info">
+              <div class="summary-value">{{ rewardWithdrawalSummary.total_requests || 0 }}</div>
+              <div class="summary-label">{{ $t('adminReferralWithdrawals.summary.total') }}</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c)">
+              <a-icon type="clock-circle" />
+            </div>
+            <div class="summary-info">
+              <div class="summary-value">{{ rewardWithdrawalSummary.pending_requests || 0 }}</div>
+              <div class="summary-label">{{ $t('adminReferralWithdrawals.summary.pending') }}</div>
+              <div class="summary-sub">{{ formatNumber(rewardWithdrawalSummary.pending_amount) }} USD {{ $t('adminReferralWithdrawals.summary.awaiting') }}</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon" style="background: linear-gradient(135deg, #2193b0, #6dd5ed)">
+              <a-icon type="sync" />
+            </div>
+            <div class="summary-info">
+              <div class="summary-value">{{ rewardWithdrawalSummary.processing_requests || 0 }}</div>
+              <div class="summary-label">{{ $t('adminReferralWithdrawals.summary.processing') }}</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon" style="background: linear-gradient(135deg, #11998e, #38ef7d)">
+              <a-icon type="check-circle" />
+            </div>
+            <div class="summary-info">
+              <div class="summary-value">{{ formatNumber(rewardWithdrawalSummary.paid_amount) }} <span class="summary-currency">USD</span></div>
+              <div class="summary-label">{{ $t('adminReferralWithdrawals.summary.paidAmount') }}</div>
+              <div class="summary-sub">{{ $t('adminReferralWithdrawals.summary.paidRequests', { count: rewardWithdrawalSummary.paid_requests || 0 }) }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="toolbar reward-withdrawal-toolbar">
+          <div class="toolbar-left">
+            <a-button :loading="rewardWithdrawalLoading" @click="loadRewardWithdrawals">
+              <a-icon type="reload" />
+              {{ $t('common.refresh') }}
+            </a-button>
+            <a-select v-model="rewardWithdrawalStatus" class="toolbar-select" @change="handleRewardWithdrawalFilterChange">
+              <a-select-option value="all">{{ $t('adminReferralWithdrawals.filterAll') }}</a-select-option>
+              <a-select-option value="pending">{{ $t('adminReferralWithdrawals.status.pending') }}</a-select-option>
+              <a-select-option value="processing">{{ $t('adminReferralWithdrawals.status.processing') }}</a-select-option>
+              <a-select-option value="paid">{{ $t('adminReferralWithdrawals.status.paid') }}</a-select-option>
+              <a-select-option value="rejected">{{ $t('adminReferralWithdrawals.status.rejected') }}</a-select-option>
+            </a-select>
+          </div>
+          <div class="reward-withdrawal-count">
+            {{ $t('adminReferralWithdrawals.total', { count: rewardWithdrawalPagination.total }) }}
+          </div>
+        </div>
+
+        <a-card :bordered="false" class="user-table-card reward-withdrawal-card">
+          <a-table
+            :columns="rewardWithdrawalColumns"
+            :dataSource="rewardWithdrawals"
+            :loading="rewardWithdrawalLoading"
+            :pagination="rewardWithdrawalPagination"
+            :rowKey="record => record.id"
+            :scroll="{ x: 1080 }"
+            @change="handleRewardWithdrawalTableChange"
+          >
+            <template slot="rewardWithdrawalUser" slot-scope="text, record">
+              <span class="user-cell">
+                <a-avatar size="small" :style="{ backgroundColor: getUserColor(record.user_id), fontSize: '11px', marginRight: '6px' }">
+                  {{ (record.nickname || record.username || '?').charAt(0).toUpperCase() }}
+                </a-avatar>
+                <span class="user-name">{{ record.nickname || record.username || '-' }}</span>
+              </span>
+            </template>
+            <template slot="rewardWithdrawalAmount" slot-scope="text">
+              <strong>{{ Number(text || 0).toFixed(2) }}</strong>
+              <span class="text-muted reward-currency">USD</span>
+            </template>
+            <template slot="rewardWithdrawalChannel" slot-scope="text, record">
+              <a-tag color="blue">{{ record.currency }} · {{ text }}</a-tag>
+            </template>
+            <template slot="rewardWithdrawalAddress" slot-scope="text">
+              <a-tooltip :title="text">
+                <span class="address-text">{{ truncate(text, 24) }}</span>
+              </a-tooltip>
+            </template>
+            <template slot="rewardWithdrawalStatus" slot-scope="text">
+              <a-tag :color="getRewardWithdrawalStatusColor(text)">
+                {{ $t(`adminReferralWithdrawals.status.${text}`) }}
+              </a-tag>
+            </template>
+            <template slot="rewardWithdrawalCreatedAt" slot-scope="text">
+              {{ text ? formatTime(text) : '-' }}
+            </template>
+            <template slot="rewardWithdrawalActions" slot-scope="text, record">
+              <a-space v-if="record.status === 'pending' || record.status === 'processing'" size="small">
+                <a-button v-if="record.status === 'pending'" size="small" @click="startRewardWithdrawalReview(record)">
+                  {{ $t('adminReferralWithdrawals.startProcessing') }}
+                </a-button>
+                <a-button size="small" type="primary" @click="openRewardWithdrawalReview(record, 'paid')">
+                  {{ $t('adminReferralWithdrawals.markPaid') }}
+                </a-button>
+                <a-button size="small" type="danger" ghost @click="openRewardWithdrawalReview(record, 'rejected')">
+                  {{ $t('adminReferralWithdrawals.reject') }}
+                </a-button>
+              </a-space>
+              <span v-else class="text-muted">-</span>
+            </template>
+          </a-table>
+        </a-card>
+
+        <a-modal
+          v-model="rewardReview.visible"
+          :wrap-class-name="userManageModalWrapClass"
+          :title="$t(`adminReferralWithdrawals.reviewTitle.${rewardReview.action}`)"
+          :confirmLoading="rewardReview.submitting"
+          :ok-text="$t(`adminReferralWithdrawals.reviewConfirm.${rewardReview.action}`)"
+          :cancel-text="$t('common.cancel')"
+          @ok="submitRewardWithdrawalReview"
+        >
+          <a-alert
+            v-if="rewardReview.record"
+            type="info"
+            show-icon
+            :message="$t('adminReferralWithdrawals.reviewSummary', { user: rewardReview.record.username || '-', amount: Number(rewardReview.record.amount || 0).toFixed(2) })"
+            class="reward-review-alert"
+          />
+          <a-form layout="vertical">
+            <a-form-item v-if="rewardReview.action === 'paid'" :label="$t('adminReferralWithdrawals.txHash')" required>
+              <a-input v-model.trim="rewardReview.txHash" :placeholder="$t('adminReferralWithdrawals.txHashPlaceholder')" />
+            </a-form-item>
+            <a-form-item :label="$t('adminReferralWithdrawals.reviewNote')">
+              <a-textarea v-model="rewardReview.note" :auto-size="{ minRows: 3, maxRows: 6 }" :placeholder="$t('adminReferralWithdrawals.reviewNotePlaceholder')" />
+            </a-form-item>
+          </a-form>
+        </a-modal>
+      </a-tab-pane>
+
+      <!-- Tab 5: AI Analysis Records -->
       <a-tab-pane key="aiStats" :tab="$t('adminAiStats.tabTitle') || 'AI Analysis'">
         <!-- AI Stats Summary Cards -->
         <div class="summary-cards" v-if="aiStatsSummary">
@@ -1271,6 +1428,7 @@
 
 <script>
 import { getUserList, exportUsers, createUser, updateUser, deleteUser, resetUserPassword, getRoles, setUserCredits, setUserVip, getSystemStrategies, adminToggleStrategy, adminDeleteStrategy, getAdminOrders, manualConfirmOrder, getAdminAiStats, getUserAdminStats } from '@/api/user'
+import { getAdminReferralWithdrawals, reviewAdminReferralWithdrawal } from '@/api/billing'
 import { baseMixin } from '@/store/app-mixin'
 import { mapGetters } from 'vuex'
 import * as echarts from 'echarts'
@@ -1373,6 +1531,24 @@ export default {
         visible: false,
         submitting: false,
         record: null,
+        txHash: '',
+        note: ''
+      },
+      rewardWithdrawalLoading: false,
+      rewardWithdrawals: [],
+      rewardWithdrawalSummary: null,
+      rewardWithdrawalStatus: 'all',
+      rewardWithdrawalPagination: {
+        current: 1,
+        pageSize: 20,
+        total: 0
+      },
+      rewardWithdrawalsLoaded: false,
+      rewardReview: {
+        visible: false,
+        submitting: false,
+        record: null,
+        action: '',
         txHash: '',
         note: ''
       },
@@ -1757,6 +1933,53 @@ export default {
         }
       ]
     },
+    rewardWithdrawalColumns () {
+      return [
+        {
+          title: this.$t('adminReferralWithdrawals.colUser'),
+          dataIndex: 'username',
+          width: 160,
+          scopedSlots: { customRender: 'rewardWithdrawalUser' }
+        },
+        {
+          title: this.$t('adminReferralWithdrawals.colAmount'),
+          dataIndex: 'amount',
+          width: 130,
+          scopedSlots: { customRender: 'rewardWithdrawalAmount' }
+        },
+        {
+          title: this.$t('adminReferralWithdrawals.colChannel'),
+          dataIndex: 'chain',
+          width: 150,
+          scopedSlots: { customRender: 'rewardWithdrawalChannel' }
+        },
+        {
+          title: this.$t('adminReferralWithdrawals.colAddress'),
+          dataIndex: 'address',
+          width: 240,
+          scopedSlots: { customRender: 'rewardWithdrawalAddress' }
+        },
+        {
+          title: this.$t('adminReferralWithdrawals.colStatus'),
+          dataIndex: 'status',
+          width: 110,
+          scopedSlots: { customRender: 'rewardWithdrawalStatus' }
+        },
+        {
+          title: this.$t('adminReferralWithdrawals.colCreatedAt'),
+          dataIndex: 'created_at',
+          width: 170,
+          scopedSlots: { customRender: 'rewardWithdrawalCreatedAt' }
+        },
+        {
+          title: this.$t('adminReferralWithdrawals.colActions'),
+          key: 'actions',
+          width: 280,
+          fixed: 'right',
+          scopedSlots: { customRender: 'rewardWithdrawalActions' }
+        }
+      ]
+    },
     aiUserColumns () {
       return [
         {
@@ -1886,6 +2109,9 @@ export default {
       }
       if (key === 'orders' && !this.ordersLoaded) {
         this.loadOrders()
+      }
+      if (key === 'rewardWithdrawals' && !this.rewardWithdrawalsLoaded) {
+        this.loadRewardWithdrawals()
       }
       if (key === 'aiStats' && !this.aiStatsLoaded) {
         this.loadAiStats()
@@ -2923,6 +3149,104 @@ export default {
       this.loadOrders()
     },
 
+    async loadRewardWithdrawals () {
+      this.rewardWithdrawalLoading = true
+      try {
+        const res = await getAdminReferralWithdrawals({
+          page: this.rewardWithdrawalPagination.current,
+          page_size: this.rewardWithdrawalPagination.pageSize,
+          status: this.rewardWithdrawalStatus === 'all' ? '' : this.rewardWithdrawalStatus
+        })
+        if (res && res.code === 1) {
+          this.rewardWithdrawals = (res.data && res.data.items) || []
+          this.rewardWithdrawalPagination.total = (res.data && res.data.total) || 0
+          this.rewardWithdrawalSummary = (res.data && res.data.summary) || {}
+          this.rewardWithdrawalsLoaded = true
+        } else {
+          this.$message.error((res && res.msg) || this.$t('adminReferralWithdrawals.loadFailed'))
+        }
+      } catch (error) {
+        const message = error && error.response && error.response.data && error.response.data.msg
+        this.$message.error(message || this.$t('adminReferralWithdrawals.loadFailed'))
+      } finally {
+        this.rewardWithdrawalLoading = false
+      }
+    },
+
+    handleRewardWithdrawalFilterChange () {
+      this.rewardWithdrawalPagination.current = 1
+      this.loadRewardWithdrawals()
+    },
+
+    handleRewardWithdrawalTableChange (pagination) {
+      this.rewardWithdrawalPagination.current = pagination.current
+      this.rewardWithdrawalPagination.pageSize = pagination.pageSize
+      this.loadRewardWithdrawals()
+    },
+
+    getRewardWithdrawalStatusColor (status) {
+      return {
+        pending: 'orange',
+        processing: 'blue',
+        paid: 'green',
+        rejected: 'red'
+      }[status] || 'default'
+    },
+
+    async startRewardWithdrawalReview (record) {
+      try {
+        const res = await reviewAdminReferralWithdrawal(record.id, { action: 'processing' })
+        if (res && res.code === 1) {
+          this.$message.success(this.$t('adminReferralWithdrawals.processingSaved'))
+          await this.loadRewardWithdrawals()
+        } else {
+          this.$message.error((res && res.msg) || this.$t('adminReferralWithdrawals.reviewFailed'))
+        }
+      } catch (error) {
+        const message = error && error.response && error.response.data && error.response.data.msg
+        this.$message.error(message || this.$t('adminReferralWithdrawals.reviewFailed'))
+      }
+    },
+
+    openRewardWithdrawalReview (record, action) {
+      this.rewardReview = {
+        visible: true,
+        submitting: false,
+        record,
+        action,
+        txHash: '',
+        note: ''
+      }
+    },
+
+    async submitRewardWithdrawalReview () {
+      if (!this.rewardReview.record) return
+      if (this.rewardReview.action === 'paid' && !this.rewardReview.txHash) {
+        this.$message.warning(this.$t('adminReferralWithdrawals.txHashRequired'))
+        return
+      }
+      this.rewardReview.submitting = true
+      try {
+        const res = await reviewAdminReferralWithdrawal(this.rewardReview.record.id, {
+          action: this.rewardReview.action,
+          tx_hash: this.rewardReview.txHash,
+          review_note: this.rewardReview.note
+        })
+        if (res && res.code === 1) {
+          this.$message.success(this.$t('adminReferralWithdrawals.reviewSaved'))
+          this.rewardReview.visible = false
+          await this.loadRewardWithdrawals()
+        } else {
+          this.$message.error((res && res.msg) || this.$t('adminReferralWithdrawals.reviewFailed'))
+        }
+      } catch (error) {
+        const message = error && error.response && error.response.data && error.response.data.msg
+        this.$message.error(message || this.$t('adminReferralWithdrawals.reviewFailed'))
+      } finally {
+        this.rewardReview.submitting = false
+      }
+    },
+
     // --- Manual confirm (admin rescue tool) --------------------------
     //
     // Only orders that the on-chain reconciler may have legitimately
@@ -3388,6 +3712,34 @@ export default {
     max-width: 100%;
   }
 
+  .reward-withdrawal-toolbar {
+    min-height: 32px;
+  }
+
+  .reward-withdrawal-count {
+    color: #64748b;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .summary-currency {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .reward-withdrawal-card {
+    .reward-currency {
+      margin-left: 5px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+  }
+
+  .reward-review-alert {
+    margin-bottom: 16px;
+  }
+
   .section-card-title {
     margin-bottom: 12px;
     color: #1e3a5f;
@@ -3472,6 +3824,21 @@ export default {
   .pnl-detail {
     font-size: 11px;
     margin-top: 2px;
+  }
+
+  .ledger-value-cell,
+  .execution-mode-stack {
+    display: grid;
+    gap: 3px;
+    justify-items: start;
+  }
+
+  .virtual-ledger-label {
+    color: #1677ff;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
   }
 
   .symbol-text {
@@ -3622,6 +3989,10 @@ export default {
       color: #64748b;
       font-size: 10px;
     }
+
+    .virtual-ledger-label {
+      flex-basis: 100%;
+    }
   }
 
   .activity-cell {
@@ -3675,6 +4046,10 @@ export default {
       color: #7f8b9c;
 
       strong { color: #e5e7eb; }
+    }
+
+    .reward-withdrawal-count {
+      color: #8b949e;
     }
 
     .page-header {

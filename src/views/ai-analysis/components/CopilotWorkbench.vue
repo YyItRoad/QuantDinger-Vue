@@ -4762,7 +4762,7 @@ export default {
         'api secret'
       ])) return 'broker'
       if (includesAny([
-        /data source|market data|quote|quotes|price feed|symbol not found|no data|provider unavailable|akshare|tushare|yfinance|ccxt/i,
+        /data source|market data|quote|quotes|price feed|symbol not found|no data|provider unavailable|akshare|tushare|yfinance/i,
         '数据源',
         '行情',
         '报价',

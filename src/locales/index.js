@@ -11,6 +11,7 @@ import fundamentalSyncMessages from './lang/fundamental-sync'
 import strategyLiveRiskMessages from './lang/strategy-live-risk'
 import robotBuilderMessages from './lang/robot-builder-overrides'
 import billingPaymentMessages from './billing-payment-overrides'
+import referralRewardMessages from './referral-reward-overrides'
 import adminOrderMessages from './admin-order-overrides'
 import strategyTradeRecordMessages from './lang/strategy-trade-records'
 import positionManagerMessages from './lang/position-manager'
@@ -25,10 +26,12 @@ import reviewedUiOverrides from './reviewed-ui-overrides'
 import professionalReportOverrides from './professional-report-overrides'
 import backtestRangeOverrides from './backtest-range-overrides'
 import settingsResearchOverrides from './settings-research-overrides'
+import settingsRuntimeOverrides from './settings-runtime-overrides'
 import strategyBuilderOverrides from './strategy-builder-overrides'
 import eventRadarMessages from './lang/event-radar'
 import currentFeatureOverrides from './lang/current-feature-overrides'
 import strategyEvolutionMessages from './lang/strategy-evolution'
+import quickTradeSpotSellMessages from './lang/quick-trade-spot-sell'
 
 Vue.use(VueI18n)
 
@@ -45,6 +48,7 @@ const messages = {
     ...(strategyLiveRiskMessages[defaultLang] || {}),
     ...(robotBuilderMessages[defaultLang] || {}),
     ...(billingPaymentMessages[defaultLang] || {}),
+    ...(referralRewardMessages[defaultLang] || {}),
     ...(adminOrderMessages[defaultLang] || {}),
     ...(strategyTradeRecordMessages[defaultLang] || {}),
     ...(positionManagerMessages[defaultLang] || {}),
@@ -59,10 +63,12 @@ const messages = {
     ...(professionalReportOverrides[defaultLang] || {}),
     ...(backtestRangeOverrides[defaultLang] || {}),
     ...(settingsResearchOverrides[defaultLang] || {}),
+    ...(settingsRuntimeOverrides[defaultLang] || {}),
     ...(strategyBuilderOverrides[defaultLang] || {}),
     ...(currentFeatureOverrides[defaultLang] || {}),
     ...(eventRadarMessages[defaultLang] || {}),
-    ...(strategyEvolutionMessages[defaultLang] || {})
+    ...(strategyEvolutionMessages[defaultLang] || {}),
+    ...(quickTradeSpotSellMessages[defaultLang] || {})
   }
 }
 
@@ -138,6 +144,7 @@ function mergeLocaleOverrides (lang) {
     ...(strategyLiveRiskMessages[lang] || {}),
     ...(robotBuilderMessages[lang] || {}),
     ...(billingPaymentMessages[lang] || {}),
+    ...(referralRewardMessages[lang] || {}),
     ...(adminOrderMessages[lang] || {}),
     ...(strategyTradeRecordMessages[lang] || {}),
     ...(positionManagerMessages[lang] || {}),
@@ -152,10 +159,12 @@ function mergeLocaleOverrides (lang) {
     ...(professionalReportOverrides[lang] || {}),
     ...(backtestRangeOverrides[lang] || {}),
     ...(settingsResearchOverrides[lang] || {}),
+    ...(settingsRuntimeOverrides[lang] || {}),
     ...(strategyBuilderOverrides[lang] || {}),
     ...(currentFeatureOverrides[lang] || {}),
     ...(eventRadarMessages[lang] || {}),
-    ...(strategyEvolutionMessages[lang] || {})
+    ...(strategyEvolutionMessages[lang] || {}),
+    ...(quickTradeSpotSellMessages[lang] || {})
   }
   i18n.setLocaleMessage(lang, {
     ...(i18n.getLocaleMessage(lang) || {}),
@@ -185,6 +194,7 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(strategyLiveRiskMessages[lang] || {}),
       ...(robotBuilderMessages[lang] || {}),
       ...(billingPaymentMessages[lang] || {}),
+      ...(referralRewardMessages[lang] || {}),
       ...(adminOrderMessages[lang] || {}),
       ...(strategyTradeRecordMessages[lang] || {}),
       ...(positionManagerMessages[lang] || {}),
@@ -199,9 +209,11 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(professionalReportOverrides[lang] || {}),
       ...(backtestRangeOverrides[lang] || {}),
       ...(settingsResearchOverrides[lang] || {}),
+      ...(settingsRuntimeOverrides[lang] || {}),
       ...(strategyBuilderOverrides[lang] || {}),
       ...(currentFeatureOverrides[lang] || {}),
-      ...(eventRadarMessages[lang] || {})
+      ...(eventRadarMessages[lang] || {}),
+      ...(quickTradeSpotSellMessages[lang] || {})
     })
     i18n.setLocaleMessage(lang, locale)
     loadedLanguages.push(lang)

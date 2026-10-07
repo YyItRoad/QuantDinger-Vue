@@ -125,6 +125,23 @@ test('calculates live performance from configured capital and completed trades',
   assert.equal(summary.winRate, 0.5)
 })
 
+test('uses list-level trade statistics when trade history is not loaded', () => {
+  const summary = summarizeStrategyPerformance({
+    strategy: {
+      initial_capital: 1000,
+      total_pnl: 25,
+      completed_trades: 11,
+      wins: 7,
+      win_rate: 7 / 11
+    },
+    curve: [{ equity: 1025 }]
+  })
+
+  assert.equal(summary.completedTrades, 11)
+  assert.equal(summary.wins, 7)
+  assert.equal(summary.winRate, 7 / 11)
+})
+
 test('filters and sorts running strategies before stopped strategies', () => {
   const filtered = filterAndSortStrategies(rows, { keyword: 'live', status: 'running', executionMode: 'live' })
   assert.deepEqual(filtered.map(item => item.id), [2, 3])
