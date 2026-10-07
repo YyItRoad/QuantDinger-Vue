@@ -85,11 +85,11 @@ export function updateStrategy (id, data) {
   })
 }
 
-export function stopStrategy (id, closePositions = false) {
+export function stopStrategy (id, closePositions = false, exitReason = '') {
   return request({
     url: `${api.strategies}/${id}/stop`,
     method: 'post',
-    data: { close_positions: Boolean(closePositions) }
+    data: { close_positions: Boolean(closePositions), ...(exitReason ? { exitReason } : {}) }
   })
 }
 
@@ -559,4 +559,8 @@ export function compileScriptSource (data) {
     method: 'post',
     data
   })
+}
+
+export function updatePositionManagementReasons (id, data) {
+  return request({ url: `/api/position-management/trade-history/${id}/reasons`, method: 'put', data })
 }

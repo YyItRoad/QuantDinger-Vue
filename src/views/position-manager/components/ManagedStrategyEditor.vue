@@ -43,6 +43,9 @@
               </a-select-option>
             </a-select>
           </a-form-item>
+          <a-form-item v-if="initialConfig.position_side" label="开仓原因（选填）">
+            <a-textarea v-model="model.entryReason" :max-length="500" :auto-size="{ minRows: 2, maxRows: 4 }" placeholder="一句话说明为什么持有这笔仓位" />
+          </a-form-item>
           <a-form-item v-if="initialConfig.position_side" :label="$t('positionManager.fixedStopPrice')">
             <a-input-number
               :value="model.fixedStopPrice"
@@ -504,6 +507,7 @@ export default {
         },
         disclaimer: false,
         notifyChannels: [...DEFAULT_CHANNELS],
+        entryReason: '',
         fixedStopPrice: null,
         templateParams: {}
       }
@@ -813,6 +817,7 @@ export default {
           directionMode: this.requiresDirectionMode ? this.effectiveDirectionMode : undefined,
           positionSide: this.requiresDirectionMode ? directionModePositionSide(this.effectiveDirectionMode) : undefined,
           accountRisk: this.requiresDirectionMode ? { ...this.model.accountRisk } : undefined,
+          entryReason: this.initialConfig.position_side ? this.model.entryReason : undefined,
           params: {
             ...this.model.templateParams,
             ...(this.initialConfig.position_side && this.hasFixedStopPrice
