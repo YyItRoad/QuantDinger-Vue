@@ -443,6 +443,7 @@ export default {
     historyDetailValue (field) {
       if (!this.selectedHistoryItem) return '--'
       const value = this.selectedHistoryItem[field]
+      if (['pending_order_id', 'order_intent_id', 'execution_event_id', 'requested_amount'].includes(field) && Number(value) === 0) return '--'
       if (field.endsWith('_at') || field.endsWith('_time')) return this.formatTime(value)
       if (field === 'position_side') return this.sideText(value)
       if (field === 'market_type') return this.marketTypeText(value)
