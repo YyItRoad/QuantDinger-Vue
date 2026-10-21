@@ -293,7 +293,7 @@ const HISTORY_FIELD_LABELS_ZH = {
 const HISTORY_DETAIL_FIELDS = [
   { title: 'positionManager.detailStrategy', fields: ['id', 'source_trade_id', 'source_strategy_id', 'strategy_name', 'strategy_type', 'market_category', 'execution_mode', 'strategy_status', 'timeframe', 'leverage', 'entry_time', 'strategy_run_id', 'strategy_started_at', 'strategy_stopped_at', 'strategy_stop_reason'] },
   { title: 'positionManager.detailAccount', fields: ['user_id', 'exchange_id', 'credential_id', 'exchange_account_name', 'market_type', 'inst_id', 'settlement_ccy'] },
-  { title: 'positionManager.detailTrade', fields: ['symbol', 'symbol_canonical', 'trade_type', 'position_side', 'entry_price', 'exit_price', 'filled_amount', 'trade_value', 'profit_rate', 'profit', 'profit_ccy', 'close_reason', 'trade_recorded_at'] },
+  { title: 'positionManager.detailTrade', fields: ['symbol', 'symbol_canonical', 'trade_type', 'position_side', 'entry_price', 'fixed_stop_price', 'exit_price', 'filled_amount', 'trade_value', 'profit_rate', 'profit', 'profit_ccy', 'close_reason', 'trade_recorded_at'] },
   { title: 'positionManager.detailOrder', fields: ['pending_order_id', 'order_intent_id', 'order_type', 'order_status', 'requested_amount', 'exchange_order_id', 'client_order_id', 'signal_at', 'order_created_at', 'order_sent_at', 'exit_time', 'fill_source', 'execution_event_id', 'exchange_fill_id'] },
   { title: 'positionManager.detailFees', fields: ['commission', 'commission_ccy', 'commission_quote', 'fee_status', 'fee_source', 'funding_fee_total', 'funding_fee_ccy', 'grid_order_id', 'grid_matched_profit', 'archived_at'] }
 ]
@@ -423,6 +423,7 @@ export default {
       return `${leverage === '--' ? '--' : `${leverage}x`} · ${record.timeframe || '--'}`
     },
     historyFieldLabel (field) {
+      if (field === 'fixed_stop_price') return this.$t('positionManager.historyFixedStopPrice')
       const locale = String((this.$i18n && this.$i18n.locale) || '')
       if (locale.startsWith('zh')) return HISTORY_FIELD_LABELS_ZH[field] || field
       return field.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
@@ -442,6 +443,13 @@ export default {
     },
     historyDetailValue (field) {
       if (!this.selectedHistoryItem) return '--'
+      if (field === 'fixed_stop_price') {
+        const ext = this.selectedHistoryItem.ext
+        const price = ext && ext.params && ext.params.fixed_stop_price
+        return typeof price === 'number' && Number.isFinite(price) && price > 0
+          ? this.formatNumber(price)
+          : this.$t('positionManager.historyNotRecorded')
+      }
       const value = this.selectedHistoryItem[field]
       if (['pending_order_id', 'order_intent_id', 'execution_event_id', 'requested_amount'].includes(field) && Number(value) === 0) return '--'
       if (field.endsWith('_at') || field.endsWith('_time')) return this.formatTime(value)

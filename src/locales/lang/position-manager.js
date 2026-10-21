@@ -1,4 +1,6 @@
 const zhCN = {
+  'positionManager.historyFixedStopPrice': '固定止损价（运行快照）',
+  'positionManager.historyNotRecorded': '未记录',
   'menu.dashboard.positionManager': '持仓',
   'positionManager.title': '持仓',
   'positionManager.subtitle': '同步交易所当前仓位，并使用现有创建实盘流程为未管理仓位创建独立策略实例。',
@@ -68,6 +70,8 @@ const zhCN = {
 }
 
 const enUS = {
+  'positionManager.historyFixedStopPrice': 'Fixed Stop Price (Run Snapshot)',
+  'positionManager.historyNotRecorded': 'Not recorded',
   'menu.dashboard.positionManager': 'Positions',
   'positionManager.title': 'Positions',
   'positionManager.subtitle': 'Sync current exchange positions and use the existing live-strategy workflow to create an independent strategy instance for an unmanaged position.',
