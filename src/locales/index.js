@@ -16,6 +16,7 @@ import adminOrderMessages from './admin-order-overrides'
 import strategyTradeRecordMessages from './lang/strategy-trade-records'
 import positionManagerMessages from './lang/position-manager'
 import marketStateMessages from './lang/market-state'
+import tradePlanMessages from '../views/trade-plans/messages'
 import quickTradeRecordMessages from './quick-trade-records'
 import chartTypeMessages from './chart-type-overrides'
 import aiDecisionFilterMessages from './ai-decision-filter-overrides'
@@ -53,6 +54,7 @@ const messages = {
     ...(strategyTradeRecordMessages[defaultLang] || {}),
     ...(positionManagerMessages[defaultLang] || {}),
     ...marketStateMessages(defaultLang),
+    ...tradePlanMessages(defaultLang),
     ...(quickTradeRecordMessages[defaultLang] || {}),
     ...(chartTypeMessages[defaultLang] || {}),
     ...(aiDecisionFilterMessages[defaultLang] || {}),
@@ -149,6 +151,7 @@ function mergeLocaleOverrides (lang) {
     ...(strategyTradeRecordMessages[lang] || {}),
     ...(positionManagerMessages[lang] || {}),
     ...marketStateMessages(lang),
+    ...tradePlanMessages(lang),
     ...(quickTradeRecordMessages[lang] || {}),
     ...(chartTypeMessages[lang] || {}),
     ...(aiDecisionFilterMessages[lang] || {}),
@@ -199,6 +202,7 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(strategyTradeRecordMessages[lang] || {}),
       ...(positionManagerMessages[lang] || {}),
       ...marketStateMessages(lang),
+    ...tradePlanMessages(lang),
       ...(quickTradeRecordMessages[lang] || {}),
       ...(chartTypeMessages[lang] || {}),
       ...(aiDecisionFilterMessages[lang] || {}),

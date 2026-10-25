@@ -541,6 +541,21 @@
               />
             </div>
 
+            <div v-if="isCryptoMarket" class="qt-section qt-entry-reason">
+              <span class="qt-label">{{ $t('quickTrade.entryReason') }} · {{ $t('quickTrade.entryReasonEntryOnly') }}</span>
+              <a-textarea
+                v-model="entryReason"
+                :aria-label="$t('quickTrade.entryReason')"
+                :aria-invalid="entryReasonError"
+                :max-length="500"
+                :auto-size="{ minRows: 2, maxRows: 4 }"
+                :disabled="submitting"
+                :placeholder="$t('quickTrade.entryReasonPlaceholder')"
+                @change="entryReasonError = false" />
+              <div v-if="entryReasonError" role="alert" class="qt-entry-reason-error">{{ $t('quickTrade.entryReasonRequired') }}</div>
+              <div class="qt-hint-text">{{ $t('quickTrade.entryReasonHint') }}</div>
+            </div>
+
             <!-- Submit Buttons -->
             <div class="qt-submit-section qt-submit-section--embedded-left">
               <a-button
@@ -715,6 +730,7 @@
                   </div>
                 </div>
 
+                <div v-if="t.entry_reason" class="qt-trade-entry-reason"><span>{{ $t('quickTrade.entryReason') }}：</span>{{ t.entry_reason }}</div>
                 <div class="qt-trade-card-footer">
                   <div class="qt-trade-context">
                     <span>{{ tradeMarketLabel(t) }}</span>
@@ -723,6 +739,7 @@
                     <span>{{ tradeSourceLabel(t.source) }}</span>
                   </div>
                   <div class="qt-trade-actions">
+                    <a-button v-if="isCryptoMarket" type="link" size="small" :disabled="submitting" @click="openTradePlan(t)">{{ $t('tradePlans.openFromTrade') }}</a-button>
                     <a-button
                       v-if="activeDockTab === 'openOrders' && canCancelTrade(t)"
                       type="link"
@@ -798,11 +815,13 @@
                       <span class="qt-trade-symbol">{{ t.symbol }}</span>
                       <span class="qt-trade-amount">${{ formatPrice(t.amount) }}</span>
                     </div>
+                    <div v-if="t.entry_reason" class="qt-trade-entry-reason"><span>{{ $t('quickTrade.entryReason') }}：</span>{{ t.entry_reason }}</div>
                     <div class="qt-trade-meta">
                       <a-tag :color="t.status === 'filled' ? '#52c41a' : ['failed', 'ai_rejected'].includes(t.status) ? '#f5222d' : '#faad14'" size="small">
                         {{ t.status }}
                       </a-tag>
                       <span class="qt-trade-time">{{ formatTime(t.created_at) }}</span>
+                      <a-button v-if="isCryptoMarket" type="link" size="small" :disabled="submitting" @click="openTradePlan(t)">{{ $t('tradePlans.openFromTrade') }}</a-button>
                     </div>
                   </div>
                 </div>
@@ -823,6 +842,7 @@
 </template>
 
 <script>
+import { tradePlanSourceRoute } from '@/views/trade-plans/navigation'
 import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
 import { formatExchangeCredentialLabel, isQuickTradeExchangeCredential } from '@/utils/exchangeCredential'
@@ -869,6 +889,8 @@ export default {
         spot: { available: 0, total: 0 }
       },
       // order
+      entryReason: '',
+      entryReasonError: false,
       side: 'buy',
       orderType: 'market',
       limitPrice: 0,
@@ -1160,6 +1182,8 @@ export default {
       }
     },
     currentSymbol (val) {
+      this.entryReason = ''
+      this.entryReasonError = false
       this.buyQuantity = null
       this.sellQuantity = null
       this.sellAmount = null
@@ -1187,6 +1211,8 @@ export default {
       this.syncTradeModeFromProps()
     },
     selectedCredentialId (val) {
+      this.entryReason = ''
+      this.entryReasonError = false
       this.buyQuantity = null
       this.sellQuantity = null
       this.sellAmount = null
@@ -1209,6 +1235,8 @@ export default {
       }
     },
     tradeMode (val) {
+      this.entryReason = ''
+      this.entryReasonError = false
       this.buyQuantity = null
       this.sellQuantity = null
       this.sellAmount = null
@@ -1803,6 +1831,13 @@ export default {
         console.warn('loadHistory error:', e)
       }
     },
+    async openTradePlan (trade) {
+      if (this.submitting) return
+      const target = tradePlanSourceRoute('quick_order', trade, { market: 'Crypto', credential_id: this.selectedCredentialId, symbol: this.currentSymbol })
+      if (!target) return
+      await this.$router.push(target)
+      if (!this.embedded) this.$emit('close')
+    },
     canCancelTrade (trade) {
       if (!trade) return false
       if (String(trade.order_type || '').toLowerCase() !== 'limit') return false
@@ -1892,6 +1927,12 @@ export default {
         }
         return
       }
+      const needsEntryReason = this.isCryptoMarket && (this.isSwapMode || side === 'buy')
+      if (needsEntryReason && !String(this.entryReason || '').trim()) {
+        this.entryReasonError = true
+        return
+      }
+      this.entryReasonError = false
       this.side = side
       this.submitting = true
       this.submittingSide = side
@@ -1921,12 +1962,14 @@ export default {
           tp_price: useProtectionPrices ? (this.tpPrice || 0) : 0,
           sl_price: useProtectionPrices ? (this.slPrice || 0) : 0,
           source: this.source,
+          entry_reason: needsEntryReason ? String(this.entryReason || '').trim() : undefined,
           ai_decision_filter: this.aiDecisionFilter
         }
         if (buyByQuantity) payload.quantity = Number(this.buyQuantity)
         if (sellByQuantity) payload.quantity = Number(this.sellQuantity)
         const res = await placeQuickOrder(payload)
         if (res.code === 1) {
+          this.entryReason = ''
           // Emit event for parent component (parent will show success message)
           this.$emit('order-success', res.data)
 
@@ -1948,7 +1991,7 @@ export default {
           const hint = res.error_hint ? this.$t(res.error_hint) : ''
           this.$notification.error({
             message: this.$t('quickTrade.orderFailed'),
-            description: hint || res.msg || ''
+            description: hint || (String(res.msg || '').startsWith('quickTrade.') ? this.$t(res.msg) : res.msg) || ''
           })
         }
       } catch (e) {
@@ -1956,7 +1999,7 @@ export default {
         const hint = rd.error_hint ? this.$t(rd.error_hint) : ''
         this.$notification.error({
           message: this.$t('quickTrade.orderFailed'),
-          description: hint || rd.msg || e.message || ''
+          description: hint || (String(rd.msg || '').startsWith('quickTrade.') ? this.$t(rd.msg) : rd.msg) || e.message || ''
         })
       } finally {
         if (this.aiDecisionFilter) this.aiDecisionRefreshKey += 1
@@ -3310,7 +3353,7 @@ export default {
     gap: 0;
     padding: 0;
     overflow-x: hidden;
-    overflow-y: hidden;
+    overflow-y: auto;
   }
   .qt-embedded-split--cols .qt-embedded-col-left,
   .qt-embedded-split--cols .qt-embedded-col-right {
@@ -3326,8 +3369,8 @@ export default {
     background: transparent;
   }
   .qt-embedded-split--cols .qt-embedded-col-right {
-    min-height: 0;
-    flex: 1 1 auto;
+    min-height: 180px;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -4788,4 +4831,10 @@ body.realdark .qt-leverage-popover,
     background: var(--primary-color, #52c41a);
   }
 }
+</style>
+
+<style scoped lang="less">
+.qt-entry-reason textarea { margin-top: 6px; }
+.qt-entry-reason-error { color: #f5222d; margin-top: 4px; }
+.qt-trade-entry-reason { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; color: var(--qt-text-primary); }
 </style>

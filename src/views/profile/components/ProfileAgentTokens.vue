@@ -212,6 +212,7 @@ import {
   revokeMyAgentToken,
   listMyAgentAudit
 } from '@/api/agent'
+import { formatUserDateTime } from '@/utils/userTime'
 
 export default {
   name: 'ProfileAgentTokens',
@@ -366,13 +367,7 @@ export default {
     },
     formatTs (s) {
       if (!s) return ''
-      try {
-        const d = new Date(s)
-        if (isNaN(d.getTime())) return s
-        return d.toISOString().replace('T', ' ').replace('Z', '').split('.')[0]
-      } catch (e) {
-        return String(s)
-      }
+      return formatUserDateTime(s, { fallback: String(s) })
     },
     async loadTokens () {
       this.loadingTokens = true

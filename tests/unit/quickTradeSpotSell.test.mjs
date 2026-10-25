@@ -139,6 +139,7 @@ test('PC spot buy can submit an exact base asset quantity', async () => {
     spotBuyInputMode: 'quantity',
     spotSellInputMode: 'quantity',
     buyQuantity: 0.00123456,
+    entryReason: '支撑回踩企稳，尝试反弹',
     amount: 250,
     side: 'buy',
     submitting: false,
@@ -216,4 +217,72 @@ test('PC spot sell validates both quantity and USDT value against the holding', 
   assert.equal(compute({ mode: 'quantity', sellQuantity: 0.01000001 }), false)
   assert.equal(compute({ mode: 'amount', sellAmount: 100 }), true)
   assert.equal(compute({ mode: 'amount', sellAmount: 831 }), false)
+})
+
+function entryState (overrides = {}) {
+  return {
+    canSubmitBuy: true,
+canSubmitSell: true,
+isStockMarket: false,
+isCryptoMarket: true,
+    isSwapMode: false,
+embeddedDock: false,
+dockTpslEnabled: false,
+orderType: 'market',
+    effectiveMarketType: 'spot',
+selectedCredentialId: 7,
+currentSymbol: 'BTC/USDT',
+    amount: 100,
+leverage: 1,
+spotBuyInputMode: 'amount',
+spotSellInputMode: 'quantity',
+    entryReason: '',
+entryReasonError: false,
+source: 'manual',
+aiDecisionFilter: false,
+    $emit: () => {},
+$t: key => key,
+$notification: { error: () => {}, warning: () => {} },
+    loadBalance: async () => {},
+loadHistory: async () => {},
+loadPositionWithRetry: async () => {},
+    ...overrides
+  }
+}
+
+for (const [isSwapMode, side] of [[false, 'buy'], [true, 'buy'], [true, 'sell']]) {
+  test(`blank opening reason prevents ${isSwapMode ? 'swap' : 'spot'} ${side} submission`, async () => {
+    let sent = 0
+    const component = options('components/QuickTradePanel/QuickTradePanel.vue', { placeQuickOrder: async () => { sent++ } })
+    const state = entryState({ isSwapMode, entryReason: ' \n\t ' })
+    await component.methods.handleSubmit.call(state, side)
+    assert.equal(sent, 0); assert.equal(state.entryReasonError, true)
+    assert.equal(Boolean(state.submitting), false)
+  })
+}
+
+test('opening reason is sent as one text value and cleared after success', async () => {
+  let payload
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', { placeQuickOrder: async value => { payload = value; return { code: 1, data: {} } } })
+  const state = entryState({ entryReason: '  震荡回踩支撑。\n尝试反弹。  ' })
+  await component.methods.handleSubmit.call(state, 'buy')
+  assert.equal(payload.entry_reason, '震荡回踩支撑。\n尝试反弹。')
+  assert.equal(state.entryReason, '')
+})
+
+test('failed order keeps the original opening text for correction or retry', async () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', { placeQuickOrder: async () => ({ code: 0, msg: 'quickTrade.entryReasonSaveFailed' }) })
+  const state = entryState({ entryReason: '当前震荡，等待反弹' })
+  await component.methods.handleSubmit.call(state, 'buy')
+  assert.equal(state.entryReason, '当前震荡，等待反弹')
+  assert.equal(state.submitting, false)
+})
+
+test('spot sells still work without opening text', async () => {
+  let payload
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', { placeQuickOrder: async value => { payload = value; return { code: 1, data: {} } } })
+  const state = entryState({ sellQuantity: 2 })
+  await component.methods.handleSubmit.call(state, 'sell')
+  assert.equal(payload.side, 'sell'); assert.equal(payload.quantity, 2)
+  assert.equal(payload.entry_reason, undefined); assert.equal(state.entryReasonError, false)
 })

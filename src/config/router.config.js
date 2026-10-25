@@ -29,6 +29,12 @@ export const asyncRouterMap = [
         meta: { title: 'menu.dashboard.strategyCenter', keepAlive: true, icon: 'cluster', permission: ['dashboard'] }
       },
       {
+        path: '/trade-plans',
+        name: 'TradePlans',
+        component: () => import('@/views/trade-plans'),
+        meta: { title: 'menu.dashboard.tradePlans', keepAlive: false, icon: 'profile', permission: ['dashboard'] }
+      },
+      {
         path: '/position-manager',
         name: 'PositionManager',
         component: () => import('@/views/position-manager'),
