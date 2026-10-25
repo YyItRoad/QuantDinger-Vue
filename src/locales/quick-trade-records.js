@@ -1,4 +1,11 @@
 const enUS = {
+  "quickTrade.entryReason": "Opening reason",
+  "quickTrade.entryReasonEntryOnly": "Required for entries",
+  "quickTrade.entryReasonPlaceholder": "For example: the market is ranging, support held on a retest, and I expect a rebound.",
+  "quickTrade.entryReasonHint": "Write the current market state and why you are opening, up to 500 characters. Spot sells, closes and cancels do not require it.",
+  "quickTrade.entryReasonRequired": "Please record the market state and your opening idea first.",
+  "quickTrade.entryReasonInvalid": "Opening reason must be text of up to 500 characters.",
+  "quickTrade.entryReasonSaveFailed": "Could not save your opening reason. No entry order was submitted. Please try again later.",
   'quickTrade.averageFillPrice': 'Average fill price',
   'quickTrade.filledAmount': 'Filled quantity',
   'quickTrade.executedValue': 'Executed value',
@@ -32,6 +39,14 @@ export default {
   'en-US': enUS,
   'zh-CN': {
     ...enUS,
+  "quickTrade.entryReason": "开仓原因",
+  "quickTrade.entryReasonEntryOnly": "开仓必填",
+  "quickTrade.entryReasonPlaceholder": "例如：当前震荡，回踩支撑未破，我判断会反弹，所以尝试做多。",
+  "quickTrade.entryReasonHint": "写下当时的市场状态和为什么开仓，最多 500 字。现货卖出、平仓和撤单无需填写。",
+  "quickTrade.entryReasonRequired": "请先记录当时的市场状态和开仓想法。",
+  "quickTrade.entryReasonInvalid": "开仓原因须为最多 500 字的文字。",
+  "quickTrade.entryReasonSaveFailed": "开仓原因未能保存，尚未提交开仓订单，请稍后重试。",
+
     'quickTrade.averageFillPrice': '平均成交价',
     'quickTrade.filledAmount': '成交数量',
     'quickTrade.executedValue': '成交金额',

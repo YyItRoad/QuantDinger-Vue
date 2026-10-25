@@ -148,6 +148,7 @@
       width="860px"
     >
       <div v-if="selectedHistoryItem" class="pm-history-detail">
+        <a-button type="link" @click="openHistoryPlan(selectedHistoryItem)">{{ $t('tradePlans.openFromTrade') }}</a-button>
         <section class="pm-detail-section">
           <h3>交易原因</h3>
           <a-form layout="vertical">
@@ -180,6 +181,7 @@
 </template>
 
 <script>
+import { tradePlanSourceRoute } from '@/views/trade-plans/navigation'
 import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
 import { createManagedAccountStrategy, getManagedAccountPositions, getManagedPositionSnapshot, getPositionManagementTradeHistory, updatePositionManagementReasons } from '@/api/strategy'
@@ -475,6 +477,12 @@ export default {
         if (this.selectedHistoryItem && this.selectedHistoryItem.id === id) this.selectedHistoryItem = { ...this.selectedHistoryItem, ...values }
         this.$message.success('原因已保存')
       } catch (error) { this.$message.error(error.backendMessage || error.message || '保存原因失败') } finally { this.reasonSaving = false }
+    },
+    async openHistoryPlan (record) {
+      const target = tradePlanSourceRoute('history', record)
+      if (!target) return
+      await this.$router.push(target)
+      this.historyDetailVisible = false
     },
     openHistoryDetail (record) {
       this.historyReasons = { entry_reason: record.entry_reason || '', exit_reason: record.exit_reason || '' }
